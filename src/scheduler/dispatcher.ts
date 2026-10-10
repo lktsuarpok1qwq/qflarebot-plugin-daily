@@ -125,8 +125,8 @@ async function dispatchPass(
         const activeEvents = eventKeys(d.event_key).filter(
           (key) => !done.get(d.id)?.has(key),
         );
-        if (activeEvents.some((key) => !service.isVerified(key.split(":")[0]!)))
-          throw new Error("假期区间与放假/补班数据冲突");
+        if (activeEvents.some((key) => !service.hasEvent(key.split(":")[0]!)))
+          throw new Error("假期记录已删除或被人工修改覆盖");
         const key = JSON.stringify([
           t.id,
           d.due_at,

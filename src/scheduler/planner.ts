@@ -1,5 +1,5 @@
 import type { Config, Plan, Schedule } from "../types.js";
-import { packEvents } from "./events.js";
+import { packEvents, activeHolidays } from "./events.js";
 export const DAY = 86_400_000;
 export const dateAt = (ms: number) =>
   new Date(ms + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -23,10 +23,8 @@ export function nextPlan(
   handled: ReadonlySet<string> = new Set(),
 ): Plan | null {
   if (s.kind === "holiday_event") {
-    const candidates = config.holidays
-      .filter(
-        (h) => h.region === s.region && h.kind === s.eventKind && h.verified,
-      )
+    const candidates = activeHolidays(config)
+      .filter((h) => h.kind === s.eventKind)
       .map((h) => ({
         due: at(addDays(h.start, -(s.offset ?? 0)), s.time),
         eventKey: `${h.id}:${s.offset ?? 0}`,

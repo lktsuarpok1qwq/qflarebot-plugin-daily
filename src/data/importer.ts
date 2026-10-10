@@ -44,7 +44,6 @@ function csv(text: string): string[][] {
 }
 export function importHolidays(
   text: string,
-  region: string,
   existing: Holiday[],
 ): {
   batchId: string;
@@ -92,11 +91,7 @@ export function importHolidays(
     const end = x.end || x.start;
     if (
       [...existing, ...items].some(
-        (h) =>
-          h.region === region &&
-          h.name === x.name &&
-          h.start === x.start &&
-          h.end === end,
+        (h) => h.name === x.name && h.start === x.start && h.end === end,
       )
     ) {
       duplicates++;
@@ -104,20 +99,14 @@ export function importHolidays(
     }
     const item: Holiday = {
       id: crypto.randomUUID(),
-      region,
       name: x.name,
       start: x.start,
       end,
       kind: "holiday",
-      verified: region !== "CN",
       source: "manual-import",
       batchId,
     };
-    if (
-      [...existing, ...items].some(
-        (h) => h.region === region && h.start <= end && h.end >= x.start,
-      )
-    )
+    if ([...existing, ...items].some((h) => h.start <= end && h.end >= x.start))
       conflicts.push(item);
     items.push(item);
   }

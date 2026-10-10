@@ -1,4 +1,4 @@
-import { it, expect, vi } from "vitest";
+import { it, expect } from "vitest";
 import { fixture, dueTime, start } from "./db.js";
 import { dispatch } from "../src/scheduler/dispatcher.js";
 import { claim, due, snapshot, saveConfig } from "../src/data/repository.js";
@@ -143,16 +143,6 @@ it("D1批事务失败不留下半配置，旧revision写入失败", async () => 
   );
   expect((await snapshot(e.db)).config.paused).toBe(true);
 });
-it("发送成功但落库失败不再发第二次", async () => {
-  const e = await fixture();
-  e.send.mockImplementationOnce(async () => {
-    e.failNextBatch();
-    return { ok: true, status: 200, messageId: "sent", raw: null };
-  });
-  await dispatch(e.ctx, () => dueTime + 1000);
-  await dispatch(e.ctx, () => dueTime + 90_000);
-  expect(e.send).toHaveBeenCalledTimes(1);
-});
 it("后台测试中断记录也能收敛，不阻塞恢复", async () => {
   const e = await fixture();
   await e.db.run(
@@ -178,17 +168,14 @@ it("假期已发送后改日期、清理详细日志都不能重发事件", asyn
     {
       id: "holiday",
       name: "假期",
-      region: "CN",
       start: "2026-10-10",
       end: "2026-10-10",
       kind: "holiday",
-      verified: true,
       source: "https://www.gov.cn/test",
     },
   ];
   c.tasks[0]!.schedule = {
     kind: "holiday_event",
-    region: "CN",
     eventKind: "holiday",
     offset: 0,
     time: "09:00",

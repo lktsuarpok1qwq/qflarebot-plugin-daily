@@ -99,77 +99,66 @@ describe("渲染和校验", () => {
 describe("假期状态与导入", () => {
   it("无数据为unknown而非none", async () =>
     expect(
-      (await holidayService(defaults(), [], dueTime).getNextHoliday("CN"))
-        .status,
+      (await holidayService(defaults(), [], dueTime).getNextHoliday()).status,
     ).toBe("unknown"));
   it("完整年度没有假期为none", async () => {
     const c = defaults();
-    c.coverage = [2026, 2027].map((year) => ({
-      region: "CN",
+    const raw = [2026, 2027].map((year) => ({
       year,
-      complete: true,
-      verifiedAt: new Date().toISOString(),
+      hash: "",
+      data: '{"days":[]}',
+      error: null,
+      updated_at: 0,
     }));
     expect(
-      (await holidayService(c, [], dueTime).getNextHoliday("CN")).status,
+      (await holidayService(c, raw, dueTime).getNextHoliday()).status,
     ).toBe("none");
   });
-  it("部分可用数据仍注明partial，进行中假期可查", async () => {
+  it("手动录入无需来源网址或年度确认，保存后直接可查", async () => {
     const c = defaults();
     c.holidays = [
       {
         id: "h",
-        region: "CN",
         name: "假期",
         start: "2026-10-01",
         end: "2026-10-12",
         kind: "holiday",
-        verified: true,
-        source: "https://www.gov.cn/a",
+        source: "",
       },
     ];
-    const q = await holidayService(c, [], dueTime).getNextHoliday("CN");
-    expect(q.status).toBe("partial");
+    validateConfig(c);
+    const q = await holidayService(c, [], dueTime).getNextHoliday();
+    expect(q.status).toBe("known");
     expect(q.data?.id).toBe("h");
+    expect(q.coverage.complete).toBe(false);
   });
   it("跨年区间保留原日期", async () => {
     const c = defaults();
     c.holidays = [
       {
         id: "h",
-        region: "CN",
         name: "跨年",
         start: "2026-12-30",
         end: "2027-01-03",
         kind: "holiday",
-        verified: true,
         source: "https://www.gov.cn/a",
       },
     ];
-    const q = await holidayService(c).getRemainingHolidays(
-      "CN",
-      2027,
-      "2027-01-01",
-    );
+    const q = await holidayService(c).getRemainingHolidays(2027, "2027-01-01");
     expect(q.data[0]?.start).toBe("2026-12-30");
   });
-  it("自定义地区不推导工作日", async () => {
-    const c = defaults();
-    c.regions.push({ id: "custom", name: "自定义" });
-    c.coverage.push({
-      region: "custom",
-      year: 2026,
-      complete: true,
-      verifiedAt: "now",
-    });
+  it("已同步年度可直接判断普通工作日", async () => {
+    const raw = [
+      { year: 2026, hash: "", data: '{"days":[]}', error: null, updated_at: 0 },
+    ];
     expect(
-      (await holidayService(c).getDayStatus("custom", "2026-10-10")).data.kind,
-    ).toBe("unlisted");
+      (await holidayService(defaults(), raw).getDayStatus("2026-10-12")).data
+        .kind,
+    ).toBe("workday");
   });
   it("CSV 引号、重复和重叠预览", () => {
     const r = importHolidays(
       'name,start,end\n"节日,一",2026-10-01,2026-10-03\n另一个,2026-10-02,2026-10-04\n另一个,2026-10-02,2026-10-04',
-      "custom",
       [],
     );
     expect(r.items).toHaveLength(2);
@@ -184,7 +173,7 @@ describe("假期状态与导入", () => {
       ),
     ).toThrow();
     expect(() =>
-      importHolidays('[{"name":"错误","start":"2026-02-30"}]', "CN", []),
+      importHolidays('[{"name":"错误","start":"2026-02-30"}]', []),
     ).toThrow();
   });
 });

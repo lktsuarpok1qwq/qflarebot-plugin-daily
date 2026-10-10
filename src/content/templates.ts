@@ -35,9 +35,7 @@ export function defaults(): Config {
     tasks: [],
     recipients: [],
     bindings: [],
-    regions: [{ id: "CN", name: "中国" }],
     holidays: [],
-    coverage: [],
     help: { ...HELP },
   };
 }

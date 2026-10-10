@@ -1,5 +1,5 @@
 import { definePlugin } from "@qqbot/sdk";
-import { install } from "./data/repository.js";
+import { install, migrate } from "./data/repository.js";
 import { dispatch } from "./scheduler/dispatcher.js";
 import { maintenance } from "./data/holiday-cn.js";
 import { help, queryHoliday } from "./commands.js";
@@ -11,7 +11,7 @@ export default definePlugin({
   description: "定时文字、每日汇总与假期查询",
   apiVersion: 2,
   permissions: ["db", "net", "proactive", "admin"],
-  hooks: { onInstall: install },
+  hooks: { onInstall: install, onBoot: migrate },
   commands: {
     每日: {
       description: "每日助手帮助",
@@ -47,14 +47,14 @@ export default definePlugin({
   cron: {
     send: { cron: "* * * * *", handler: ({ ctx }) => dispatch(ctx) },
     sync: {
-      cron: "10,11,12 19 * * *",
+      cron: "10,11 19 * * *",
       handler: ({ ctx, scheduledAt }) =>
         maintenance(
           ctx,
           "sync",
           scheduledAt,
           false,
-          (new Date(scheduledAt).getUTCMinutes() - 11) as -1 | 0 | 1,
+          (new Date(scheduledAt).getUTCMinutes() - 10) as 0 | 1,
         ),
     },
     cleanup: {

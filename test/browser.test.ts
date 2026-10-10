@@ -178,6 +178,28 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       expect(await frame.locator("#previewResult").textContent()).toContain(
         "duplicate",
       );
+      await frame.locator('[data-action="page"][data-id="holidays"]').click();
+      await idle();
+      expect(await frame.locator("#app").innerText()).not.toMatch(
+        /地区|中国|核验/,
+      );
+      await frame.locator('[data-action="new-holiday"]').click();
+      await idle();
+      await frame.locator("#holidayName").fill("手动假期");
+      await frame.locator("#holidayStart").fill("2027-01-01");
+      await frame.locator('[data-action="save-holiday"]').click();
+      await idle();
+      expect(await frame.locator("#status").innerText()).toBe("已保存");
+      await frame
+        .locator("#importText")
+        .fill('[{"name":"导入假期","start":"2027-01-02"}]');
+      await frame.locator('[data-action="preview-import"]').click();
+      await idle();
+      await frame.locator('[data-action="apply-import"]').click();
+      await idle();
+      expect(await frame.locator("#app").innerText()).toContain("导入假期");
+      await frame.locator('[data-action="page"][data-id="tasks"]').click();
+      await idle();
       await frame.locator('[data-action="delete-task"]').click();
       await frame.locator("#decisionCancel").click();
       await idle();

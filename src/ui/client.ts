@@ -232,8 +232,6 @@ function render() {
     .map(([id, name]) => btn(name, "page", id, id === page ? "active" : ""))
     .join("");
   let html = '<div class="actions">' + btn("刷新配置", "reload") + "</div>";
-  for (const issue of state.holidayWarnings ?? [])
-    html += '<div class="notice">' + esc(issue) + "</div>";
   if (!synchronized)
     html += '<div class="notice">配置状态未确认，请刷新后继续。</div>';
   if (config.paused)
@@ -311,9 +309,7 @@ function render() {
         ) +
         field("一次性日期", "onceDate", s.date || "", "date") +
         field("每年月日（例如 02-29）", "monthDay", s.monthDay || "01-01") +
-        '<label>假期地区<select id="taskRegion">' +
-        options(config.regions, s.region || "CN") +
-        '</select></label><label>事件类别<select id="eventKind"><option value="holiday">放假开始</option><option value="makeup" ' +
+        '<label>事件类别<select id="eventKind"><option value="holiday">放假开始</option><option value="makeup" ' +
         (s.eventKind === "makeup" ? "selected" : "") +
         ">补班日</option></select></label>" +
         field("提前天数", "offset", s.offset || 0, "number") +
@@ -474,8 +470,6 @@ function render() {
               "</option>",
           )
           .join("") +
-        '</select></label><label>地区<select id="contentRegion">' +
-        options(config.regions, c.region || "CN") +
         '</select></label><label>适用日期<select id="contentOnly">' +
         ["always", "holiday", "makeup"]
           .map(
@@ -522,7 +516,7 @@ function render() {
   }
   if (page === "holidays") {
     html +=
-      '<section><h2>中国年度数据</h2><p class="muted">同步原始数据后，请对照国务院公告核验完整连休区间。同步成功不代表年度区间已核验。</p>' +
+      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据。假期录入或导入后直接生效，可随时修改；人工修改不会被后续同步覆盖。</p>' +
       btn("立即同步", "sync", "", "primary") +
       table(
         ["年份", "可信数据版本时间", "状态", "远程数据源"],
@@ -544,15 +538,15 @@ function render() {
       "<section><h2>假期区间与补班</h2>" +
       btn("新增假期", "new-holiday", "", "primary") +
       table(
-        ["地区 / 名称", "日期", "核验", "操作"],
+        ["名称", "日期", "类别", "操作"],
         config.holidays.map(
           (h) =>
             "<tr><td>" +
-            esc(h.region + " / " + h.name) +
+            esc(h.name) +
             "</td><td>" +
             esc(h.start + " 至 " + h.end) +
             "</td><td>" +
-            (h.verified ? "已核验" : "待核验") +
+            (h.kind === "holiday" ? "放假" : "补班") +
             "</td><td>" +
             btn("编辑", "edit-holiday", h.id) +
             btn("删除", "delete-holiday", h.id) +
@@ -563,53 +557,20 @@ function render() {
     if (editingHoliday) {
       const h = editingHoliday;
       html +=
-        '<section><h2>核验假期</h2><div class="grid">' +
+        '<section><h2>编辑假期</h2><div class="grid">' +
         field("名称", "holidayName", h.name) +
-        '<label>地区<select id="holidayRegion">' +
-        options(config.regions, h.region) +
-        "</select></label>" +
         field("开始", "holidayStart", h.start, "date") +
         field("结束", "holidayEnd", h.end, "date") +
         '<label>类别<select id="holidayKind"><option value="holiday">放假</option><option value="makeup" ' +
         (h.kind === "makeup" ? "selected" : "") +
         ">补班</option></select></label>" +
-        field("公告网址 / 来源", "holidaySource", h.source) +
-        check("已对照来源核验", "holidayVerified", h.verified) +
+        field("来源 / 备注（可选）", "holidaySource", h.source) +
         "</div>" +
-        btn("保存核验结果", "save-holiday", "", "primary") +
+        btn("保存假期", "save-holiday", "", "primary") +
         "</section>";
     }
     html +=
-      '<section><h2>地区与年度完整性</h2><div class="grid">' +
-      field("新增地区名称", "regionName") +
-      "</div>" +
-      btn("新增地区", "add-region") +
-      '<div class="grid"><label>地区<select id="coverageRegion">' +
-      options(config.regions) +
-      "</select></label>" +
-      field("年份", "coverageYear", new Date().getUTCFullYear(), "number") +
-      "</div>" +
-      btn("确认该年度已全部录入核验", "confirm-coverage") +
-      table(
-        ["地区", "年份", "完整性", "操作"],
-        config.coverage.map(
-          (c) =>
-            "<tr><td>" +
-            esc(c.region) +
-            "</td><td>" +
-            c.year +
-            "</td><td>" +
-            (c.complete ? "完整" : "待核验") +
-            "</td><td>" +
-            btn("撤销完整确认", "revoke-coverage", c.region + ":" + c.year) +
-            "</td></tr>",
-        ),
-      ) +
-      "</section>";
-    html +=
-      '<section><h2>CSV / JSON 导入</h2><label>地区<select id="importRegion">' +
-      options(config.regions) +
-      '</select></label><label>文件内容（CSV 表头 name,start,end）<textarea id="importText"></textarea></label><input id="importFile" type="file" accept=".csv,.json"><div class="actions">' +
+      '<section><h2>CSV / JSON 导入</h2><label>文件内容（CSV 表头 name,start,end）<textarea id="importText"></textarea></label><input id="importFile" type="file" accept=".csv,.json"><div class="actions">' +
       btn("预览导入", "preview-import") +
       btn("确认预览批次", "apply-import") +
       '</div><pre id="importPreview" hidden></pre><label>回滚导入批次<select id="batchId">' +
@@ -742,7 +703,6 @@ async function action(a, id) {
     if (s.kind === "yearly") s.monthDay = $("monthDay").value;
     if (s.kind === "holiday_event")
       Object.assign(s, {
-        region: $("taskRegion").value,
         eventKind: $("eventKind").value,
         offset: +$("offset").value,
       });
@@ -905,7 +865,6 @@ async function action(a, id) {
       kind: "text",
       enabled: true,
       body: "",
-      region: "CN",
       only: "always",
     };
     render();
@@ -948,7 +907,6 @@ async function action(a, id) {
       kind: $("contentKind").value,
       body: $("contentBody").value,
       enabled: $("contentEnabled").checked,
-      region: $("contentRegion").value,
       only: $("contentOnly").value,
     });
     await save();
@@ -983,13 +941,11 @@ async function action(a, id) {
   if (a === "new-holiday") {
     editingHoliday = {
       id: uid(),
-      region: "CN",
       name: "",
       start: "",
       end: "",
       kind: "holiday",
       source: "",
-      verified: false,
     };
     render();
     return;
@@ -1002,13 +958,12 @@ async function action(a, id) {
   if (a === "save-holiday") {
     put(config.holidays, {
       ...editingHoliday,
-      region: $("holidayRegion").value,
       name: $("holidayName").value,
       start: $("holidayStart").value,
       end: $("holidayEnd").value || $("holidayStart").value,
       kind: $("holidayKind").value,
-      source: $("holidaySource").value,
-      verified: $("holidayVerified").checked,
+      source: $("holidaySource").value || "manual",
+      manual: true,
     });
     await save();
     editingHoliday = null;
@@ -1016,48 +971,13 @@ async function action(a, id) {
     return;
   }
   if (a === "delete-holiday") {
-    if (!(await confirmAction("删除这个假期？相关年度需要重新确认完整性。")))
-      return;
+    if (!(await confirmAction("删除这个假期？"))) return;
     config.holidays = config.holidays.filter((h) => h.id !== id);
-    await save();
-    return;
-  }
-  if (a === "add-region") {
-    config.regions.push({
-      id: "region-" + uid(),
-      name: $("regionName").value,
-    });
-    await save();
-    return;
-  }
-  if (a === "confirm-coverage") {
-    if (!(await confirmAction("确认该地区该年度的假期已全部录入并核验？")))
-      return;
-    const region = $("coverageRegion").value,
-      year = +$("coverageYear").value;
-    config.coverage = config.coverage.filter(
-      (c) => c.region !== region || c.year !== year,
-    );
-    config.coverage.push({
-      region,
-      year,
-      complete: true,
-      verifiedAt: new Date().toISOString(),
-    });
-    await save();
-    return;
-  }
-  if (a === "revoke-coverage") {
-    const [region, year] = id.split(":");
-    config.coverage.find(
-      (c) => c.region === region && c.year === +year,
-    ).complete = false;
     await save();
     return;
   }
   if (a === "preview-import") {
     imported = await api("import-preview", {
-      region: $("importRegion").value,
       text: $("importText").value,
     });
     imported.revision = state.revision;

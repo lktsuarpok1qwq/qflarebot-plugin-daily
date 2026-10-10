@@ -28,15 +28,36 @@ const request = (action: string, data?: unknown) =>
           body: JSON.stringify(data),
         },
   );
-it("备份恢复原enabled，重复导入不增目标，不恢复旧窗口", async () => {
+it("兼容旧备份字段，恢复原enabled，重复导入不增目标或恢复旧窗口", async () => {
   const e = await fixture(2);
   vi.spyOn(Date, "now").mockReturnValue(dueTime + 5000);
   try {
     const backup = await exportBackup(e.ctx);
+    Object.assign(backup.config, {
+      regions: [{ id: "CN", name: "old" }],
+      coverage: [],
+      holidays: [
+        {
+          id: "h",
+          name: "假期",
+          start: "2026-10-10",
+          end: "2026-10-12",
+          kind: "holiday",
+          source: "",
+          region: "CN",
+          verified: false,
+        },
+      ],
+    });
     expect(parseBackup(backup, "bot")).toBe(backup);
     await restoreBackup(e.ctx, backup, (await snapshot(e.db)).revision);
     await restoreBackup(e.ctx, backup, (await snapshot(e.db)).revision);
     const s = await snapshot(e.db);
+    expect(s.config).not.toHaveProperty("regions");
+    expect(s.config).not.toHaveProperty("coverage");
+    expect(s.config.holidays[0]).not.toHaveProperty("region");
+    expect(s.config.holidays[0]).not.toHaveProperty("verified");
+    expect(s.config.holidays[0]?.id).toBe("h");
     expect(s.config.recipients).toHaveLength(2);
     expect(s.config.recipients.every((r) => r.enabled)).toBe(true);
     expect((await due(e.db, dueTime + 5000)).length).toBe(0);
@@ -137,7 +158,7 @@ it("所有注册命令保留但没有每日下次", async () => {
   });
   expect(JSON.stringify(r)).toContain("自动发送");
 });
-it("源变化只撤销受影响区间，核验与源更新原子提交", async () => {
+it("源变化不撤销或覆盖手动录入的假期", async () => {
   const e = await fixture();
   const initial = {
     year: 2026,
@@ -153,22 +174,18 @@ it("源变化只撤销受影响区间，核验与源更新原子提交", async (
   c.holidays = [
     {
       id: "a",
-      region: "CN",
       name: "A",
       start: "2026-10-01",
       end: "2026-10-03",
       kind: "holiday",
-      verified: true,
       source: "https://www.gov.cn/test",
     },
     {
       id: "b",
-      region: "CN",
       name: "B",
       start: "2026-05-01",
       end: "2026-05-03",
       kind: "holiday",
-      verified: true,
       source: "https://www.gov.cn/test",
     },
   ];
@@ -177,8 +194,8 @@ it("源变化只撤销受影响区间，核验与源更新原子提交", async (
   changed.days[0]!.isOffDay = false;
   await syncYear(e.ctx, 2026, async () => Response.json(changed));
   const after = (await snapshot(e.db)).config;
-  expect(after.holidays.find((h) => h.id === "a")?.verified).toBe(false);
-  expect(after.holidays.find((h) => h.id === "b")?.verified).toBe(true);
+  expect(after.holidays.find((h) => h.id === "a")?.end).toBe("2026-10-03");
+  expect(after.holidays.find((h) => h.id === "b")?.end).toBe("2026-05-03");
 });
 it("后台只读取实际游标和来源摘要，不重算五次计划或拉取永久进度", async () => {
   const e = await fixture();

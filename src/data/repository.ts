@@ -1,7 +1,9 @@
 import type { DBStatement, PluginDB } from "@qqbot/sdk";
 import type { Config, Ctx, Snapshot, Source } from "../types.js";
 import { LIMITS } from "../types.js";
+import { normalizeConfig } from "./validation.js";
 import { defaults } from "../content/templates.js";
+import { activeHolidays } from "../scheduler/events.js";
 import { nextPlan } from "../scheduler/planner.js";
 import { jsonRows, jx, jsonChunks } from "./sql.js";
 export { deliveryKey, due, claim, finish } from "./deliveries.js";
@@ -28,6 +30,25 @@ export async function install(ctx: Ctx) {
     "initial",
   );
 }
+// The host runs onInstall only once across deployments; upgrades belong in onBoot.
+export async function migrate(ctx: Ctx) {
+  const stored = await ctx.db.first<{
+    revision: number;
+    bot_id: string;
+    config: string;
+  }>("SELECT revision,bot_id,config FROM {state} WHERE id=1");
+  if (stored) {
+    const old = JSON.parse(stored.config) as Config;
+    const normalized = normalizeConfig(structuredClone(old));
+    if (JSON.stringify(normalized) !== stored.config)
+      await saveConfig(
+        ctx,
+        { revision: stored.revision, botId: stored.bot_id, config: old },
+        normalized,
+        Date.now(),
+      );
+  }
+}
 export async function snapshot(db: PluginDB): Promise<Snapshot> {
   const s = await db.first<{
     revision: number;
@@ -38,7 +59,7 @@ export async function snapshot(db: PluginDB): Promise<Snapshot> {
   return {
     revision: s.revision,
     botId: s.bot_id,
-    config: JSON.parse(s.config) as Config,
+    config: normalizeConfig(JSON.parse(s.config) as Config),
   };
 }
 export const sources = (db: PluginDB) =>
@@ -58,7 +79,7 @@ export async function readData(
     snapshot: {
       revision: state.revision,
       botId: state.bot_id,
-      config: JSON.parse(state.config) as Config,
+      config: normalizeConfig(JSON.parse(state.config) as Config),
     },
     sources: rows[1]!.results as Source[],
   };
@@ -92,6 +113,7 @@ export async function saveConfig(
   },
   publishedSource?: Source,
 ) {
+  config = normalizeConfig(config);
   const [cursors, done] = await Promise.all([
     ctx.db.all<{
       id: string;
@@ -123,6 +145,13 @@ export async function saveConfig(
       if (!done.has(p.binding_id)) done.set(p.binding_id, new Set());
       done.get(p.binding_id)!.add(p.event_key);
     }
+  const calendar = (value: Config) =>
+    JSON.stringify(
+      activeHolidays(value)
+        .map((h) => [h.id, h.start, h.kind])
+        .sort(),
+    );
+  const calendarChanged = calendar(old.config) !== calendar(config);
   const byId = new Map(cursors.map((x) => [x.id, x])),
     rows = [];
   for (const b of config.bindings) {
@@ -140,31 +169,13 @@ export async function saveConfig(
     const sameSchedule =
       JSON.stringify(oldTask?.schedule) === JSON.stringify(task.schedule);
     const holidayChanged =
-      task.schedule.kind === "holiday_event" &&
-      JSON.stringify(
-        old.config.holidays
-          .filter(
-            (h) =>
-              h.region === task.schedule.region &&
-              h.kind === task.schedule.eventKind,
-          )
-          .map((h) => [h.id, h.start, h.verified])
-          .sort(),
-      ) !==
-        JSON.stringify(
-          config.holidays
-            .filter(
-              (h) =>
-                h.region === task.schedule.region &&
-                h.kind === task.schedule.eventKind,
-            )
-            .map((h) => [h.id, h.start, h.verified])
-            .sort(),
-        );
+      task.schedule.kind === "holiday_event" && calendarChanged;
     const preserve =
       !restore &&
+      !("regions" in old.config) &&
       enabled &&
       previous?.enabled &&
+      previous.due_at !== null &&
       sameSchedule &&
       !holidayChanged &&
       old.botId === ctx.botId;

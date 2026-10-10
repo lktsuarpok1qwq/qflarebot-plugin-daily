@@ -14,19 +14,14 @@ export async function renderMessage(
   const day = dateAt(due),
     service = sharedService ?? holidayService(config, sources, due),
     items: Rendered["items"] = [];
-  const cached = new Map<
-    string,
-    Awaited<ReturnType<typeof service.getNextHoliday>>
-  >();
-  async function render(body: string, region = "CN"): Promise<string | null> {
+  let next: Awaited<ReturnType<typeof service.getNextHoliday>> | undefined;
+  async function render(body: string): Promise<string | null> {
     validateTemplate(body, config.textLimit);
-    let next = cached.get(region);
     if (body.includes("{{holiday.")) {
       if (!next) {
         const matched = config.holidays.filter(
           (h) =>
-            service.isVerified(h.id) &&
-            h.region === region &&
+            service.hasEvent(h.id) &&
             events.some((key) => key.split(":")[0] === h.id),
         );
         if (matched.length) {
@@ -46,9 +41,8 @@ export async function renderMessage(
             freshness: "current",
           };
         } else {
-          next = await service.getNextHoliday(region, day);
+          next = await service.getNextHoliday(day);
         }
-        cached.set(region, next);
       }
       if (next.status !== "known" || !next.data) return null;
     }
@@ -72,7 +66,7 @@ export async function renderMessage(
   }
   let text: string;
   if (binding.overrideText !== null) {
-    const value = await render(binding.overrideText, task.schedule.region);
+    const value = await render(binding.overrideText);
     items.push({
       contentId: "override",
       reason:
@@ -88,7 +82,7 @@ export async function renderMessage(
         continue;
       }
       if (c.only && c.only !== "always") {
-        const status = await service.getDayStatus(c.region ?? "CN", day);
+        const status = await service.getDayStatus(day);
         if (status.data.kind === "unknown") {
           items.push({ contentId: id, reason: "holiday_data_unknown" });
           continue;
@@ -101,7 +95,7 @@ export async function renderMessage(
           continue;
         }
       }
-      const value = await render(c.body, c.region);
+      const value = await render(c.body);
       items.push({
         contentId: id,
         reason:
@@ -113,10 +107,7 @@ export async function renderMessage(
       });
       if (value) parts.push(value);
     }
-    const title =
-      parts.length && task.title
-        ? await render(task.title, task.schedule.region)
-        : "";
+    const title = parts.length && task.title ? await render(task.title) : "";
     if (title === null) {
       items.push({ contentId: "title", reason: "holiday_data_unknown" });
       text = "";

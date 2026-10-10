@@ -109,56 +109,17 @@ export async function syncYear(
         );
       return;
     }
-    // Publish interval invalidation, cursors, and source in the same D1 transaction.
+    // Publish automatic dates, cursors, and source in the same D1 transaction.
     const current = await readData(ctx.db),
       s = current.snapshot,
       config = structuredClone(s.config);
-    const oldRaw: RawYear | undefined = previous?.data
-      ? JSON.parse(previous.data)
-      : undefined;
-    const before = new Map(
-      (oldRaw?.days ?? []).map((d) => [
-        d.date,
-        JSON.stringify([d.name, d.date, d.isOffDay]),
-      ]),
-    );
-    const after = new Map(
-      value.days.map((d) => [
-        d.date,
-        JSON.stringify([d.name, d.date, d.isOffDay]),
-      ]),
-    );
-    const changedDates = [
-      ...new Set([...before.keys(), ...after.keys()]),
-    ].filter((d) => before.get(d) !== after.get(d));
-    const papersChanged =
-      !!oldRaw &&
-      JSON.stringify([...new Set(oldRaw.papers)].sort()) !==
-        JSON.stringify(value.papers);
-    for (const h of config.holidays)
-      if (
-        h.region === "CN" &&
-        h.kind === "holiday" &&
-        (changedDates.some((d) => h.start <= d && h.end >= d) ||
-          (papersChanged &&
-            +h.start.slice(0, 4) <= year &&
-            +h.end.slice(0, 4) >= year))
-      )
-        h.verified = false;
-    for (const cv of config.coverage)
-      if (
-        cv.region === "CN" &&
-        (changedDates.some((d) => +d.slice(0, 4) === cv.year) ||
-          (papersChanged && cv.year === year))
-      )
-        cv.complete = false;
     const oldMakeup = new Map(
       config.holidays
-        .filter((h) => h.region === "CN" && /^holiday-cn:\d{4}$/.test(h.source))
+        .filter((h) => /^holiday-cn:\d{4}$/.test(h.source))
         .map((h) => [h.start, h]),
     );
     config.holidays = config.holidays.filter(
-      (h) => !(h.region === "CN" && /^holiday-cn:\d{4}$/.test(h.source)),
+      (h) => !/^holiday-cn:\d{4}$/.test(h.source) || h.manual,
     );
     const calendars = [
       ...current.sources
@@ -168,37 +129,32 @@ export async function syncYear(
     ].sort((a, b) => a.raw.year - b.raw.year);
     const days = new Map<
       string,
-      { name: string; year: number; hash: string; kinds: Set<boolean> }
+      { name: string; year: number; hash: string; isOffDay: boolean }
     >();
     for (const calendar of calendars)
       for (const d of calendar.raw.days) {
-        const kinds = days.get(d.date)?.kinds ?? new Set<boolean>();
-        kinds.add(d.isOffDay);
         days.set(d.date, {
           name: d.name,
           year: calendar.raw.year,
           hash: calendar.hash,
-          kinds,
+          isOffDay: d.isOffDay,
         });
       }
     for (const [date, d] of days) {
-      if (!d.kinds.has(false)) continue;
+      if (d.isOffDay) continue;
       const id = oldMakeup.get(date)?.id ?? `cn-makeup-${date}`;
-      if (config.holidays.some((h) => h.id === id))
-        throw new Error("自动补班 ID 与手动条目冲突");
+      if (config.holidays.some((h) => h.id === id)) continue;
       config.holidays.push({
         id,
-        region: "CN",
         name: d.name,
         start: date,
         end: date,
         kind: "makeup",
-        verified: d.kinds.size === 1,
         source: `holiday-cn:${d.year}`,
         sourceHash: d.hash,
       });
     }
-    validateConfig(config, s.config);
+    validateConfig(config);
     await saveConfig(ctx, s, config, now, false, undefined, {
       year,
       hash: digest,
@@ -228,7 +184,7 @@ export async function maintenance(
   job: "sync" | "cleanup",
   scheduledAt: number,
   manual = false,
-  yearOffset?: -1 | 0 | 1,
+  yearOffset?: 0 | 1,
 ) {
   const day = dateAt(scheduledAt);
   const jobKey =
@@ -245,7 +201,7 @@ export async function maintenance(
     if (job === "sync") {
       const year = +day.slice(0, 4);
       for (const y of yearOffset === undefined
-        ? [year - 1, year, year + 1]
+        ? [year, year + 1]
         : [year + yearOffset])
         if (y >= 2000 && y <= 2199) await syncYear(ctx, y);
     } else {

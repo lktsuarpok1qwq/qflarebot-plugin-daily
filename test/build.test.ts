@@ -27,7 +27,7 @@ it("宿主安装构建不依赖插件本地 node_modules，清单与产物自包
     expect(result.manifest.services).toEqual([]);
     expect(result.manifest.routes.every((r) => r.auth === "admin")).toBe(true);
     expect(result.manifest.cron.find((c) => c.name === "sync")?.cron).toBe(
-      "10,11,12 19 * * *",
+      "10,11 19 * * *",
     );
     expect(result.manifest.commands.some((c) => c.name === "每日 下次")).toBe(
       false,

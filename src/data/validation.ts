@@ -41,10 +41,27 @@ function ids(items: { id: string }[]) {
   }
   return set;
 }
-export function validateConfig(value: unknown, previous?: Config): Config {
+// Accept older backups/configurations without retaining the retired selectors.
+export function normalizeConfig(config: Config): Config {
+  const legacy = config as Config & { regions?: unknown; coverage?: unknown };
+  delete legacy.regions;
+  delete legacy.coverage;
+  for (const item of [
+    ...(config.holidays ?? []),
+    ...(config.contents ?? []),
+    ...(config.tasks ?? []).map((t) => t.schedule),
+  ]) {
+    if (!item || typeof item !== "object") continue;
+    const old = item as { region?: unknown; verified?: unknown };
+    delete old.region;
+    delete old.verified;
+  }
+  return config;
+}
+export function validateConfig(value: unknown): Config {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("配置必须为对象");
-  const c = value as Config;
+  const c = normalizeConfig(value as Config);
   if (c.schemaVersion !== 1) throw new Error("不支持的 schemaVersion");
   bool(c.paused);
   if (
@@ -58,16 +75,11 @@ export function validateConfig(value: unknown, previous?: Config): Config {
   list(c.contents, LIMITS.contents, "内容");
   list(c.recipients, LIMITS.recipients, "目标");
   list(c.bindings, LIMITS.bindings, "绑定");
-  list(c.regions, 20, "地区");
   list(c.holidays, LIMITS.holidays, "假期");
-  list(c.coverage, 60, "年度覆盖");
   const taskIds = ids(c.tasks),
     contentIds = ids(c.contents),
-    recipientIds = ids(c.recipients),
-    regionIds = ids(c.regions);
+    recipientIds = ids(c.recipients);
   ids(c.holidays);
-  if (!regionIds.has("CN")) throw new Error("必须保留中国地区 CN");
-  for (const r of c.regions) str(r.name, 80, "地区名称");
   const platformIds = new Set<string>();
   for (const r of c.recipients) {
     bool(r.enabled);
@@ -86,10 +98,9 @@ export function validateConfig(value: unknown, previous?: Config): Config {
     str(x.body, c.textLimit, "内容", true);
     if (
       !["text", "date", "holiday"].includes(x.kind) ||
-      (x.only && !["always", "holiday", "makeup"].includes(x.only)) ||
-      (x.region && !regionIds.has(x.region))
+      (x.only && !["always", "holiday", "makeup"].includes(x.only))
     )
-      throw new Error("内容类型或地区非法");
+      throw new Error("内容类型非法");
     validateTemplate(x.body, c.textLimit);
   }
   for (const t of c.tasks) {
@@ -132,8 +143,7 @@ export function validateConfig(value: unknown, previous?: Config): Config {
       throw new Error("年度月日错误");
     if (
       s.kind === "holiday_event" &&
-      (!regionIds.has(s.region ?? "") ||
-        !["holiday", "makeup"].includes(s.eventKind ?? "") ||
+      (!["holiday", "makeup"].includes(s.eventKind ?? "") ||
         !Number.isInteger(s.offset) ||
         s.offset! < 0 ||
         s.offset! > 366)
@@ -167,69 +177,19 @@ export function validateConfig(value: unknown, previous?: Config): Config {
   }
   for (const h of c.holidays) {
     str(h.name, 80, "假期名称");
-    bool(h.verified);
-    str(h.source, 500, "来源");
+    h.source ||= "manual";
+    str(h.source, 500, "来源", true);
+    if (h.manual !== undefined) bool(h.manual);
     if (
-      !regionIds.has(h.region) ||
       !validDate(h.start) ||
       !validDate(h.end) ||
       h.end < h.start ||
       !["holiday", "makeup"].includes(h.kind) ||
       (h.kind === "makeup" && h.start !== h.end)
     )
-      throw new Error("假期地区或日期错误");
-    if (
-      h.region === "CN" &&
-      h.verified &&
-      !/^https:\/\/(?:[\w-]+\.)*gov\.cn\//.test(h.source) &&
-      !(h.kind === "makeup" && /^holiday-cn:\d{4}$/.test(h.source))
-    )
-      throw new Error("中国假期核验须附公告网址");
+      throw new Error("假期日期错误");
     if (h.sourceHash !== undefined) str(h.sourceHash, 64, "源指纹");
     if (h.batchId !== undefined) str(h.batchId, 80, "导入批次");
-  }
-  const coverage = new Set<string>();
-  for (const cv of c.coverage) {
-    bool(cv.complete);
-    const k = `${cv.region}:${cv.year}`;
-    if (previous) {
-      const signature = (config: Config) =>
-        JSON.stringify(
-          config.holidays
-            .filter(
-              (h) =>
-                h.region === cv.region &&
-                h.start <= `${cv.year}-12-31` &&
-                h.end >= `${cv.year}-01-01`,
-            )
-            .map((h) => [h.id, h.start, h.end, h.kind, h.verified, h.source])
-            .sort(),
-        );
-      if (signature(previous) !== signature(c)) cv.complete = false;
-    }
-    if (
-      !regionIds.has(cv.region) ||
-      !Number.isInteger(cv.year) ||
-      cv.year < 2000 ||
-      cv.year > 2199 ||
-      coverage.has(k)
-    )
-      throw new Error("年度覆盖错误或重复");
-    if (
-      cv.complete &&
-      c.holidays.some(
-        (h) =>
-          h.region === cv.region &&
-          !h.verified &&
-          h.start <= `${cv.year}-12-31` &&
-          h.end >= `${cv.year}-01-01`,
-      )
-    )
-      throw new Error("该年度仍有待核验假期，不能确认完整");
-    coverage.add(k);
-    str(cv.verifiedAt, 40, "核验时间");
-    if (!Number.isFinite(Date.parse(cv.verifiedAt)))
-      throw new Error("核验时间非法");
   }
   if (!c.help) throw new Error("缺少帮助");
   str(c.help.daily, c.textLimit, "每日帮助");

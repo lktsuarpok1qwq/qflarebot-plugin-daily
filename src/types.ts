@@ -7,7 +7,6 @@ export type Schedule = {
   weekdays?: number[];
   date?: string;
   monthDay?: string;
-  region?: string;
   eventKind?: "holiday" | "makeup";
   offset?: number;
 };
@@ -17,7 +16,6 @@ export type Content = {
   enabled: boolean;
   kind: "text" | "date" | "holiday";
   body: string;
-  region?: string;
   only?: "always" | "holiday" | "makeup";
 };
 export type Task = {
@@ -46,21 +44,14 @@ export type Binding = {
 };
 export type Holiday = {
   id: string;
-  region: string;
   name: string;
   start: string;
   end: string;
   kind: "holiday" | "makeup";
-  verified: boolean;
   source: string;
+  manual?: boolean;
   sourceHash?: string;
   batchId?: string;
-};
-export type Coverage = {
-  region: string;
-  year: number;
-  complete: boolean;
-  verifiedAt: string;
 };
 export type Config = {
   schemaVersion: 1;
@@ -71,9 +62,7 @@ export type Config = {
   tasks: Task[];
   recipients: Recipient[];
   bindings: Binding[];
-  regions: { id: string; name: string }[];
   holidays: Holiday[];
-  coverage: Coverage[];
   help: { daily: string; holiday: string };
 };
 export type Snapshot = { revision: number; botId: string; config: Config };

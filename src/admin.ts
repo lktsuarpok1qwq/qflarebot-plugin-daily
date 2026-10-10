@@ -16,7 +16,6 @@ import {
 import { importHolidays } from "./data/importer.js";
 import { maintenance } from "./data/holiday-cn.js";
 import { renderMessage } from "./content/renderer.js";
-import { holidayService } from "./content/holiday.js";
 import { jsonRows, jx } from "./data/sql.js";
 import { finishMany } from "./data/deliveries.js";
 import { resultStatus } from "./scheduler/result.js";
@@ -87,7 +86,6 @@ export async function api({
           cursors,
           jobs,
           limits: LIMITS,
-          holidayWarnings: holidayService(s.config, raw).warnings,
         });
       }
       if (action === "backup") return Response.json(await exportBackup(ctx));
@@ -129,37 +127,16 @@ export async function api({
       { snapshot: s, sources: raw } = await readData(ctx.db);
     if (action === "config") {
       if (data.revision !== s.revision) throw new Error("配置已变化，请刷新");
-      const c = validateConfig(data.config, s.config);
-      const holidays = holidayService(c, raw);
-      for (const h of c.holidays)
+      const c = validateConfig(data.config);
+      for (const h of c.holidays) {
+        const old = s.config.holidays.find((x) => x.id === h.id);
         if (
-          h.verified &&
-          !holidays.isVerified(h.id) &&
-          JSON.stringify(h) !==
-            JSON.stringify(s.config.holidays.find((old) => old.id === h.id))
+          old &&
+          /^holiday-cn:/.test(old.source) &&
+          JSON.stringify(h) !== JSON.stringify(old)
         )
-          throw new Error(`${h.name}：核验区间与放假/补班数据冲突`);
-      for (const cv of c.coverage)
-        if (
-          cv.complete &&
-          JSON.stringify(cv) !==
-            JSON.stringify(
-              s.config.coverage.find(
-                (old) => old.year === cv.year && old.region === cv.region,
-              ),
-            )
-        ) {
-          if (
-            !(
-              await holidays.getRemainingHolidays(
-                cv.region,
-                cv.year,
-                `${cv.year}-01-01`,
-              )
-            ).coverage.complete
-          )
-            throw new Error("年度数据存在冲突或待核验区间，不能确认完整");
-        }
+          h.manual = true;
+      }
       for (const r of c.recipients) {
         const old = s.config.recipients.find((x) => x.id === r.id);
         if (
@@ -293,16 +270,10 @@ export async function api({
       }
     }
     if (action === "import-preview") {
-      if (
-        typeof data.text !== "string" ||
-        typeof data.region !== "string" ||
-        !s.config.regions.some((r) => r.id === data.region)
-      )
-        throw new Error("导入参数错误");
-      return Response.json(
-        importHolidays(data.text, data.region, s.config.holidays),
-      );
+      if (typeof data.text !== "string") throw new Error("导入参数错误");
+      return Response.json(importHolidays(data.text, s.config.holidays));
     }
+
     if (action === "restore-preview") {
       const b = await verifyBackup(parseBackup(data.backup, ctx.botId));
       return Response.json({

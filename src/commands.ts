@@ -11,14 +11,14 @@ export async function queryHoliday(ctx: Ctx, mode: "next" | "remaining") {
     day = dateAt(Date.now());
   const q =
     mode === "next"
-      ? await service.getNextHoliday("CN", day)
-      : await service.getRemainingHolidays("CN", +day.slice(0, 4), day);
-  if (q.status === "none") return "已确认的数据范围内没有剩余假期。";
-  if (q.status === "unknown") return "假期数据待公布或待核验，暂无法确定。";
+      ? await service.getNextHoliday(day)
+      : await service.getRemainingHolidays(+day.slice(0, 4), day);
+  if (q.status === "none") return "当前记录中没有剩余假期。";
+  if (q.status === "unknown")
+    return "暂无可用的假期记录，可稍后同步或手动录入。";
   const rows = Array.isArray(q.data) ? q.data : q.data ? [q.data] : [];
   const suffix =
-    (q.status === "partial" ? "\n数据不完整，仅列出已核验假期。" : "") +
-    (q.freshness === "stale" ? "\n数据源暂未更新，使用最近可信版本。" : "");
+    q.freshness === "stale" ? "\n数据源暂未更新，使用最近可信版本。" : "";
   const lines: string[] = [];
   const length = (text: string) => [...text].length;
   const omitted = (count: number) =>
