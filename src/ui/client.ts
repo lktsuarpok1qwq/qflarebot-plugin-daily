@@ -311,7 +311,7 @@ function render() {
         field("每年月日（例如 02-29）", "monthDay", s.monthDay || "01-01") +
         '<label>事件类别<select id="eventKind"><option value="holiday">放假开始</option><option value="makeup" ' +
         (s.eventKind === "makeup" ? "selected" : "") +
-        ">补班日</option></select></label>" +
+        ">调休上班日</option></select></label>" +
         field("提前天数", "offset", s.offset || 0, "number") +
         field("汇总标题", "taskTitle", t.title) +
         field(
@@ -479,7 +479,7 @@ function render() {
               '" ' +
               ((c.only || "always") === v ? "selected" : "") +
               ">" +
-              ["每天", "仅放假日", "仅补班日"][i] +
+              ["每天", "仅放假日", "仅调休上班日"][i] +
               "</option>",
           )
           .join("") +
@@ -516,7 +516,7 @@ function render() {
   }
   if (page === "holidays") {
     html +=
-      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据。假期录入或导入后直接生效，可随时修改；人工修改不会被后续同步覆盖。</p>' +
+      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据，自动生成放假区间和调休上班日；自动清理往年已结束的记录。录入或导入后直接生效，人工修改不会被后续同步覆盖。</p>' +
       btn("立即同步", "sync", "", "primary") +
       table(
         ["年份", "可信数据版本时间", "状态", "远程数据源"],
@@ -527,7 +527,7 @@ function render() {
             "</td><td>" +
             time(s.updated_at) +
             "</td><td>" +
-            esc(s.error || (s.hasData ? "已有数据" : "尚无数据")) +
+            esc(s.error === "not_published" ? "尚未公布" : s.error || (s.hasData ? "已有数据" : "尚未公布或未同步")) +
             '</td><td><a target="_blank" rel="noopener noreferrer" href="https://github.com/NateScarlet/holiday-cn/blob/master/' +
             s.year +
             '.json">查看来源</a></td></tr>',
@@ -535,7 +535,7 @@ function render() {
       ) +
       "</section>";
     html +=
-      "<section><h2>假期区间与补班</h2>" +
+      "<section><h2>放假与调休</h2>" +
       btn("新增假期", "new-holiday", "", "primary") +
       table(
         ["名称", "日期", "类别", "操作"],
@@ -546,7 +546,7 @@ function render() {
             "</td><td>" +
             esc(h.start + " 至 " + h.end) +
             "</td><td>" +
-            (h.kind === "holiday" ? "放假" : "补班") +
+            (h.kind === "holiday" ? "放假" : "调休上班") +
             "</td><td>" +
             btn("编辑", "edit-holiday", h.id) +
             btn("删除", "delete-holiday", h.id) +
@@ -563,7 +563,7 @@ function render() {
         field("结束", "holidayEnd", h.end, "date") +
         '<label>类别<select id="holidayKind"><option value="holiday">放假</option><option value="makeup" ' +
         (h.kind === "makeup" ? "selected" : "") +
-        ">补班</option></select></label>" +
+        ">调休上班</option></select></label>" +
         field("来源 / 备注（可选）", "holidaySource", h.source) +
         "</div>" +
         btn("保存假期", "save-holiday", "", "primary") +

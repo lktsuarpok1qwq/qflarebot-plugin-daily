@@ -1,7 +1,8 @@
 import type { Ctx, Source } from "../types.js";
 import { dateAt, validDate } from "../scheduler/planner.js";
 import { validateConfig } from "./validation.js";
-import { saveConfig, snapshot, readData } from "./repository.js";
+import { saveConfig, snapshot, readData, migrate } from "./repository.js";
+import { refreshHolidays, hasCalendar } from "./calendar.js";
 export type RawYear = {
   year: number;
   papers: string[];
@@ -100,6 +101,10 @@ export async function syncYear(
     const value = validateYear(await limitedJson(res), year),
       data = JSON.stringify(value),
       digest = await hash(data);
+    if (!hasCalendar(data)) {
+      await setError(ctx, year, "not_published", now);
+      return;
+    }
     if (previous?.hash === digest) {
       if (previous.error)
         await ctx.db.run(
@@ -113,55 +118,20 @@ export async function syncYear(
     const current = await readData(ctx.db),
       s = current.snapshot,
       config = structuredClone(s.config);
-    const oldMakeup = new Map(
-      config.holidays
-        .filter((h) => /^holiday-cn:\d{4}$/.test(h.source))
-        .map((h) => [h.start, h]),
-    );
-    config.holidays = config.holidays.filter(
-      (h) => !/^holiday-cn:\d{4}$/.test(h.source) || h.manual,
-    );
-    const calendars = [
-      ...current.sources
-        .filter((s) => s.year !== year && s.data)
-        .map((s) => ({ raw: JSON.parse(s.data) as RawYear, hash: s.hash })),
-      { raw: value, hash: digest },
-    ].sort((a, b) => a.raw.year - b.raw.year);
-    const days = new Map<
-      string,
-      { name: string; year: number; hash: string; isOffDay: boolean }
-    >();
-    for (const calendar of calendars)
-      for (const d of calendar.raw.days) {
-        days.set(d.date, {
-          name: d.name,
-          year: calendar.raw.year,
-          hash: calendar.hash,
-          isOffDay: d.isOffDay,
-        });
-      }
-    for (const [date, d] of days) {
-      if (d.isOffDay) continue;
-      const id = oldMakeup.get(date)?.id ?? `cn-makeup-${date}`;
-      if (config.holidays.some((h) => h.id === id)) continue;
-      config.holidays.push({
-        id,
-        name: d.name,
-        start: date,
-        end: date,
-        kind: "makeup",
-        source: `holiday-cn:${d.year}`,
-        sourceHash: d.hash,
-      });
-    }
-    validateConfig(config);
-    await saveConfig(ctx, s, config, now, false, undefined, {
+    const published = {
       year,
       hash: digest,
       data,
       error: null,
       updated_at: now,
-    });
+    };
+    refreshHolidays(
+      config,
+      [...current.sources.filter((s) => s.year !== year), published],
+      now,
+    );
+    validateConfig(config);
+    await saveConfig(ctx, s, config, now, false, undefined, published);
   } catch (e) {
     await setError(
       ctx,
@@ -198,12 +168,13 @@ export async function maintenance(
     if (!r.changes) return;
   }
   try {
+    await migrate(ctx, scheduledAt);
     if (job === "sync") {
       const year = +day.slice(0, 4);
       for (const y of yearOffset === undefined
         ? [year, year + 1]
         : [year + yearOffset])
-        if (y >= 2000 && y <= 2199) await syncYear(ctx, y);
+        if (y >= 2000 && y <= 2199) await syncYear(ctx, y, fetch, scheduledAt);
     } else {
       const s = await snapshot(ctx.db);
       await ctx.db.run(

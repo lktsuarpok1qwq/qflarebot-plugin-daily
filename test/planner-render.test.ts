@@ -106,7 +106,7 @@ describe("假期状态与导入", () => {
     const raw = [2026, 2027].map((year) => ({
       year,
       hash: "",
-      data: '{"days":[]}',
+      data: '{"papers":["https://www.gov.cn/test"],"days":[]}',
       error: null,
       updated_at: 0,
     }));
@@ -132,24 +132,15 @@ describe("假期状态与导入", () => {
     expect(q.data?.id).toBe("h");
     expect(q.coverage.complete).toBe(false);
   });
-  it("跨年区间保留原日期", async () => {
-    const c = defaults();
-    c.holidays = [
-      {
-        id: "h",
-        name: "跨年",
-        start: "2026-12-30",
-        end: "2027-01-03",
-        kind: "holiday",
-        source: "https://www.gov.cn/a",
-      },
-    ];
-    const q = await holidayService(c).getRemainingHolidays(2027, "2027-01-01");
-    expect(q.data[0]?.start).toBe("2026-12-30");
-  });
   it("已同步年度可直接判断普通工作日", async () => {
     const raw = [
-      { year: 2026, hash: "", data: '{"days":[]}', error: null, updated_at: 0 },
+      {
+        year: 2026,
+        hash: "",
+        data: '{"papers":["https://www.gov.cn/test"],"days":[]}',
+        error: null,
+        updated_at: 0,
+      },
     ];
     expect(
       (await holidayService(defaults(), raw).getDayStatus("2026-10-12")).data

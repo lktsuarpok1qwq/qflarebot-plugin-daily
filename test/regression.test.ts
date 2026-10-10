@@ -70,7 +70,7 @@ describe("调度、SDK 共享预算及并发", () => {
     vi.stubGlobal("fetch", async (url: string) =>
       Response.json({
         year: Number(url.match(/(\d{4})\.json$/)![1]),
-        papers: [],
+        papers: ["https://www.gov.cn/test"],
         days: [],
       }),
     );
@@ -230,7 +230,7 @@ describe("假期语义、来源和输入边界", () => {
     });
     await syncYear(e.ctx, 2025, async () => Response.json(year(2025, false)));
     await syncYear(e.ctx, 2026, async () => Response.json(year(2026, true)));
-    expect((await snapshot(e.db)).config.holidays).toHaveLength(0);
+    expect((await snapshot(e.db)).config.holidays[0]?.kind).toBe("holiday");
     await syncYear(e.ctx, 2026, async () => Response.json(year(2026, false)));
     expect((await snapshot(e.db)).config.holidays[0]?.kind).toBe("makeup");
   });
@@ -275,7 +275,7 @@ describe("备份与管理接口", () => {
     const e = await fixture(),
       b = await exportBackup(e.ctx);
     const long = "字".repeat(80);
-    for (let year = 2000; year < 2011; year++) {
+    for (let year = 2026; year < 2037; year++) {
       const days = Array.from({ length: 365 }, (_, i) => ({
         date: new Date(Date.UTC(year, 0, i + 1)).toISOString().slice(0, 10),
         name: long,
@@ -661,4 +661,188 @@ it("人工录入覆盖自动同日记录时，调度和查询使用同一条有�
   expect(await e.db.first("SELECT event_key FROM {event_progress}")).toEqual({
     event_key: "manual:0",
   });
+});
+
+it("同步生成放假区间，空占位不代表没有假期，下一个与模板均可跨年", async () => {
+  const e = await fixture();
+  const now = Date.parse("2026-10-10T09:00:00+08:00");
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+  try {
+    await syncYear(e.ctx, 2026, async () =>
+      Response.json({
+        year: 2026,
+        papers: [],
+        days: [
+          { name: "国庆节", date: "2026-10-01", isOffDay: true },
+          { name: "国庆节", date: "2026-10-02", isOffDay: true },
+          { name: "国庆节", date: "2026-10-04", isOffDay: true },
+          { name: "国庆节", date: "2026-10-10", isOffDay: false },
+        ],
+      }),
+    );
+    expect(
+      (await snapshot(e.db)).config.holidays.map(({ start, end, kind }) => ({
+        start,
+        end,
+        kind,
+      })),
+    ).toEqual([
+      { start: "2026-10-01", end: "2026-10-02", kind: "holiday" },
+      { start: "2026-10-04", end: "2026-10-04", kind: "holiday" },
+      { start: "2026-10-10", end: "2026-10-10", kind: "makeup" },
+    ]);
+    // Old releases persisted empty placeholders as successful source data.
+    await e.db.run(
+      "INSERT INTO {sources} VALUES (2027,'cached',?,NULL,0)",
+      JSON.stringify({ year: 2027, papers: [], days: [] }),
+    );
+    await syncYear(e.ctx, 2027, async () =>
+      Response.json({ year: 2027, papers: [], days: [] }),
+    );
+    expect(await queryHoliday(e.ctx, "remaining")).toContain(
+      "今年已没有剩余假期",
+    );
+    expect(await queryHoliday(e.ctx, "next")).toContain("尚未公布");
+    expect(
+      await e.db.first("SELECT error FROM {sources} WHERE year=2027"),
+    ).toEqual({ error: "not_published" });
+    await syncYear(e.ctx, 2027, async () =>
+      Response.json({
+        year: 2027,
+        papers: [],
+        days: [
+          { name: "跨年假期", date: "2026-12-31", isOffDay: true },
+          { name: "跨年假期", date: "2027-01-01", isOffDay: true },
+          { name: "跨年假期", date: "2027-01-02", isOffDay: true },
+          { name: "春假", date: "2027-02-01", isOffDay: true },
+        ],
+      }),
+    );
+    expect(await queryHoliday(e.ctx, "next")).toBe(
+      "跨年假期：2026-12-31 至 2027-01-02",
+    );
+    const s = await snapshot(e.db);
+    s.config.contents[0]!.body =
+      "{{holiday.next_name}} {{holiday.start_date}} 至 {{holiday.end_date}}";
+    const { renderMessage } = await import("../src/content/renderer.js");
+    expect(
+      (
+        await renderMessage(
+          s.config.tasks[0]!,
+          s.config.bindings[0]!,
+          s.config,
+          now,
+        )
+      ).text,
+    ).toBe("跨年假期 2026-12-31 至 2027-01-02");
+    clock.mockReturnValue(Date.parse("2027-01-01T09:00:00+08:00"));
+    expect(await queryHoliday(e.ctx, "remaining")).toContain(
+      "跨年假期：2026-12-31 至 2027-01-02（进行中）",
+    );
+    clock.mockReturnValue(Date.parse("2027-01-03T09:00:00+08:00"));
+    expect(await queryHoliday(e.ctx, "next")).toBe(
+      "春假：2027-02-01 至 2027-02-01",
+    );
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+it("升级补齐缓存中的放假区间，同步保留人工修改", async () => {
+  const e = await fixture();
+  const raw = {
+    year: 2026,
+    papers: [],
+    days: [
+      { name: "假期", date: "2026-10-10", isOffDay: true },
+      { name: "假期", date: "2026-10-11", isOffDay: true },
+    ],
+  };
+  await syncYear(e.ctx, 2026, async () => Response.json(raw), start);
+  const s = await snapshot(e.db);
+  s.config.holidays = [];
+  await e.db.run("UPDATE {state} SET config=?", JSON.stringify(s.config));
+  const clock = vi.spyOn(Date, "now").mockReturnValue(start);
+  try {
+    await plugin.hooks!.onBoot!(e.ctx);
+    const repaired = await snapshot(e.db);
+    expect(repaired.config.holidays).toHaveLength(1);
+    expect(repaired.config.holidays[0]?.end).toBe("2026-10-11");
+    repaired.config.holidays[0]!.start = "2026-10-12";
+    repaired.config.holidays[0]!.end = "2026-10-13";
+    expect(
+      (
+        await invoke(e.ctx, "config", {
+          revision: repaired.revision,
+          config: repaired.config,
+        })
+      ).status,
+    ).toBe(200);
+    for (const day of raw.days) day.name = "源调整";
+    await syncYear(e.ctx, 2026, async () => Response.json(raw), start);
+    const saved = await snapshot(e.db);
+    expect(
+      saved.config.holidays.find(
+        (h) => h.id === repaired.config.holidays[0]!.id,
+      ),
+    ).toMatchObject({
+      start: "2026-10-12",
+      end: "2026-10-13",
+      manual: true,
+    });
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+it("无发送任务也清理往年假期与源，保留跨年区间和永久防重进度", async () => {
+  const e = database();
+  await install(e.ctx);
+  const s = await snapshot(e.db);
+  s.config.holidays = [
+    holiday("expired", "2025-05-01"),
+    {
+      ...holiday("cross", "2025-12-31"),
+      end: "2026-01-02",
+      source: "holiday-cn:2025",
+    },
+    holiday("current", "2026-01-01"),
+    holiday("future", "2027-01-01"),
+  ];
+  await e.db.run("UPDATE {state} SET config=?", JSON.stringify(s.config));
+  await e.db.run("INSERT INTO {sources} VALUES (2025,'old','',NULL,0)");
+  await e.db.run("INSERT INTO {event_progress} VALUES ('task:r0','expired:0')");
+  await e.db.run(
+    "INSERT INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at) VALUES ('old','t','r',0,1,'success',0,0)",
+  );
+  await maintenance(e.ctx, "cleanup", start);
+  expect((await snapshot(e.db)).config.holidays.map((h) => h.id)).toEqual([
+    "cross",
+    "current",
+    "future",
+  ]);
+  expect(await e.db.all("SELECT year FROM {sources}")).toEqual([]);
+  expect(await e.db.all("SELECT event_key FROM {event_progress}")).toEqual([
+    { event_key: "expired:0" },
+  ]);
+  expect(await e.db.all("SELECT * FROM {deliveries}")).toEqual([]);
+  const changes = e.metrics.changes;
+  await maintenance(e.ctx, "cleanup", start);
+  expect(e.metrics.changes).toBe(changes);
+  await maintenance(e.ctx, "cleanup", start, true);
+  expect((await snapshot(e.db)).config.holidays.map((h) => h.id)).toContain(
+    "cross",
+  );
+  s.config.holidays.push(holiday("restored-old", "2025-12-25"));
+  const backup = await exportBackup(e.ctx);
+  backup.config = s.config;
+  const clock = vi.spyOn(Date, "now").mockReturnValue(start);
+  try {
+    await restoreBackup(e.ctx, backup, (await snapshot(e.db)).revision);
+    expect(
+      (await snapshot(e.db)).config.holidays.some((h) => h.end < "2026-01-01"),
+    ).toBe(false);
+  } finally {
+    clock.mockRestore();
+  }
 });

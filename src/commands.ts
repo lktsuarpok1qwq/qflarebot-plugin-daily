@@ -13,9 +13,12 @@ export async function queryHoliday(ctx: Ctx, mode: "next" | "remaining") {
     mode === "next"
       ? await service.getNextHoliday(day)
       : await service.getRemainingHolidays(+day.slice(0, 4), day);
-  if (q.status === "none") return "当前记录中没有剩余假期。";
+  if (q.status === "none")
+    return mode === "remaining"
+      ? "今年已没有剩余假期，可用 /假期 下一个 查询下一段假期（含跨年）。"
+      : "已公布的记录中没有后续假期。";
   if (q.status === "unknown")
-    return "暂无可用的假期记录，可稍后同步或手动录入。";
+    return "后续假期安排尚未公布或数据尚未同步，可稍后同步或手动录入。";
   const rows = Array.isArray(q.data) ? q.data : q.data ? [q.data] : [];
   const suffix =
     q.freshness === "stale" ? "\n数据源暂未更新，使用最近可信版本。" : "";

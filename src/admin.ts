@@ -14,6 +14,7 @@ import {
   verifyBackup,
 } from "./data/backup.js";
 import { importHolidays } from "./data/importer.js";
+import { hasCalendar } from "./data/calendar.js";
 import { maintenance } from "./data/holiday-cn.js";
 import { renderMessage } from "./content/renderer.js";
 import { jsonRows, jx } from "./data/sql.js";
@@ -81,7 +82,7 @@ export async function api({
           currentBotId: ctx.botId,
           sources: raw.map(({ data, ...source }) => ({
             ...source,
-            hasData: !!data,
+            hasData: hasCalendar(data),
           })),
           cursors,
           jobs,

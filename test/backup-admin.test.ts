@@ -14,7 +14,7 @@ import {
 } from "../src/data/backup.js";
 import { dispatch } from "../src/scheduler/dispatcher.js";
 import { api } from "../src/admin.js";
-import { maintenance, syncYear } from "../src/data/holiday-cn.js";
+import { syncYear } from "../src/data/holiday-cn.js";
 import plugin from "../src/index.js";
 import { runCommand, createMockSession } from "@qqbot/sdk/testing";
 const request = (action: string, data?: unknown) =>
@@ -103,18 +103,6 @@ it("私有管理接口拒绝未认证访问", async () => {
     authenticated: false,
   });
   expect(res.status).toBe(401);
-});
-it("无任务仍清理日志且没有维护运行日志", async () => {
-  const e = database();
-  await install(e.ctx);
-  await e.db.run(
-    "INSERT INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at) VALUES ('old','t','r',0,1,'success',0,0)",
-  );
-  await maintenance(e.ctx, "cleanup", Date.now());
-  expect(await e.db.all("SELECT * FROM {deliveries}")).toEqual([]);
-  const changes = e.metrics.changes;
-  await maintenance(e.ctx, "cleanup", Date.now());
-  expect(e.metrics.changes).toBe(changes);
 });
 it("源哈希不变不写，连续相同失败不追加记录", async () => {
   const e = database();

@@ -4,7 +4,8 @@ import { LIMITS } from "../types.js";
 import { normalizeConfig } from "./validation.js";
 import { defaults } from "../content/templates.js";
 import { activeHolidays } from "../scheduler/events.js";
-import { nextPlan } from "../scheduler/planner.js";
+import { refreshHolidays } from "./calendar.js";
+import { nextPlan, dateAt } from "../scheduler/planner.js";
 import { jsonRows, jx, jsonChunks } from "./sql.js";
 export { deliveryKey, due, claim, finish } from "./deliveries.js";
 export const bindingId = (task: string, recipient: string) =>
@@ -31,23 +32,28 @@ export async function install(ctx: Ctx) {
   );
 }
 // The host runs onInstall only once across deployments; upgrades belong in onBoot.
-export async function migrate(ctx: Ctx) {
-  const stored = await ctx.db.first<{
-    revision: number;
-    bot_id: string;
-    config: string;
-  }>("SELECT revision,bot_id,config FROM {state} WHERE id=1");
-  if (stored) {
-    const old = JSON.parse(stored.config) as Config;
-    const normalized = normalizeConfig(structuredClone(old));
-    if (JSON.stringify(normalized) !== stored.config)
-      await saveConfig(
-        ctx,
-        { revision: stored.revision, botId: stored.bot_id, config: old },
-        normalized,
-        Date.now(),
-      );
-  }
+export async function migrate(ctx: Ctx, now = Date.now()) {
+  const rows = await ctx.db.batch([
+    { sql: "SELECT revision,bot_id,config FROM {state} WHERE id=1" },
+    { sql: "SELECT * FROM {sources}" },
+  ]);
+  const stored = rows[0]!.results[0] as
+    { revision: number; bot_id: string; config: string } | undefined;
+  if (!stored) return;
+  const s = {
+    revision: stored.revision,
+    botId: stored.bot_id,
+    config: JSON.parse(stored.config) as Config,
+  };
+  const current = { sources: rows[1]!.results as Source[] };
+  const config = normalizeConfig(structuredClone(s.config));
+  refreshHolidays(config, current.sources, now);
+  // Compare against persisted JSON so retired fields are removed on upgrade too.
+  if (JSON.stringify(config) !== stored.config)
+    await saveConfig(ctx, s, config, now);
+  const year = +dateAt(now).slice(0, 4);
+  if (current.sources.some((source) => source.year < year))
+    await ctx.db.run("DELETE FROM {sources} WHERE year<?", year);
 }
 export async function snapshot(db: PluginDB): Promise<Snapshot> {
   const s = await db.first<{
@@ -114,6 +120,8 @@ export async function saveConfig(
   publishedSource?: Source,
 ) {
   config = normalizeConfig(config);
+  const year = +dateAt(now).slice(0, 4);
+  config.holidays = config.holidays.filter((h) => h.end >= `${year}-01-01`);
   const [cursors, done] = await Promise.all([
     ctx.db.all<{
       id: string;
@@ -231,7 +239,9 @@ export async function saveConfig(
       sql: "DELETE FROM {sources} WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?)",
       params: [token],
     });
-    for (const chunk of jsonChunks(restored.sources))
+    for (const chunk of jsonChunks(
+      restored.sources.filter((source) => source.year >= year),
+    ))
       statements.push({
         sql: `${jsonRows} INSERT INTO {sources}(year,hash,data,error,updated_at) SELECT ${["year", "hash", "data", "error", "updated_at"].map(jx).join(",")} FROM idx CROSS JOIN input WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?)`,
         params: [chunk, token],

@@ -1,4 +1,5 @@
 import type { Config, Holiday, Source } from "../types.js";
+import { automaticHolidays } from "../data/calendar.js";
 import { activeHolidays } from "../scheduler/events.js";
 import { dateAt, validDate } from "../scheduler/planner.js";
 export type Query<T> = {
@@ -14,18 +15,30 @@ export function holidayService(
   now = Date.now(),
 ) {
   const rawDays = new Map<string, "holiday" | "makeup_workday">();
+  const publishedYears = new Set<number>();
   for (const source of [...sources].sort((a, b) => a.year - b.year))
     if (source.data) {
       const raw = JSON.parse(source.data) as {
+        papers?: string[];
         days: { date: string; isOffDay: boolean }[];
       };
+      if (raw.days.length || raw.papers?.length)
+        publishedYears.add(source.year);
       for (const day of raw.days)
         rawDays.set(day.date, day.isOffDay ? "holiday" : "makeup_workday");
     }
-  // An edited automatic date also replaces its original raw-day entry.
+  // An edited automatic interval also replaces its original raw days.
+  const automatic = config.holidays.some((h) => h.manual)
+    ? automaticHolidays(sources)
+    : [];
   for (const h of config.holidays) {
     const original = h.manual && h.id.match(/^cn-makeup-(\d{4}-\d{2}-\d{2})$/);
     if (original) rawDays.delete(original[1]!);
+    const interval = h.manual && automatic.find((item) => item.id === h.id);
+    if (interval)
+      for (const date of rawDays.keys())
+        if (date >= interval.start && date <= interval.end)
+          rawDays.delete(date);
   }
   const active = activeHolidays(config);
   const activeIds = new Set(active.map((h) => h.id));
@@ -34,7 +47,7 @@ export function holidayService(
   }
   function complete(from: string, to: string) {
     for (let year = +from.slice(0, 4); year <= +to.slice(0, 4); year++)
-      if (!sources.some((s) => s.year === year && s.data)) return false;
+      if (!publishedYears.has(year)) return false;
     return true;
   }
   function result<T>(
@@ -79,7 +92,7 @@ export function holidayService(
     async getNextHoliday(from = dateAt(now)): Promise<Query<Holiday | null>> {
       check(from);
       const to = `${Math.min(2199, +from.slice(0, 4) + 1)}-12-31`,
-        h = sorted(from, to)[0] ?? null;
+        h = sorted(from, "2199-12-31")[0] ?? null;
       return result(from, h ? (h.start < from ? from : h.start) : to, h, !!h);
     },
     async getRemainingHolidays(
