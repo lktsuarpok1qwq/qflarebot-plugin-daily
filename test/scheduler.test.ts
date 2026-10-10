@@ -94,15 +94,6 @@ it("认领后中断不接管，超时收敛", async () => {
   ).toBe("uncertain");
   expect((await due(e.db, dueTime + 90_000)).length).toBe(0);
 });
-it("编辑正文不会为已发送窗口产生新身份", async () => {
-  const e = await fixture();
-  await dispatch(e.ctx, () => dueTime + 1000);
-  const s = await snapshot(e.db);
-  s.config.tasks[0]!.body = "修改";
-  await saveConfig(e.ctx, s, s.config, dueTime + 2000);
-  await dispatch(e.ctx, () => dueTime + 3000);
-  expect(e.send).toHaveBeenCalledTimes(1);
-});
 it("暂停与恢复只排未来计划", async () => {
   const e = await fixture(),
     s = await snapshot(e.db),

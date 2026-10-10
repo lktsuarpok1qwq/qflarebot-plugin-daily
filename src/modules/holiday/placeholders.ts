@@ -7,6 +7,7 @@ export const holidayVariables = [
   "假期.今日",
   "假期.名称",
   "假期.剩余天数",
+  "假期.节日日期",
   "假期.开始日期",
   "假期.结束日期",
   "假期.天数",
@@ -24,10 +25,12 @@ export async function holidayValues(
     service.getDayStatus(day),
   ]);
   const h = next.data;
+  const reference = h?.kind === "reference";
   const fields = {
     name: h?.name ?? "",
-    start: h?.start ?? "",
-    end: h?.end ?? "",
+    date: reference ? h.start : "",
+    start: !reference ? (h?.start ?? "") : "",
+    end: !reference ? (h?.end ?? "") : "",
     days_until: h
       ? String(
           Math.max(
@@ -36,13 +39,18 @@ export async function holidayValues(
           ),
         )
       : "",
-    days_off: h
-      ? String(Math.round((Date.parse(h.end) - Date.parse(h.start)) / DAY) + 1)
-      : "",
-    ongoing: h && h.start <= day ? copy.ongoing : "",
+    days_off:
+      h && !reference
+        ? String(
+            Math.round((Date.parse(h.end) - Date.parse(h.start)) / DAY) + 1,
+          )
+        : "",
+    ongoing: h && !reference && h.start <= day ? copy.ongoing : "",
   };
   const summary = h
-    ? expand(copy.summary, fields, { ongoing: fields.ongoing })
+    ? expand(reference ? copy.reference : copy.summary, fields, {
+        ongoing: fields.ongoing,
+      })
     : next.status === "none"
       ? copy.none
       : copy.unknown;
@@ -61,6 +69,7 @@ export async function holidayValues(
       Object.entries({
         "假期.名称": fields.name,
         "假期.剩余天数": fields.days_until,
+        "假期.节日日期": fields.date,
         "假期.开始日期": fields.start,
         "假期.结束日期": fields.end,
         "假期.天数": fields.days_off,

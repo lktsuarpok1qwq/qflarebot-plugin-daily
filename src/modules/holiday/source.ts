@@ -1,7 +1,7 @@
 import type { Ctx } from "../../types.js";
 export type SyncResult = {
   year: number;
-  status: "updated" | "cached" | "not_published" | "error";
+  status: "updated" | "cached" | "not_published" | "error" | "skipped";
   error?: string;
 };
 export async function hash(text: string) {
@@ -44,4 +44,25 @@ export async function setError(
     error,
     now,
   );
+}
+
+// Store check timestamps in the maintenance table.
+export const SOURCE_QUERY =
+  "SELECT s.*, CAST(m.day AS INTEGER) AS checked_at FROM {sources} s LEFT JOIN {maintenance} m ON m.job='holiday:' || s.year";
+export async function checked(
+  ctx: Ctx,
+  year: number,
+  now: number,
+  error: string | null = null,
+) {
+  await ctx.db.batch([
+    {
+      sql: "INSERT INTO {maintenance}(job,day,error) VALUES (?,?,NULL) ON CONFLICT(job) DO UPDATE SET day=excluded.day WHERE day<>excluded.day",
+      params: [`holiday:${year}`, String(now)],
+    },
+    {
+      sql: "UPDATE {sources} SET error=? WHERE year=? AND error IS NOT ?",
+      params: [error, year, error],
+    },
+  ]);
 }

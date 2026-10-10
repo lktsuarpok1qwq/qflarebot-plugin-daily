@@ -65,8 +65,7 @@ main {
   padding: 0 28px 32px;
   max-width: 1300px;
 }
-section,
-.card {
+section {
   background: var(--qb-surface);
   border: 1px solid var(--qb-border);
   border-radius: 12px;
@@ -136,12 +135,6 @@ pre {
   padding: 12px;
   border-radius: 7px;
 }
-.pill {
-  background: var(--qb-success-bg);
-  color: var(--qb-success);
-  padding: 2px 8px;
-  border-radius: 20px;
-}
 #status {
   padding: 0 28px 14px;
   color: var(--qb-accent);
@@ -169,15 +162,6 @@ select[multiple] {
 }
 body.busy #busy {
   display: inline;
-}
-.row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.wide {
-  grid-column: 1/-1;
 }
 @media (max-width: 600px) {
   main,

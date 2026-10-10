@@ -47,19 +47,19 @@ export default definePlugin({
   cron: {
     send: { cron: "* * * * *", handler: ({ ctx }) => dispatch(ctx) },
     sync: {
-      cron: "10,11 19 * * *",
+      cron: "0,1 16 * * *",
       handler: async ({ ctx, scheduledAt }) => {
         await maintenance(
           ctx,
           "sync",
           scheduledAt,
           false,
-          ((new Date(scheduledAt).getUTCMinutes() - 10) % 2) as 0 | 1,
+          new Date(scheduledAt).getUTCMinutes() as 0 | 1,
         );
       },
     },
     cleanup: {
-      cron: "40 19 * * *",
+      cron: "10 16 * * *",
       handler: async ({ ctx, scheduledAt }) => {
         await maintenance(ctx, "cleanup", scheduledAt);
       },

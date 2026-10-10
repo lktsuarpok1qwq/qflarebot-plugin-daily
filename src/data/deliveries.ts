@@ -114,14 +114,3 @@ export async function finishMany(db: PluginDB, outcomes: Outcome[]) {
     );
   await db.batch(statements);
 }
-export async function finish(
-  db: PluginDB,
-  d: Due,
-  status: DeliveryStatus,
-  now: number,
-  next: Plan | null,
-  error: string | null = null,
-  messageId: string | null = null,
-) {
-  await finishMany(db, [{ d, status, now, next, error, messageId }]);
-}

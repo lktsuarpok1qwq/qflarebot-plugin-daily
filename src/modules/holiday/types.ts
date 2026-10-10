@@ -3,13 +3,13 @@ export type Holiday = {
   name: string;
   start: string;
   end: string;
-  kind: "holiday" | "makeup";
+  kind: "holiday" | "makeup" | "reference";
   source: "uapi" | "manual";
-  manual?: boolean;
   batchId?: string;
 };
 export type HolidayCopy = Record<
   | "summary"
+  | "reference"
   | "today"
   | "makeupToday"
   | "ordinary"
@@ -25,4 +25,5 @@ export type Source = {
   data: string;
   error: string | null;
   updated_at: number;
+  checked_at?: number | null;
 };

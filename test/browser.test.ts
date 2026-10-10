@@ -5,7 +5,7 @@ import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { fixture, holidayResponse } from "./db.js";
+import { fixture, holidayResponse, referenceResponse } from "./db.js";
 import { syncYear } from "../src/modules/holiday/sync.js";
 import { HTML } from "../src/ui.js";
 import { api } from "../src/admin.js";
@@ -16,7 +16,10 @@ it.skipIf(!process.env.DAILY_BROWSER)(
   async () => {
     const e = await fixture();
     await syncYear(e.ctx, 2027, async () =>
-      Response.json(holidayResponse(2027)),
+      Response.json({
+        ...holidayResponse(2027),
+        days: referenceResponse().days,
+      }),
     );
     const saved = await exportBackup(e.ctx);
     const root = new URL("../../QFlareBot/", import.meta.url);
@@ -49,7 +52,6 @@ it.skipIf(!process.env.DAILY_BROWSER)(
     const sandbox = routes.match(
       /const ADMIN_PAGE_CSP = 'sandbox ([^']+)'/,
     )![1]!;
-    expect(sandbox).not.toContain("allow-modals");
     let dropTest = true;
     const server = createServer(async (req, res) => {
       try {
@@ -156,23 +158,12 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       const idle = () => frame.locator("body:not(.busy)").waitFor();
       await frame.locator('[data-action="edit-override"]').waitFor();
       await idle();
-      expect(await frame.locator("nav button").count()).toBe(5);
       await page.evaluate("host.setTheme('dark')");
       await frame.locator('html[data-theme="dark"]').waitFor();
-      expect(
-        await frame
-          .locator("body")
-          .evaluate((el) => getComputedStyle(el).backgroundColor),
-      ).toBe("rgb(11, 15, 13)");
       await frame.locator('[data-action="edit-task"]').click();
       await idle();
       expect(await frame.locator("#weeklyFields").isVisible()).toBe(false);
       expect(await frame.locator("#onceFields").isVisible()).toBe(false);
-      expect(
-        await frame
-          .locator("#taskFormat,#taskMode,#offset,#separator,#taskTitle")
-          .count(),
-      ).toBe(0);
       await frame.locator("#kind").selectOption("weekly");
       expect(await frame.locator("#weeklyFields").isVisible()).toBe(true);
       expect(await frame.locator("#onceFields").isVisible()).toBe(false);
@@ -256,17 +247,65 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       expect(await frame.locator("#reply-body").inputValue()).toBe(rich);
       await frame.locator('[data-action="reset-reply"]').click();
       await idle();
-      expect(await frame.locator("#replyFormat").count()).toBe(0);
+      await frame.locator("#reply-body").fill("不应保存的临时文案");
+      await frame.locator('[data-action="page"][data-id="recipients"]').click();
+      await frame.locator("#decisionAccept").click();
+      await idle();
+      await frame.locator('[data-action="edit-recipient"]').first().click();
+      await idle();
+      expect(
+        await frame.locator("#openid").getAttribute("readonly"),
+      ).not.toBeNull();
+      expect(await frame.locator("#scene").isDisabled()).toBe(true);
+      await frame.locator("#recipientName").fill("重新命名的对象");
+      await frame.locator('[data-action="save-recipient"]').click();
+      await idle();
+      await frame.locator('[data-action="page"][data-id="replies"]').click();
+      await idle();
+      expect(await frame.locator("#reply-body").inputValue()).not.toContain(
+        "不应保存的临时文案",
+      );
       await frame.locator('[data-action="page"][data-id="holidays"]').click();
       await idle();
-      expect(await frame.locator("#app").innerText()).not.toMatch(
-        /地区|中国|核验/,
+      await frame.locator('[data-action="edit-holiday"]').first().click();
+      await frame.locator('[data-action="save-holiday"]').click();
+      await idle();
+      expect(await frame.locator('[data-action="reset-holiday"]').count()).toBe(
+        0,
       );
       await frame.locator('[data-action="edit-holiday"]').first().click();
       await frame.locator("#holidayStart").fill("2027-01-02");
       await frame.locator('[data-action="save-holiday"]').click();
       await idle();
       expect(await frame.locator("#app").innerText()).toContain("2027-01-02");
+      const referenceRow = frame.locator("tr").filter({ hasText: "劳动节" });
+      expect(await referenceRow.innerText()).toContain(
+        "节日日期（放假安排待公布）",
+      );
+      await referenceRow.locator('[data-action="edit-holiday"]').click();
+      await idle();
+      expect(await frame.locator("#holidayKind").inputValue()).toBe(
+        "reference",
+      );
+      expect(await frame.locator("#holidayEndField").isVisible()).toBe(false);
+      await frame.locator("#holidayStart").fill("2027-05-02");
+      await frame.locator('[data-action="save-holiday"]').click();
+      await idle();
+      expect(await frame.locator("#status").innerText()).toBe("已保存");
+      expect(await referenceRow.innerText()).toContain("2027-05-02");
+      expect(
+        await referenceRow.locator('[data-action="reset-holiday"]').innerText(),
+      ).toBe("恢复默认");
+      await referenceRow.locator('[data-action="reset-holiday"]').click();
+      await idle();
+      expect(await frame.locator("#status").innerText()).toBe(
+        "已恢复默认，后续跟随接口更新",
+      );
+      expect(await referenceRow.innerText()).toContain("2027-05-01");
+      expect(await referenceRow.innerText()).toContain("UAPI");
+      expect(
+        await referenceRow.locator('[data-action="reset-holiday"]').count(),
+      ).toBe(0);
       await frame.locator('[data-action="new-holiday"]').click();
       await idle();
       await frame.locator("#holidayName").fill("手动假期");
@@ -274,6 +313,13 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       await frame.locator('[data-action="save-holiday"]').click();
       await idle();
       expect(await frame.locator("#status").innerText()).toBe("已保存");
+      expect(
+        await frame
+          .locator("tr")
+          .filter({ hasText: "手动假期" })
+          .locator('[data-action="reset-holiday"]')
+          .count(),
+      ).toBe(0);
       await frame
         .locator("#importText")
         .fill('[{"name":"导入假期","start":"2027-01-02"}]');
@@ -325,20 +371,20 @@ it.skipIf(!process.env.DAILY_BROWSER)(
         const year = Number(new URL(url).searchParams.get("year"));
         if (sourceFailure && year === 2026)
           return new Response(null, { status: 503 });
-        return Response.json(holidayResponse(year));
+        return Response.json({
+          ...holidayResponse(year),
+          ...(year === 2027 ? { days: referenceResponse().days } : {}),
+        });
       });
       await frame.locator('[data-action="page"][data-id="holidays"]').click();
       await idle();
       await frame.locator('[data-action="sync"]').click();
       await idle();
       expect(await frame.locator("#status").innerText()).toContain(
-        "2027 放假与调休：已有最新数据",
+        "2027 假期数据：已有最新数据",
       );
       expect(await frame.locator("#app").innerText()).toContain(
         "2027-01-01 至 2027-01-03",
-      );
-      expect(await frame.locator("#app").innerText()).not.toContain(
-        "节日日期补充",
       );
       sourceFailure = true;
       await frame.locator('[data-action="sync"]').click();

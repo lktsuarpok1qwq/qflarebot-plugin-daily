@@ -1,5 +1,5 @@
 import type { Config } from "../types.js";
-import { LIMITS } from "../types.js";
+import { LIMITS, SCHEMA_VERSION } from "../types.js";
 import { validDate } from "../scheduler/planner.js";
 import {
   COMMAND_NAMES,
@@ -21,16 +21,7 @@ const FIELDS = {
     "replies",
   ],
   recipients: ["id", "scene", "openid", "name", "enabled", "botId"],
-  holidays: [
-    "id",
-    "name",
-    "start",
-    "end",
-    "kind",
-    "source",
-    "manual",
-    "batchId",
-  ],
+  holidays: ["id", "name", "start", "end", "kind", "source", "batchId"],
   tasks: ["id", "name", "enabled", "origin", "schedule", "body"],
   bindings: ["taskId", "recipientId", "enabled", "overrideText"],
   replies: REPLY_FIELDS,
@@ -60,7 +51,7 @@ function str(
   if (
     typeof value !== "string" ||
     (!empty && !value.trim()) ||
-    [...value].length > max ||
+    (max !== Infinity && [...value].length > max) ||
     /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)
   )
     throw new Error(`${label}格式或长度错误`);
@@ -83,7 +74,8 @@ export function validateConfig(value: unknown): Config {
     throw new Error("配置必须为对象");
   const c = value as Config;
   fields(c, FIELDS.config);
-  if (c.schemaVersion !== 2) throw new Error("不支持的 schemaVersion");
+  if (c.schemaVersion !== SCHEMA_VERSION)
+    throw new Error("不支持的 schemaVersion");
   bool(c.paused);
   if (![7, 30, 90].includes(c.retentionDays))
     throw new Error("保留期应为 7/30/90");
@@ -163,21 +155,20 @@ export function validateConfig(value: unknown): Config {
   for (const h of c.holidays) {
     fields(h, FIELDS.holidays);
     str(h.name, 80, "假期名称");
-    h.source ||= "manual";
     if (!["uapi", "manual"].includes(h.source)) throw new Error("假期来源错误");
-    if (h.manual !== undefined) bool(h.manual);
     if (
       !validDate(h.start) ||
       !validDate(h.end) ||
       h.end < h.start ||
-      !["holiday", "makeup"].includes(h.kind) ||
-      (h.kind === "makeup" && h.start !== h.end)
+      !["holiday", "makeup", "reference"].includes(h.kind) ||
+      (h.kind !== "holiday" && h.start !== h.end)
     )
       throw new Error("假期日期错误");
     if (h.batchId !== undefined) str(h.batchId, 80, "导入批次");
   }
   const holidayFields = [
     "summary",
+    "reference",
     "today",
     "makeupToday",
     "ordinary",
@@ -196,9 +187,11 @@ export function validateConfig(value: unknown): Config {
       value,
       key === "summary"
         ? ["name", "start", "end", "days_until", "days_off", "ongoing"]
-        : ["today", "makeupToday"].includes(key)
-          ? ["name"]
-          : [],
+        : key === "reference"
+          ? ["name", "date", "days_until"]
+          : ["today", "makeupToday"].includes(key)
+            ? ["name"]
+            : [],
     );
   }
   if (!c.replies || typeof c.replies !== "object" || Array.isArray(c.replies))

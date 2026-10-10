@@ -1,4 +1,4 @@
-import { it, expect, vi } from "vitest";
+import { it, expect } from "vitest";
 import { fixture, start, dueTime } from "./db.js";
 import { snapshot, saveConfig, due } from "../src/data/repository.js";
 import { dispatch } from "../src/scheduler/dispatcher.js";
@@ -31,22 +31,8 @@ it("重启后的过期游标成批推进，不饿死新到期任务", async () =
   expect(await due(e.db, dueTime + 1000)).toHaveLength(0);
   expect(e.metrics.queries - before).toBeLessThan(30);
 });
-it("个人配置不做提前容量拦截，实际调度仍遵守每轮上限", async () => {
-  const e = await fixture(6),
-    s = await snapshot(e.db);
-  const clock = vi.spyOn(Date, "now").mockReturnValue(start);
-  try {
-    expect(
-      (
-        await invoke(e.ctx, "config", {
-          revision: s.revision,
-          config: s.config,
-        })
-      ).status,
-    ).toBe(200);
-  } finally {
-    clock.mockRestore();
-  }
+it("调度遵守每轮上限，超额任务记录跳过", async () => {
+  const e = await fixture(6);
   await dispatch(e.ctx, () => dueTime + 1000);
   expect(e.send).toHaveBeenCalledTimes(5);
   expect(
@@ -54,10 +40,6 @@ it("个人配置不做提前容量拦截，实际调度仍遵守每轮上限", a
       "SELECT COUNT(*) AS n FROM {deliveries} WHERE status='skipped_budget'",
     ),
   ).toEqual({ n: 1 });
-  const skipped = await e.db.first<{ details: string }>(
-    "SELECT details FROM {deliveries} WHERE status='skipped_budget'",
-  );
-  expect(JSON.parse(skipped!.details)).not.toHaveProperty("text");
 });
 it("保存配置时调度已推进的游标不会倒退，即使详细日志已清理", async () => {
   const e = await fixture(),

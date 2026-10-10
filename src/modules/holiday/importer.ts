@@ -91,7 +91,11 @@ export function importHolidays(
     const end = x.end || x.start;
     if (
       [...existing, ...items].some(
-        (h) => h.name === x.name && h.start === x.start && h.end === end,
+        (h) =>
+          h.kind === "holiday" &&
+          h.name === x.name &&
+          h.start === x.start &&
+          h.end === end,
       )
     ) {
       duplicates++;
@@ -106,7 +110,11 @@ export function importHolidays(
       source: "manual",
       batchId,
     };
-    if ([...existing, ...items].some((h) => h.start <= end && h.end >= x.start))
+    if (
+      [...existing, ...items].some(
+        (h) => h.kind !== "reference" && h.start <= end && h.end >= x.start,
+      )
+    )
       conflicts.push(item);
     items.push(item);
   }

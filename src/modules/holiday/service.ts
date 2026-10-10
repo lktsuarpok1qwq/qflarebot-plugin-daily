@@ -1,5 +1,5 @@
 import type { Config, Holiday, Source } from "../../types.js";
-import { activeHolidays, hasCalendar } from "./calendar.js";
+import { activeHolidays, completeCalendar } from "./calendar.js";
 import { dateAt, validDate } from "../../scheduler/planner.js";
 export type Query<T> = {
   status: "known" | "none" | "unknown";
@@ -15,7 +15,7 @@ export function holidayService(
     a.start.localeCompare(b.start),
   );
   const published = new Set(
-    sources.filter((s) => hasCalendar(s.data)).map((s) => s.year),
+    sources.filter((s) => completeCalendar(s.data)).map((s) => s.year),
   );
   function result<T>(
     from: string,
@@ -45,7 +45,7 @@ export function holidayService(
       const end = `${Math.min(2199, +from.slice(0, 4) + 1)}-12-31`;
       const h =
         active.find(
-          (h) => h.kind === "holiday" && h.end >= from && h.start <= end,
+          (h) => h.kind !== "makeup" && h.end >= from && h.start <= end,
         ) ?? null;
       return result(from, h ? (h.start < from ? from : h.start) : end, h, !!h);
     },
@@ -56,19 +56,26 @@ export function holidayService(
       const start = from > `${year}-01-01` ? from : `${year}-01-01`,
         end = `${year}-12-31`;
       const rows = active.filter(
-        (h) => h.kind === "holiday" && h.end >= start && h.start <= end,
+        (h) => h.kind !== "makeup" && h.end >= start && h.start <= end,
       );
       return result(start, end, rows, rows.length > 0);
     },
     async getDayStatus(date = dateAt(now)) {
-      const rows = active.filter((h) => h.start <= date && h.end >= date);
+      const rows = active.filter(
+        (h) => h.kind !== "reference" && h.start <= date && h.end >= date,
+      );
       const conflict = new Set(rows.map((h) => h.kind)).size > 1;
       const data = {
         kind: conflict ? "unknown" : (rows[0]?.kind ?? "ordinary"),
         names: rows.map((h) => h.name),
       };
       const q = result(date, date, data, rows.length > 0);
-      if (conflict) q.status = "unknown";
+      if (
+        conflict ||
+        (!rows.length &&
+          active.some((h) => h.kind === "reference" && h.start === date))
+      )
+        q.status = "unknown";
       return q;
     },
   };

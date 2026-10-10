@@ -1,4 +1,4 @@
-import type { Config } from "../types.js";
+import { SCHEMA_VERSION, type Config } from "../types.js";
 import { COPY } from "../copy.js";
 import { defaultReplies } from "./command-templates.js";
 import { moduleVariables } from "../modules/index.js";
@@ -18,7 +18,7 @@ export function validateTemplate(
 }
 export function defaults(): Config {
   return {
-    schemaVersion: 2,
+    schemaVersion: SCHEMA_VERSION,
     paused: false,
     retentionDays: 30,
     tasks: [

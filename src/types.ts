@@ -6,6 +6,7 @@ export type CommandName =
 export type CommandReply = {
   body: string;
   item: string;
+  reference: string;
   empty: string;
   unknown: string;
   stale: string;
@@ -42,8 +43,9 @@ export type Binding = {
   enabled: boolean;
   overrideText: string | null;
 };
+export const SCHEMA_VERSION = 3;
 export type Config = {
-  schemaVersion: 2;
+  schemaVersion: typeof SCHEMA_VERSION;
   paused: boolean;
   retentionDays: number;
   tasks: Task[];

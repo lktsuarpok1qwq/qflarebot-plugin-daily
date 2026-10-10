@@ -16,6 +16,8 @@ const holidayHelp =
 const commonReply: CommandReply = {
   body: "{{items}}{{stale}}",
   item: "{{name}}：{{start}} 至 {{end}}{{ongoing}}\n共 {{days_off}} 天；调休上班日：{{makeup}}\n",
+  reference:
+    "{{name}}：{{date}}（节日日期，放假安排待公布），还有 {{days_until}} 天。\n",
   empty: "已公布的记录中没有后续假期。",
   unknown: "暂未获取后续放假安排，可稍后同步或手动录入。",
   stale: "\n数据源暂未更新，使用最近可信版本。",
@@ -44,6 +46,8 @@ export const COPY = {
   holiday: {
     summary:
       "{{name}}：{{start}} 至 {{end}}，共 {{days_off}} 天，距开始 {{days_until}} 天{{ongoing}}。",
+    reference:
+      "{{name}}：{{date}}（节日日期，放假安排待公布），还有 {{days_until}} 天。",
     today: "今天是{{name}}假期。",
     makeupToday: "今天是{{name}}调休上班日。",
     ordinary: "今天没有放假或调休安排。",

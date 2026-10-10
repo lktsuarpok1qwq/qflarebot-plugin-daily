@@ -5,7 +5,7 @@ import { renderMessage } from "../src/content/renderer.js";
 import { validateConfig } from "../src/data/validation.js";
 import { createRenderContext, modules } from "../src/modules/index.js";
 
-it("周计划和一次性日期边界；拒绝旧参数、互斥字段和未知占位符", async () => {
+it("周计划和一次性日期边界；拒绝互斥字段和未知占位符", async () => {
   expect(
     nextPlan({ kind: "once", date: "2026-10-10", time: "09:00" }, dueTime),
   ).toBeNull();
@@ -14,14 +14,9 @@ it("周计划和一次性日期边界；拒绝旧参数、互斥字段和未知�
   ).toBe(Date.parse("2026-10-12T09:00:00+08:00"));
   const { config } = await fixture();
   expect(() => validateConfig(config)).not.toThrow();
-  for (const field of [
-    { kind: "yearly", time: "09:00", monthDay: "01-01" },
-    { kind: "daily", time: "09:00", weekdays: [1] },
-  ]) {
-    const c = structuredClone(config);
-    Object.assign(c.tasks[0]!, { schedule: field });
-    expect(() => validateConfig(c)).toThrow();
-  }
+  const conflicting = structuredClone(config);
+  Object.assign(conflicting.tasks[0]!.schedule, { weekdays: [1] });
+  expect(() => validateConfig(conflicting)).toThrow();
   config.tasks[0]!.body = "{{unknown}}";
   expect(() => validateConfig(config)).toThrow("未知变量");
 });

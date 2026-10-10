@@ -14,6 +14,7 @@ export function defaultReplies(): Record<CommandName, CommandReply> {
 export const REPLY_FIELDS = [
   "body",
   "item",
+  "reference",
   "empty",
   "unknown",
   "stale",
@@ -31,6 +32,8 @@ export function replyVariables(
   if (field === "body" && !["假期 下一个", "假期 剩余"].includes(name))
     return common;
   if (field === "body") return [...common, "items", "stale", "count"];
+  if (field === "reference")
+    return [...common, "name", "date", "days_until", "source"];
   if (field === "item" || field === "ongoing")
     return [
       ...common,

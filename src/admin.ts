@@ -15,7 +15,12 @@ import {
   verifyBackup,
 } from "./data/backup.js";
 import { importHolidays } from "./modules/holiday/importer.js";
-import { hasCalendar } from "./modules/holiday/calendar.js";
+import {
+  hasCalendar,
+  refreshDays,
+  restoreHoliday,
+  type CalendarYear,
+} from "./modules/holiday/calendar.js";
 import { maintenance } from "./data/maintenance.js";
 import {
   defaultReplies,
@@ -86,7 +91,9 @@ export async function api({
               })),
             ),
           ),
-          ctx.db.all("SELECT * FROM {maintenance}"),
+          ctx.db.all(
+            "SELECT * FROM {maintenance} WHERE job NOT LIKE 'holiday:%'",
+          ),
         ]);
         return Response.json({
           ...s,
@@ -111,6 +118,11 @@ export async function api({
             return {
               year,
               updated_at: source?.updated_at ?? 0,
+              checked_at: source?.checked_at ?? 0,
+              refreshDays: refreshDays(source?.data ?? "", offset === 1),
+              references: source?.data
+                ? ((JSON.parse(source.data) as CalendarYear).dates?.length ?? 0)
+                : 0,
               error: source?.error ?? null,
               hasData: source ? hasCalendar(source.data) : false,
             };
@@ -165,9 +177,19 @@ export async function api({
       "preview",
       "test",
       "command-preview",
+      "holiday-reset",
     ].includes(action)
       ? await readData(ctx.db)
       : { snapshot: await snapshot(ctx.db), sources: [] };
+    if (action === "holiday-reset") {
+      if (data.revision !== s.revision) throw new Error("配置已变化，请刷新");
+      if (typeof data.id !== "string") throw new Error("请选择假期记录");
+      const config = structuredClone(s.config),
+        now = Date.now();
+      restoreHoliday(config, raw, data.id, now);
+      validateConfig(config);
+      return Response.json({ revision: await saveConfig(ctx, s, config, now) });
+    }
     if (action === "config") {
       if (data.revision !== s.revision) throw new Error("配置已变化，请刷新");
       const c = validateConfig(data.config);
@@ -178,7 +200,6 @@ export async function api({
           old.source === "uapi" &&
           JSON.stringify(h) !== JSON.stringify(old)
         ) {
-          h.manual = true;
           h.source = "manual";
         }
       }

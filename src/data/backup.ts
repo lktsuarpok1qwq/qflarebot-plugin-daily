@@ -1,11 +1,11 @@
 import type { Config, Ctx, Source } from "../types.js";
 import { snapshot, saveConfig } from "./repository.js";
-import { LIMITS } from "../types.js";
+import { LIMITS, SCHEMA_VERSION } from "../types.js";
 import { validateConfig } from "./validation.js";
-import { validateYear } from "../modules/holiday/calendar.js";
+import { validateYear, refreshHolidays } from "../modules/holiday/calendar.js";
 import { hash } from "../modules/holiday/source.js";
 export type Backup = {
-  schemaVersion: 2;
+  schemaVersion: typeof SCHEMA_VERSION;
   exportedAt: string;
   botId: string;
   config: Config;
@@ -18,7 +18,7 @@ export async function exportBackup(ctx: Ctx): Promise<Backup> {
   ]);
   const s = rows[0]!.results[0] as { bot_id: string; config: string };
   const backup: Backup = {
-    schemaVersion: 2,
+    schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     botId: s.bot_id,
     config: JSON.parse(s.config) as Config,
@@ -31,7 +31,7 @@ export function parseBackup(value: unknown, currentBot: string): Backup {
   const b = value as Backup;
   if (
     !b ||
-    b.schemaVersion !== 2 ||
+    b.schemaVersion !== SCHEMA_VERSION ||
     typeof b.botId !== "string" ||
     !Array.isArray(b.sources) ||
     typeof b.exportedAt !== "string" ||
@@ -98,7 +98,9 @@ export async function restoreBackup(
   );
   if (inflight?.n)
     throw new Error("存在发送中或待判定的请求，等待调度器收敛后重试恢复");
-  return saveConfig(ctx, s, b.config, Date.now(), true, {
-    sources: b.sources,
-  });
+  const now = Date.now(),
+    config = structuredClone(b.config);
+  refreshHolidays(config, b.sources, now);
+  validateConfig(config);
+  return saveConfig(ctx, s, config, now, true, { sources: b.sources });
 }

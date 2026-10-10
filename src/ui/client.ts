@@ -108,7 +108,7 @@ async function run(fn) {
     document.body.classList.remove("busy");
     document
       .querySelectorAll("button,input,select,textarea")
-      .forEach((b) => (b.disabled = false));
+      .forEach((b) => (b.disabled = b.hasAttribute("data-locked")));
   }
 }
 async function load() {
@@ -217,13 +217,13 @@ function options(items, selected) {
     )
     .join("");
 }
-function field(label, id, value = "", type = "text") {
+function field(label, id, value = "", type = "text", readonly = false) {
   return (
     "<label>" +
     label +
     '<input id="' +
     id +
-    '" type="' +
+    (readonly ? '" readonly type="' : '" type="') +
     type +
     '" value="' +
     esc(value) +
@@ -342,6 +342,7 @@ const toolbar = (id) =>
 const replyLabels = {
   body: "完整回复 / 外层模板",
   item: "放假安排条目",
+  reference: "节日日期条目（安排待公布）",
   empty: "没有剩余记录",
   unknown: "没有可靠数据",
   stale: "旧数据提示",
@@ -381,9 +382,14 @@ function render() {
             esc(t.origin === "system" ? "系统自带" : "人工添加") +
             "</small></td><td>" +
             esc(
-              { daily: "每日", weekly: "每周", once: "一次性" }[
-                t.schedule.kind
-              ],
+              t.schedule.kind === "weekly"
+                ? "每周 " +
+                    t.schedule.weekdays
+                      .map((d) => "星期" + "一二三四五六日"[d - 1])
+                      .join("、")
+                : t.schedule.kind === "once"
+                  ? t.schedule.date
+                  : "每日",
             ) +
             " " +
             esc(t.schedule.time) +
@@ -538,14 +544,17 @@ function render() {
         ),
       ) + "</section>";
     if (editingRecipient) {
-      const r = editingRecipient;
+      const r = editingRecipient,
+        existing = state.config.recipients.some((x) => x.id === r.id);
       html +=
         '<section><h2>对象配置</h2><div class="grid">' +
         field("名称", "recipientName", r.name) +
-        '<label>场景<select id="scene"><option value="group">群聊</option><option value="c2c" ' +
+        '<label>场景<select id="scene" ' +
+        (existing ? "data-locked disabled" : "") +
+        '><option value="group">群聊</option><option value="c2c" ' +
         (r.scene === "c2c" ? "selected" : "") +
         ">私聊</option></select></label>" +
-        field("OpenID", "openid", r.openid) +
+        field("OpenID", "openid", r.openid, "text", existing) +
         check("启用", "recipientEnabled", r.enabled) +
         "</div>" +
         btn("保存对象", "save-recipient", "", "primary") +
@@ -599,21 +608,31 @@ function render() {
 
   if (page === "holidays") {
     html +=
-      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据。UAPI 仅查询法定放假与调休。自动清理往年已结束的记录；人工修改不会被同步覆盖。</p>' +
+      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据，UAPI 仅查询法定放假与调休。明年未公布安排的节日，从同一响应补充节日日期，不代表放假区间。北京时间每日 00:00 检查当年、00:01 检查明年；当年已有安排及明年七个节日安排齐全时每 7 天获取一次，其余每天获取。失败次日重试；立即同步不受间隔限制。00:10 清理。自动清理往年已结束的记录；人工修改不会被同步覆盖。</p>' +
       btn("立即同步", "sync", "", "primary") +
       table(
-        ["年份", "数据版本时间", "状态", "来源"],
+        ["年份", "数据变更时间", "最近检查成功", "获取频率", "状态", "来源"],
         state.sources.map(
           (s) =>
             "<tr><td>" +
             s.year +
             "</td><td>" +
-            (s.updated_at ? time(s.updated_at) : "尚未同步") +
+            (s.updated_at && (s.hasData || s.references)
+              ? time(s.updated_at)
+              : "暂无数据") +
+            "</td><td>" +
+            (s.checked_at ? time(s.checked_at) : "尚未检查") +
+            "</td><td>" +
+            (s.refreshDays === 7 ? "每 7 天" : "每天") +
             "</td><td>" +
             esc(
               s.error === "not_published"
                 ? "接口暂未提供安排"
-                : s.error || (s.hasData ? "已有数据" : "暂未获取安排"),
+                : s.error ||
+                    (s.hasData ? "已有放假与调休安排" : "放假安排待公布") +
+                      (s.references
+                        ? "；" + s.references + " 个节日仅有日期"
+                        : ""),
             ) +
             '</td><td><a target="_blank" rel="noopener noreferrer" href="' +
             "https://uapis.cn/docs/api-reference/get-misc-holiday-calendar" +
@@ -631,13 +650,21 @@ function render() {
             "<tr><td>" +
             esc(h.name) +
             "</td><td>" +
-            esc(h.start + " 至 " + h.end) +
+            esc(h.kind === "reference" ? h.start : h.start + " 至 " + h.end) +
             "</td><td>" +
-            (h.kind === "holiday" ? "放假" : "调休上班") +
+            (h.kind === "holiday"
+              ? "放假"
+              : h.kind === "makeup"
+                ? "调休上班"
+                : "节日日期（放假安排待公布）") +
             "</td><td>" +
-            (h.manual || h.source !== "uapi" ? "人工" : "UAPI") +
+            (h.source === "manual" ? "人工" : "UAPI") +
             "</td><td>" +
             btn("编辑", "edit-holiday", h.id) +
+            (h.source === "manual" &&
+            /^uapi-(?:holiday|makeup|reference)-\d{4}-/.test(h.id)
+              ? btn("恢复默认", "reset-holiday", h.id)
+              : "") +
             btn("删除", "delete-holiday", h.id) +
             "</td></tr>",
         ),
@@ -648,20 +675,27 @@ function render() {
       html +=
         '<section><h2>编辑假期</h2><div class="grid">' +
         field("名称", "holidayName", h.name) +
-        field("开始", "holidayStart", h.start, "date") +
-        field("结束", "holidayEnd", h.end, "date") +
+        field("日期 / 放假开始", "holidayStart", h.start, "date") +
+        '<div id="holidayEndField"' +
+        (h.kind === "holiday" ? "" : " hidden") +
+        ">" +
+        field("放假结束", "holidayEnd", h.end, "date") +
+        "</div>" +
         '<label>类别<select id="holidayKind"><option value="holiday">放假</option><option value="makeup" ' +
         (h.kind === "makeup" ? "selected" : "") +
-        ">调休上班</option></select></label>" +
+        '>调休上班</option><option value="reference" ' +
+        (h.kind === "reference" ? "selected" : "") +
+        ">节日日期（安排待公布）</option></select></label>" +
         "</div>" +
         btn("保存假期", "save-holiday", "", "primary") +
         "</section>";
     }
 
     html +=
-      '<section><h2>公告占位符文案</h2><p class="muted">概览用于 {{假期.概览}}，今日文案用于 {{假期.今日}}。概览支持 {{name}}、{{start}}、{{end}}、{{days_until}}、{{days_off}}、{{ongoing}}；放假与调休今日文案支持 {{name}}。</p>' +
+      '<section><h2>公告占位符文案</h2><p class="muted">概览用于 {{假期.概览}}，今日文案用于 {{假期.今日}}。概览支持 {{name}}、{{start}}、{{end}}、{{days_until}}、{{days_off}}、{{ongoing}}；节日日期概览支持 {{name}}、{{date}}、{{days_until}}。仅有节日日期时，{{假期.节日日期}} 有值，开始日期、结束日期和天数为空。放假与调休今日文案支持 {{name}}。</p>' +
       Object.entries({
         summary: "假期概览",
+        reference: "节日日期概览（安排待公布）",
         today: "今日放假",
         makeupToday: "今日调休上班",
         ordinary: "普通日期",
@@ -766,13 +800,41 @@ const put = (list, item) => {
   else list[i] = item;
 };
 async function action(a, id) {
+  const discardsDraft = [
+    "reload",
+    "page",
+    "new-task",
+    "edit-task",
+    "copy-task",
+    "toggle-task",
+    "delete-task",
+    "new-recipient",
+    "edit-recipient",
+    "toggle-recipient",
+    "delete-recipient",
+    "new-holiday",
+    "edit-holiday",
+    "delete-holiday",
+    "reset-holiday",
+    "sync",
+    "cleanup",
+    "pause",
+    "unbind",
+    "toggle-binding",
+  ];
+  if (dirty && discardsDraft.includes(a)) {
+    if (!(await confirmAction("有未保存的编辑，放弃后继续？"))) return;
+    config = structuredClone(state.config);
+    editingTask = editingRecipient = editingHoliday = null;
+    dirty = false;
+  }
   if (a === "reload") {
+    editingTask = editingRecipient = editingHoliday = null;
     await load();
     return;
   }
   if (a === "page") {
-    if (dirty && !(await confirmAction("有未保存的编辑，放弃并切换页面？")))
-      return;
+    config = structuredClone(state.config);
     dirty = false;
     editingTask = editingRecipient = editingHoliday = null;
     page = id;
@@ -809,6 +871,8 @@ async function action(a, id) {
     return;
   }
   if (a === "cancel-task") {
+    config = structuredClone(state.config);
+    dirty = false;
     editingTask = null;
     render();
     return;
@@ -912,7 +976,11 @@ async function action(a, id) {
       if (a === "test")
         await sendTest(taskId, recipientId, "messagePreview", "previewResult");
       else {
-        const result = await api("preview", { taskId, recipientId, config });
+        const result = await api("preview", {
+          taskId,
+          recipientId,
+          config,
+        });
         showMessage("messagePreview", result);
         $("previewResult").hidden = false;
         $("previewResult").textContent = result.text;
@@ -1029,9 +1097,8 @@ async function action(a, id) {
     return;
   }
   if (a === "sync" || a === "cleanup") {
-    if (dirty && !(await confirmAction("有未保存的编辑，放弃并刷新数据？")))
-      return;
     const result = await api("maintenance", { job: a });
+    editingHoliday = null;
     await load();
     status(result.message, !result.ok);
     return;
@@ -1053,22 +1120,59 @@ async function action(a, id) {
     return;
   }
   if (a === "save-holiday") {
-    put(config.holidays, {
+    const value = {
       ...editingHoliday,
       name: $("holidayName").value,
       start: $("holidayStart").value,
-      end: $("holidayEnd").value || $("holidayStart").value,
+      end:
+        $("holidayKind").value === "holiday"
+          ? $("holidayEnd").value || $("holidayStart").value
+          : $("holidayStart").value,
       kind: $("holidayKind").value,
-      source: "manual",
-      manual: true,
-    });
+    };
+    if (
+      !value.source ||
+      ["name", "start", "end", "kind"].some(
+        (key) => value[key] !== editingHoliday[key],
+      )
+    ) {
+      value.source = "manual";
+    }
+    put(config.holidays, value);
     await save();
     editingHoliday = null;
     render();
     return;
   }
+  if (a === "reset-holiday") {
+    if (!synchronized) throw Error("配置状态未确认，请先刷新配置");
+    if (dirty) throw Error("请先保存编辑，再恢复默认");
+    try {
+      await api("holiday-reset", { id, revision: state.revision });
+      editingHoliday = null;
+      synchronized = false;
+      await load();
+      status("已恢复默认，后续跟随接口更新");
+    } catch (error) {
+      // Reconcile a potentially successful request whose response was lost.
+      synchronized = false;
+      try {
+        await load();
+      } catch {}
+      throw error;
+    }
+    return;
+  }
   if (a === "delete-holiday") {
-    if (!(await confirmAction("删除这个假期？"))) return;
+    const holiday = config.holidays.find((h) => h.id === id);
+    if (
+      !(await confirmAction(
+        holiday.source === "uapi"
+          ? "删除这条缓存记录？后续同步会重新获取。"
+          : "删除这个假期？",
+      ))
+    )
+      return;
     config.holidays = config.holidays.filter((h) => h.id !== id);
     await save();
     return;
@@ -1156,7 +1260,9 @@ async function action(a, id) {
       link = document.createElement("a");
     link.href = url;
     link.download =
-      "daily-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+      "daily-backup-" +
+      new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10) +
+      ".json";
     document.body.append(link);
     link.click();
     setTimeout(() => {
@@ -1185,6 +1291,7 @@ async function action(a, id) {
       confirm: true,
     });
     restoreRevision = undefined;
+    editingTask = editingRecipient = editingHoliday = null;
     await load();
     status("恢复完成，已重算未来计划");
     return;
@@ -1206,8 +1313,22 @@ document.addEventListener("focusin", (e) => {
       .join("");
   }
 });
+const changesConfig = (el) =>
+  el.closest("#app") &&
+  ![
+    "testRecipient",
+    "commandName",
+    "logTask",
+    "logRecipient",
+    "logStatus",
+    "backupFile",
+    "importFile",
+    "importText",
+    "batchId",
+  ].includes(el.id);
 document.addEventListener("input", (e) => {
-  if (e.target.closest("#app") && e.target.id !== "testRecipient") dirty = true;
+  if (changesConfig(e.target)) dirty = true;
+  if (e.target.id === "importText") imported = null;
   if (e.target.id.startsWith("reply-")) {
     captureReply();
     showMessage("replyPreview", {
@@ -1216,7 +1337,9 @@ document.addEventListener("input", (e) => {
   }
 });
 document.addEventListener("change", (e) => {
-  if (e.target.closest("#app") && e.target.id !== "testRecipient") dirty = true;
+  if (changesConfig(e.target)) dirty = true;
+  if (e.target.id === "holidayKind")
+    $("holidayEndField").hidden = e.target.value !== "holiday";
   if (e.target.id === "commandName") {
     captureReply();
     selectedCommand = e.target.value;

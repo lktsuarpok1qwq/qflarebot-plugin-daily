@@ -1,6 +1,6 @@
 import type { Ctx } from "../types.js";
 import { dateAt } from "../scheduler/planner.js";
-import { refreshCalendar, snapshot } from "./repository.js";
+import { refreshCalendar } from "./repository.js";
 import { syncYear } from "../modules/holiday/sync.js";
 import type { SyncResult } from "../modules/holiday/source.js";
 export async function maintenance(
@@ -25,32 +25,32 @@ export async function maintenance(
   try {
     // Changed sources rebuild the calendar when published. Only daily cleanup
     // and a manual refresh need to rebuild an unchanged cache.
-    if (job === "cleanup") await refreshCalendar(ctx, scheduledAt);
     if (job === "sync") {
       const year = +day.slice(0, 4);
       for (const y of yearOffset === undefined
         ? [year, year + 1]
         : [year + yearOffset])
         if (y >= 2000 && y <= 2199) {
-          results.push(await syncYear(ctx, y, fetch, scheduledAt));
+          results.push(await syncYear(ctx, y, fetch, scheduledAt, manual));
         }
       // Refresh after fetching so a damaged cache cannot prevent its replacement.
       if (manual) await refreshCalendar(ctx, scheduledAt);
     } else {
-      const s = await snapshot(ctx.db);
+      const config = await refreshCalendar(ctx, scheduledAt);
       await ctx.db.run(
         "DELETE FROM {deliveries} WHERE key IN (SELECT key FROM {deliveries} WHERE updated_at<? AND status<>'sending' ORDER BY updated_at LIMIT 200)",
-        scheduledAt - s.config.retentionDays * 86_400_000,
+        scheduledAt - config.retentionDays * 86_400_000,
       );
     }
     const labels = {
       updated: "已更新",
+      skipped: "未到更新日期",
       cached: "已有最新数据",
       not_published: "接口暂未提供安排",
       error: "同步失败",
     };
     const describe = (r: SyncResult) =>
-      `${r.year} 放假与调休：${labels[r.status]}${r.error ? `（${r.error}）` : ""}`;
+      `${r.year} 假期数据：${labels[r.status]}${r.error ? `（${r.error}）` : ""}`;
     const failures = results.filter((r) => r.status === "error").map(describe);
     const error = failures.length ? failures.join("；") : null;
     await ctx.db.run(

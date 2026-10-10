@@ -25,7 +25,9 @@ export async function renderHolidayReply(
       : await service.getRemainingEvents(+day.slice(0, 4), day);
   if (q.status !== "known")
     return {
-      text: expand(q.status === "none" ? reply.empty : reply.unknown, values),
+      text:
+        expand(q.status === "none" ? reply.empty : reply.unknown, values) +
+        (q.freshness === "stale" ? expand(reply.stale, values) : ""),
     };
   const rows: Holiday[] = Array.isArray(q.data)
     ? q.data
@@ -38,6 +40,7 @@ export async function renderHolidayReply(
     const vars = {
       ...values,
       name: h.name,
+      date: h.start,
       start: h.start,
       end: h.end,
       days_until: String(
@@ -59,6 +62,7 @@ export async function renderHolidayReply(
       source: h.source === "uapi" ? "UAPI" : "人工",
       ongoing: "",
     };
+    if (h.kind === "reference") return expand(reply.reference, vars);
     const ongoing = h.start <= day ? expand(reply.ongoing, vars) : "";
     return expand(reply.item, vars, {
       ongoing,

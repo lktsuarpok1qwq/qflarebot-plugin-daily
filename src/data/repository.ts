@@ -1,10 +1,17 @@
+import { SOURCE_QUERY } from "../modules/holiday/source.js";
 import type { DBStatement, PluginDB } from "@qqbot/sdk";
-import type { Config, Ctx, Snapshot, Source } from "../types.js";
+import {
+  SCHEMA_VERSION,
+  type Config,
+  type Ctx,
+  type Snapshot,
+  type Source,
+} from "../types.js";
 import { defaults } from "../content/templates.js";
 import { refreshHolidays } from "../modules/holiday/calendar.js";
 import { nextPlan, dateAt } from "../scheduler/planner.js";
 import { jsonRows, jx, jsonChunks } from "./sql.js";
-export { deliveryKey, due, claim, finish } from "./deliveries.js";
+export { deliveryKey, due, claim } from "./deliveries.js";
 export const bindingId = (task: string, recipient: string) =>
   `${task}:${recipient}`;
 export async function install(ctx: Ctx) {
@@ -36,11 +43,23 @@ export async function refreshCalendar(ctx: Ctx, now = Date.now()) {
     await saveConfig(ctx, s, config, now);
   const year = +dateAt(now).slice(0, 4);
   if (current.some((source) => source.year < year || source.year > year + 1))
-    await ctx.db.run(
-      "DELETE FROM {sources} WHERE year<? OR year>?",
-      year,
-      year + 1,
-    );
+    await ctx.db.batch([
+      {
+        sql: "DELETE FROM {maintenance} WHERE job IN (SELECT 'holiday:' || year FROM {sources} WHERE year<? OR year>?)",
+        params: [year, year + 1],
+      },
+      {
+        sql: "DELETE FROM {sources} WHERE year<? OR year>?",
+        params: [year, year + 1],
+      },
+    ]);
+  return config;
+}
+function parseConfig(raw: string): Config {
+  const config = JSON.parse(raw) as Config | null;
+  if (config?.schemaVersion !== SCHEMA_VERSION)
+    throw new Error("配置格式不受支持，请清理插件数据后重新安装");
+  return config;
 }
 export async function snapshot(db: PluginDB): Promise<Snapshot> {
   const s = await db.first<{
@@ -52,18 +71,16 @@ export async function snapshot(db: PluginDB): Promise<Snapshot> {
   return {
     revision: s.revision,
     botId: s.bot_id,
-    config: JSON.parse(s.config) as Config,
+    config: parseConfig(s.config),
   };
 }
-export const sources = (db: PluginDB) =>
-  db.all<Source>("SELECT * FROM {sources}");
 /** Configuration and raw sources must be from the same publication transaction. */
 export async function readData(
   db: PluginDB,
 ): Promise<{ snapshot: Snapshot; sources: Source[] }> {
   const rows = await db.batch([
     { sql: "SELECT revision,bot_id,config FROM {state} WHERE id=1" },
-    { sql: "SELECT * FROM {sources}" },
+    { sql: SOURCE_QUERY },
   ]);
   const state = rows[0]!.results[0] as
     { revision: number; bot_id: string; config: string } | undefined;
@@ -72,7 +89,7 @@ export async function readData(
     snapshot: {
       revision: state.revision,
       botId: state.bot_id,
-      config: JSON.parse(state.config) as Config,
+      config: parseConfig(state.config),
     },
     sources: rows[1]!.results as Source[],
   };
@@ -166,6 +183,10 @@ export async function saveConfig(
       params: [chunk, rev, token],
     });
   if (restored) {
+    statements.push({
+      sql: "DELETE FROM {maintenance} WHERE job LIKE 'holiday:%' AND EXISTS(SELECT 1 FROM {state} WHERE token=?)",
+      params: [token],
+    });
     statements.push({
       sql: "DELETE FROM {sources} WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?)",
       params: [token],

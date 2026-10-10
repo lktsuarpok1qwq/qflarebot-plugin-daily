@@ -144,3 +144,22 @@ export function holidayResponse(year: number) {
     ],
   };
 }
+
+export function referenceResponse(year = 2027) {
+  return {
+    query: { year: String(year), holiday_type: "legal" },
+    holidays: [] as { name: string; date: string; type: string }[],
+    days: [
+      { date: `${year}-01-01`, solar_festival: "元旦" },
+      { date: `${year}-02-06`, lunar_festival: "春节" },
+      { date: `${year}-04-05`, lunar_festival: "清明节", solar_term: "清明" },
+      { date: `${year}-05-01`, solar_festival: "五一劳动节" },
+      { date: `${year}-06-09`, lunar_festival: "端午节" },
+      { date: `${year}-09-15`, lunar_festival: "中秋节" },
+      { date: `${year}-10-01`, solar_festival: "国庆节" },
+      { date: `${year}-02-14`, solar_festival: "情人节" },
+      { date: `${year}-06-21`, solar_term: "夏至" },
+      { date: `${year}-09-10`, solar_festival: "教师节" },
+    ],
+  };
+}
