@@ -1,0 +1,107 @@
+{
+  "name": "daily",
+  "version": "1.4.0",
+  "apiVersion": 2,
+  "permissions": [
+    "db",
+    "net",
+    "proactive",
+    "admin"
+  ],
+  "depends": {},
+  "conflicts": [],
+  "commands": [
+    {
+      "name": "每日",
+      "description": "每日助手帮助",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "每日 帮助",
+      "description": "查看每日帮助",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "假期",
+      "description": "假期查询帮助",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "假期 帮助",
+      "description": "查看假期帮助",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "假期 下一个",
+      "description": "下个尚未结束的假期",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "假期 剩余",
+      "description": "今年尚未结束的假期",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    }
+  ],
+  "regex": [],
+  "events": [],
+  "buttons": [],
+  "cron": [
+    {
+      "name": "send",
+      "cron": "* * * * *"
+    },
+    {
+      "name": "sync",
+      "cron": "10,11,12 19 * * *"
+    },
+    {
+      "name": "cleanup",
+      "cron": "40 19 * * *"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/ui/*",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/:action",
+      "auth": "admin"
+    }
+  ],
+  "hasMiddleware": false,
+  "services": [],
+  "durableObjects": [],
+  "displayName": "每日助手",
+  "description": "定时文字、每日汇总与假期查询",
+  "ui": {
+    "path": "/ui/",
+    "title": "每日助手",
+    "icon": "CalendarDays"
+  }
+}
