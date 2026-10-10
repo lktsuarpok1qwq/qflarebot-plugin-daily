@@ -1,5 +1,6 @@
 import type { RouteInput } from "@qqbot/sdk";
 import { LIMITS } from "./types.js";
+import { COPY } from "./copy.js";
 import {
   snapshot,
   saveConfig,
@@ -29,6 +30,7 @@ import { renderMessage } from "./content/renderer.js";
 import { jsonRows, jx } from "./data/sql.js";
 import { finishMany } from "./data/deliveries.js";
 import { resultStatus } from "./scheduler/result.js";
+import { supplementalFestivals } from "./scheduler/events.js";
 import { at, validDate, dateAt } from "./scheduler/planner.js";
 async function body(
   request: Request,
@@ -89,6 +91,7 @@ export async function api({
         return Response.json({
           ...s,
           replyDefaults: defaultReplies(),
+          draftDefaults: COPY.drafts,
           replyVariables: Object.fromEntries(
             COMMAND_NAMES.map((name) => [
               name,
@@ -101,6 +104,9 @@ export async function api({
             ]),
           ),
           currentBotId: ctx.botId,
+          supplementalFestivalIds: supplementalFestivals(s.config).map(
+            (f) => f.id,
+          ),
           sources: raw.map(({ data, ...source }) => ({
             ...source,
             hasData: source.kind === "festival" ? !!data : hasCalendar(data),
@@ -141,18 +147,23 @@ export async function api({
     if (request.method !== "POST")
       return Response.json({ error: "不支持的方法" }, { status: 405 });
     const data = await body(
-        request,
-        action.startsWith("restore")
-          ? LIMITS.backupBytes + 4096
-          : LIMITS.bodyBytes + 4096,
-      ),
-      { snapshot: s, sources: raw } = [
-        "preview",
-        "test",
-        "command-preview",
-      ].includes(action)
-        ? await readData(ctx.db)
-        : { snapshot: await snapshot(ctx.db), sources: [] };
+      request,
+      action.startsWith("restore")
+        ? LIMITS.backupBytes + 4096
+        : LIMITS.bodyBytes + 4096,
+    );
+    if (action === "maintenance") {
+      if (data.job !== "sync" && data.job !== "cleanup")
+        throw new Error("维护类型错误");
+      return Response.json(await maintenance(ctx, data.job, Date.now(), true));
+    }
+    const { snapshot: s, sources: raw } = [
+      "preview",
+      "test",
+      "command-preview",
+    ].includes(action)
+      ? await readData(ctx.db)
+      : { snapshot: await snapshot(ctx.db), sources: [] };
     if (action === "config") {
       if (data.revision !== s.revision) throw new Error("配置已变化，请刷新");
       const c = validateConfig(data.config);
@@ -341,12 +352,6 @@ export async function api({
           data.revision,
         ),
       });
-    }
-    if (action === "maintenance") {
-      if (data.job !== "sync" && data.job !== "cleanup")
-        throw new Error("维护类型错误");
-      await maintenance(ctx, data.job, Date.now(), true);
-      return Response.json({ ok: true });
     }
     throw new Error("未知接口");
   } catch (e) {

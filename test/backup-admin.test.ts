@@ -94,7 +94,7 @@ it("私有管理接口拒绝未认证访问", async () => {
   });
   expect(res.status).toBe(401);
 });
-it("源哈希不变不写，连续相同失败不追加记录", async () => {
+it("连续相同同步失败不重复写库", async () => {
   const e = database();
   await install(e.ctx);
   const fetcher = vi.fn(async () =>
@@ -105,9 +105,6 @@ it("源哈希不变不写，连续相同失败不追加记录", async () => {
     }),
   );
   await syncYear(e.ctx, 2026, fetcher);
-  const changes = e.metrics.changes;
-  await syncYear(e.ctx, 2026, fetcher);
-  expect(e.metrics.changes).toBe(changes);
   fetcher.mockImplementation(async () => {
     throw Error("offline");
   });

@@ -1,4 +1,3 @@
-import plugin from "../src/index.js";
 import { renderCommand } from "../src/commands.js";
 import { describe, it, expect, vi } from "vitest";
 import { fixture, database, start, dueTime, festivalResponse } from "./db.js";
@@ -8,13 +7,15 @@ import {
   snapshot,
   due,
   install,
+  refreshCalendar,
 } from "../src/data/repository.js";
 import {
   exportBackup,
   restoreBackup,
   verifyBackup,
 } from "../src/data/backup.js";
-import { maintenance, syncYear, hash } from "../src/data/holiday-cn.js";
+import { maintenance, syncYear } from "../src/data/holiday-cn.js";
+import { hash } from "../src/data/source.js";
 import { validateConfig } from "../src/data/validation.js";
 import { holidayService } from "../src/content/holiday.js";
 import { api } from "../src/admin.js";
@@ -125,6 +126,10 @@ describe("调度、SDK 共享预算及并发", () => {
         "SELECT COUNT(*) AS n FROM {deliveries} WHERE status='skipped_budget'",
       ),
     ).toEqual({ n: 1 });
+    const skipped = await e.db.first<{ details: string }>(
+      "SELECT details FROM {deliveries} WHERE status='skipped_budget'",
+    );
+    expect(JSON.parse(skipped!.details)).not.toHaveProperty("text");
   });
   it("同刻假期共用消息，全部记录防重进度", async () => {
     const e = await events();
@@ -664,7 +669,7 @@ it("重新生成缓存中的放假区间，同步保留人工修改", async () =
   await e.db.run("UPDATE {state} SET config=?", JSON.stringify(s.config));
   const clock = vi.spyOn(Date, "now").mockReturnValue(start);
   try {
-    await plugin.hooks!.onBoot!(e.ctx);
+    await refreshCalendar(e.ctx, start);
     const repaired = await snapshot(e.db);
     expect(repaired.config.holidays).toHaveLength(1);
     expect(repaired.config.holidays[0]?.end).toBe("2026-10-11");

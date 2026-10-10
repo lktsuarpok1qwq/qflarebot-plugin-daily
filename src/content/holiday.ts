@@ -1,6 +1,6 @@
 import type { Config, Holiday, Source, Festival } from "../types.js";
 import { automaticHolidays } from "../data/calendar.js";
-import { activeHolidays } from "../scheduler/events.js";
+import { activeHolidays, supplementalFestivals } from "../scheduler/events.js";
 import { dateAt, validDate } from "../scheduler/planner.js";
 export type Query<T> = {
   status: "known" | "none" | "unknown";
@@ -57,15 +57,7 @@ export function holidayService(
       families.set(id, related);
     }
   }
-  const visibleFestivals = festivals.filter(
-    (f) =>
-      !active.some(
-        (h) =>
-          h.kind === "holiday" &&
-          ((h.festivalIds ?? []).includes(f.id) ||
-            (h.start <= f.date && f.date <= h.end)),
-      ),
-  );
+  const visibleFestivals = supplementalFestivals(config, active);
   const events = (from: string, to: string): (Holiday | Festival)[] =>
     [
       ...active.filter(

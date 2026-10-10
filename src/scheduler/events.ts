@@ -45,3 +45,19 @@ export function activeHolidays(config: Config) {
           },
     );
 }
+
+/** Dates are supplements only where there is no corresponding holiday interval. */
+export function supplementalFestivals(
+  config: Config,
+  holidays = activeHolidays(config),
+) {
+  return config.festivals.filter(
+    (f) =>
+      !holidays.some(
+        (h) =>
+          h.kind === "holiday" &&
+          ((h.festivalIds ?? []).includes(f.id) ||
+            (h.start <= f.date && f.date <= h.end)),
+      ),
+  );
+}

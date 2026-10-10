@@ -122,6 +122,10 @@ async function dispatchPass(
     } else if (clock() >= d.due_at + 60_000 - LIMITS.reserveMs) {
       status = "skipped_budget";
       error = "sdk_budget_reserve";
+    } else if (admitted >= remaining) {
+      // Once this round is full, do not render or persist unused message bodies.
+      status = "skipped_budget";
+      error = "minute_capacity_exceeded";
     } else {
       try {
         if (activeEvents.some((key) => !service!.hasEvent(key.split(":")[0]!)))
@@ -156,10 +160,7 @@ async function dispatchPass(
         error = e instanceof Error ? e.message : "render_failed";
       }
     }
-    if (status === "sending" && ++admitted > remaining) {
-      status = "skipped_budget";
-      error = "minute_capacity_exceeded";
-    }
+    if (status === "sending") admitted++;
     claims.push({
       d,
       status,

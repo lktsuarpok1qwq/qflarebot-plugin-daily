@@ -1,7 +1,7 @@
 import type { Ctx, Festival, Source } from "../types.js";
 import { validDate } from "../scheduler/planner.js";
 import { snapshot, saveConfig } from "./repository.js";
-import { hash, limitedJson, setError } from "./holiday-cn.js";
+import { hash, limitedJson, setError, type SyncResult } from "./source.js";
 export const FESTIVALS = {
   newyear: "元旦",
   spring: "春节",
@@ -88,7 +88,7 @@ export async function syncFestivals(
   fetcher: typeof fetch = fetch,
   now = Date.now(),
   force = false,
-) {
+): Promise<SyncResult> {
   const previous = await ctx.db.first<Source>(
     "SELECT * FROM {sources} WHERE year=? AND kind='festival'",
     year,
@@ -100,7 +100,7 @@ export async function syncFestivals(
     !previous.error &&
     now - previous.updated_at < 30 * 86_400_000
   )
-    return;
+    return { kind: "festival", year, status: "cached" };
   try {
     const res = await fetcher(
       `https://uapis.cn/api/v1/misc/holiday-calendar?year=${year}`,
@@ -116,7 +116,7 @@ export async function syncFestivals(
         now,
         year,
       );
-      return;
+      return { kind: "festival", year, status: "cached" };
     }
     const s = await snapshot(ctx.db);
     const config = structuredClone(s.config);
@@ -136,13 +136,10 @@ export async function syncFestivals(
       error: null,
       updated_at: now,
     });
+    return { kind: "festival", year, status: "updated" };
   } catch (e) {
-    await setError(
-      ctx,
-      year,
-      e instanceof Error ? e.message.slice(0, 200) : "sync_failed",
-      now,
-      "festival",
-    );
+    const error = e instanceof Error ? e.message.slice(0, 200) : "sync_failed";
+    await setError(ctx, year, error, now, "festival");
+    return { kind: "festival", year, status: "error", error };
   }
 }

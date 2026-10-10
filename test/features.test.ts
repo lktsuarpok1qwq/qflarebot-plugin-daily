@@ -203,6 +203,24 @@ it("跨年参考日期无放假区间；正式安排优先、合并节日不重�
   expect(remaining.text).toBe(
     "中秋节、国庆节：2027-09-30 至 2027-09-30\n共 1 天；调休上班日：无",
   );
+  // A later UAPI refresh must not put supplemental entries back over arrangements.
+  await syncFestivals(
+    e.ctx,
+    2027,
+    async () => Response.json(festivalResponse(2027)),
+    start + 1000,
+    true,
+  );
+  expect(
+    (
+      await renderCommand(
+        e.ctx,
+        "假期 剩余",
+        undefined,
+        Date.parse("2027-09-01T00:00:00+08:00"),
+      )
+    ).text,
+  ).toBe(remaining.text);
   s = await snapshot(e.db);
   expect(s.config.festivals).toHaveLength(7); // retained for date-anchored reminders
 });

@@ -3,7 +3,8 @@ import { snapshot, saveConfig } from "./repository.js";
 import { LIMITS } from "../types.js";
 import { validateConfig } from "./validation.js";
 import { validateFestivalYear } from "./festivals.js";
-import { validateYear, hash } from "./holiday-cn.js";
+import { validateYear } from "./holiday-cn.js";
+import { hash } from "./source.js";
 export type Backup = {
   schemaVersion: 1;
   exportedAt: string;

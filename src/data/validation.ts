@@ -8,7 +8,7 @@ import {
 } from "../content/command-templates.js";
 import { validateTemplate } from "../content/templates.js";
 // Current persisted fields; unsupported fields are not accepted back through imports.
-export const FIELDS = {
+const FIELDS = {
   config: [
     "schemaVersion",
     "paused",

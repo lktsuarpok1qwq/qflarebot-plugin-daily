@@ -9,6 +9,7 @@ import {
 } from "./repository.js";
 import { refreshHolidays, hasCalendar } from "./calendar.js";
 import { syncFestivals } from "./festivals.js";
+import { hash, limitedJson, setError, type SyncResult } from "./source.js";
 export type RawYear = {
   year: number;
   papers: string[];
@@ -54,40 +55,12 @@ export function validateYear(value: unknown, year: number): RawYear {
       .sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
-export async function hash(text: string) {
-  return Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)),
-    ),
-    (x) => x.toString(16).padStart(2, "0"),
-  ).join("");
-}
-export async function limitedJson(res: Response, maxBytes = 128_000) {
-  if (!res.body) throw new Error("假期源为空");
-  const reader = res.body.getReader();
-  let size = 0,
-    text = "";
-  const decoder = new TextDecoder();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > maxBytes) throw new Error("假期源过大");
-      text += decoder.decode(value, { stream: true });
-    }
-    text += decoder.decode();
-    return JSON.parse(text);
-  } finally {
-    await reader.cancel();
-  }
-}
 export async function syncYear(
   ctx: Ctx,
   year: number,
   fetcher: typeof fetch = fetch,
   now = Date.now(),
-) {
+): Promise<SyncResult> {
   if (!Number.isInteger(year) || year < 2000 || year > 2199)
     throw new Error("同步年度非法");
   const previous = await ctx.db.first<Source>(
@@ -101,7 +74,7 @@ export async function syncYear(
     );
     if (res.status === 404) {
       await setError(ctx, year, "not_published", now);
-      return;
+      return { kind: "official", year, status: "not_published" };
     }
     if (!res.ok) throw new Error(`HTTP_${res.status}`);
     const value = validateYear(await limitedJson(res), year),
@@ -109,7 +82,7 @@ export async function syncYear(
       digest = await hash(data);
     if (!hasCalendar(data)) {
       await setError(ctx, year, "not_published", now);
-      return;
+      return { kind: "official", year, status: "not_published" };
     }
     if (previous?.hash === digest) {
       if (previous.error)
@@ -118,7 +91,7 @@ export async function syncYear(
           now,
           year,
         );
-      return;
+      return { kind: "official", year, status: "cached" };
     }
     // Publish automatic dates, cursors, and source in the same D1 transaction.
     const current = await readData(ctx.db),
@@ -144,30 +117,14 @@ export async function syncYear(
     );
     validateConfig(config);
     await saveConfig(ctx, s, config, now, false, undefined, published);
+    return { kind: "official", year, status: "updated" };
   } catch (e) {
-    await setError(
-      ctx,
-      year,
-      e instanceof Error ? e.message.slice(0, 200) : "sync_failed",
-      now,
-    );
+    const error = e instanceof Error ? e.message.slice(0, 200) : "sync_failed";
+    await setError(ctx, year, error, now);
+    return { kind: "official", year, status: "error", error };
   }
 }
-export async function setError(
-  ctx: Ctx,
-  year: number,
-  error: string,
-  now: number,
-  kind: "official" | "festival" = "official",
-) {
-  await ctx.db.run(
-    "INSERT INTO {sources}(year,hash,data,error,updated_at,kind) VALUES (?,'','',?,?,?) ON CONFLICT(kind,year) DO UPDATE SET error=excluded.error WHERE error IS NOT excluded.error",
-    year,
-    error,
-    now,
-    kind,
-  );
-}
+
 export async function maintenance(
   ctx: Ctx,
   job: "sync" | "cleanup",
@@ -177,6 +134,7 @@ export async function maintenance(
   sourceKind?: "official" | "festival",
 ) {
   const day = dateAt(scheduledAt);
+  const results: SyncResult[] = [];
   const jobKey =
     job === "sync" && yearOffset !== undefined
       ? `sync:${sourceKind ?? "all"}:${yearOffset}`
@@ -187,40 +145,79 @@ export async function maintenance(
       jobKey,
       day,
     );
-    if (!r.changes) return;
+    if (!r.changes) return { ok: true, message: "今天已执行维护", results };
   }
   try {
     // Changed sources rebuild the calendar when published. Only daily cleanup
     // and a manual refresh need to rebuild an unchanged cache.
-    if (job === "cleanup" || manual) await refreshCalendar(ctx, scheduledAt);
+    if (job === "cleanup") await refreshCalendar(ctx, scheduledAt);
     if (job === "sync") {
       const year = +day.slice(0, 4);
       for (const y of yearOffset === undefined
         ? [year, year + 1]
         : [year + yearOffset])
         if (y >= 2000 && y <= 2199) {
-          if (sourceKind !== "festival")
-            await syncYear(ctx, y, fetch, scheduledAt);
-          if (sourceKind !== "official")
-            await syncFestivals(ctx, y, fetch, scheduledAt, manual);
+          for (const kind of sourceKind
+            ? [sourceKind]
+            : (["official", "festival"] as const)) {
+            try {
+              results.push(
+                await (kind === "official"
+                  ? syncYear(ctx, y, fetch, scheduledAt)
+                  : syncFestivals(ctx, y, fetch, scheduledAt, manual)),
+              );
+            } catch (error) {
+              results.push({
+                kind,
+                year: y,
+                status: "error",
+                error: String(error).slice(0, 200),
+              });
+            }
+          }
         }
+      // Refresh after fetching so a damaged cache cannot prevent its replacement.
+      if (manual) await refreshCalendar(ctx, scheduledAt);
     } else {
       const s = await snapshot(ctx.db);
       await ctx.db.run(
         "DELETE FROM {deliveries} WHERE key IN (SELECT key FROM {deliveries} WHERE updated_at<? AND status<>'sending' ORDER BY updated_at LIMIT 200)",
-        Date.now() - s.config.retentionDays * 86_400_000,
+        scheduledAt - s.config.retentionDays * 86_400_000,
       );
     }
+    const labels = {
+      updated: "已更新",
+      cached: "已有最新数据",
+      not_published: "尚未公布",
+      error: "同步失败",
+    };
+    const describe = (r: SyncResult) =>
+      `${r.year} ${r.kind === "official" ? "放假安排" : "节日日期"}：${labels[r.status]}${r.error ? `（${r.error}）` : ""}`;
+    const failures = results.filter((r) => r.status === "error").map(describe);
+    const error = failures.length ? failures.join("；") : null;
     await ctx.db.run(
-      "UPDATE {maintenance} SET error=NULL WHERE job=? AND error IS NOT NULL",
+      "INSERT INTO {maintenance}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<>excluded.day OR error IS NOT excluded.error",
       jobKey,
+      day,
+      error,
     );
+    return {
+      ok: !error,
+      message:
+        job === "cleanup" ? "清理完成" : results.map(describe).join("；"),
+      results,
+    };
   } catch (e) {
     await ctx.db.run(
-      "INSERT INTO {maintenance}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET error=excluded.error WHERE error IS NOT excluded.error",
+      "INSERT INTO {maintenance}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<>excluded.day OR error IS NOT excluded.error",
       jobKey,
       day,
       e instanceof Error ? e.message.slice(0, 200) : "maintenance_failed",
     );
+    return {
+      ok: false,
+      message: `维护失败：${e instanceof Error ? e.message : String(e)}`,
+      results,
+    };
   }
 }

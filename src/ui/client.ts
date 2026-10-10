@@ -176,7 +176,11 @@ function options(items, selected) {
         '<option value="' +
         esc(x.id) +
         '" ' +
-        ((Array.isArray(selected) ? selected.includes(x.id) : selected === x.id)
+        ((
+          Array.isArray(selected)
+            ? selected.includes(x.id)
+            : selected === x.id
+        )
           ? "selected"
           : "") +
         ">" +
@@ -297,7 +301,9 @@ function markdown(text) {
           "<blockquote>" + inline(line.replace(/^>\s?/, "")) + "</blockquote>"
         );
       if (/^[-*]\s+/.test(line))
-        return "<ul><li>" + inline(line.replace(/^[-*]\s+/, "")) + "</li></ul>";
+        return (
+          "<ul><li>" + inline(line.replace(/^[-*]\s+/, "")) + "</li></ul>"
+        );
       if (/^\d+\.\s+/.test(line))
         return (
           "<ol><li>" + inline(line.replace(/^\d+\.\s+/, "")) + "</li></ol>"
@@ -688,7 +694,7 @@ function render() {
 
   if (page === "holidays") {
     html +=
-      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的放假安排与节日日期。日期参考不代表放假；自动清理往年已结束的记录。录入或导入后直接生效，人工修改不会被后续同步覆盖。</p>' +
+      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据。优先使用 holiday-cn 放假安排，缺少对应安排时才用 UAPI 节日日期补充。自动清理往年已结束的记录；人工修改不会被同步覆盖。</p>' +
       btn("立即同步", "sync", "", "primary") +
       table(
         ["年份 / 类别", "数据版本时间", "状态", "远程数据源"],
@@ -752,19 +758,21 @@ function render() {
     }
 
     html +=
-      '<section><h2>节日日期</h2><p class="muted">用于节日提醒和倒计时。已有对应放假安排时，查询优先展示安排；此处保留节日当天日期。来源：UAPI。</p>' +
+      '<section><h2>节日日期补充</h2><p class="muted">仅显示尚无对应放假安排的节日日期，不代表放假。holiday-cn 公布后自动由上方安排覆盖。来源：UAPI。</p>' +
       table(
         ["节日", "日期", "操作"],
-        config.festivals.map(
-          (f) =>
-            "<tr><td>" +
-            esc(f.name) +
-            "</td><td>" +
-            esc(f.date) +
-            "</td><td>" +
-            btn("编辑", "edit-festival", f.id) +
-            "</td></tr>",
-        ),
+        config.festivals
+          .filter((f) => state.supplementalFestivalIds.includes(f.id))
+          .map(
+            (f) =>
+              "<tr><td>" +
+              esc(f.name) +
+              "</td><td>" +
+              esc(f.date) +
+              "</td><td>" +
+              btn("编辑", "edit-festival", f.id) +
+              "</td></tr>",
+          ),
       );
     if (editingFestival)
       html +=
@@ -870,14 +878,12 @@ async function action(a, id) {
   }
   if (a === "new-task") {
     editingTask = {
+      ...structuredClone(state.draftDefaults.task),
       id: uid(),
-      name: "新任务",
       mode: "standalone",
       enabled: false,
       schedule: { kind: "daily", time: "09:00" },
       contentIds: [],
-      title: "",
-      separator: "\n\n",
       format: "plain",
     };
     render();
@@ -935,7 +941,7 @@ async function action(a, id) {
   if (a === "copy-task") {
     const t = structuredClone(config.tasks.find((t) => t.id === id));
     t.id = uid();
-    t.name += " 副本";
+    t.name += state.draftDefaults.copySuffix;
     t.enabled = false;
     config.tasks.push(t);
     await save();
@@ -974,7 +980,9 @@ async function action(a, id) {
     return;
   }
   if (
-    ["preview", "test", "unbind", "edit-override", "toggle-binding"].includes(a)
+    ["preview", "test", "unbind", "edit-override", "toggle-binding"].includes(
+      a,
+    )
   ) {
     const [taskId, recipientId] = id.split(":"),
       b = config.bindings.find(
@@ -1018,10 +1026,10 @@ async function action(a, id) {
   }
   if (a === "new-recipient") {
     editingRecipient = {
+      ...structuredClone(state.draftDefaults.recipient),
       id: uid(),
       scene: "group",
       openid: "",
-      name: "",
       enabled: false,
       botId: state.currentBotId,
     };
@@ -1063,25 +1071,26 @@ async function action(a, id) {
   }
   if (a === "new-content") {
     editingContent = {
+      ...structuredClone(state.draftDefaults.content),
       id: uid(),
-      name: "新内容",
       kind: "text",
       enabled: true,
-      body: "",
       only: "always",
     };
     render();
     return;
   }
   if (a === "edit-content") {
-    editingContent = structuredClone(config.contents.find((c) => c.id === id));
+    editingContent = structuredClone(
+      config.contents.find((c) => c.id === id),
+    );
     render();
     return;
   }
   if (a === "copy-content") {
     const c = structuredClone(config.contents.find((c) => c.id === id));
     c.id = uid();
-    c.name += " 副本";
+    c.name += state.draftDefaults.copySuffix;
     config.contents.push(c);
     await save();
     return;
@@ -1187,25 +1196,28 @@ async function action(a, id) {
     return;
   }
   if (a === "sync" || a === "cleanup") {
-    await api("maintenance", { job: a });
+    if (dirty && !(await confirmAction("有未保存的编辑，放弃并刷新数据？")))
+      return;
+    const result = await api("maintenance", { job: a });
     await load();
-    status("维护已执行，详见最新状态");
+    status(result.message, !result.ok);
     return;
   }
   if (a === "new-holiday") {
     editingHoliday = {
+      ...structuredClone(state.draftDefaults.holiday),
       id: uid(),
-      name: "",
       start: "",
       end: "",
       kind: "holiday",
-      source: "",
     };
     render();
     return;
   }
   if (a === "edit-holiday") {
-    editingHoliday = structuredClone(config.holidays.find((h) => h.id === id));
+    editingHoliday = structuredClone(
+      config.holidays.find((h) => h.id === id),
+    );
     render();
     return;
   }
@@ -1254,7 +1266,8 @@ async function action(a, id) {
   }
   if (a === "rollback-import") {
     const batch = $("batchId").value;
-    if (!batch || !(await confirmAction("删除该批次导入的所有假期？"))) return;
+    if (!batch || !(await confirmAction("删除该批次导入的所有假期？")))
+      return;
     config.holidays = config.holidays.filter((h) => h.batchId !== batch);
     await save();
     return;
@@ -1288,7 +1301,9 @@ async function action(a, id) {
           "<tr><td>" +
           time(l.due_at) +
           "</td><td>" +
-          esc(config.tasks.find((t) => t.id === l.task_id)?.name || l.task_id) +
+          esc(
+            config.tasks.find((t) => t.id === l.task_id)?.name || l.task_id,
+          ) +
           " / " +
           esc(
             config.recipients.find((r) => r.id === l.recipient_id)?.name ||

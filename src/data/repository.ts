@@ -107,7 +107,6 @@ export async function saveConfig(
     progress: { binding_id: string; event_key: string }[];
   },
   publishedSource?: Source,
-  resetPlans = false,
 ) {
   const year = +dateAt(now).slice(0, 4);
   config.holidays = config.holidays.filter((h) => h.end >= `${year}-01-01`);
@@ -172,7 +171,6 @@ export async function saveConfig(
       task.schedule.kind === "holiday_event" && calendarChanged;
     const preserve =
       !restore &&
-      !resetPlans &&
       enabled &&
       previous?.enabled &&
       previous.due_at !== null &&

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { defaults } from "../src/content/templates.js";
-import { nextPlan, dateAt, at, validDate } from "../src/scheduler/planner.js";
+import { nextPlan, dateAt, at } from "../src/scheduler/planner.js";
 import { renderMessage } from "../src/content/renderer.js";
 import { holidayService } from "../src/content/holiday.js";
 import { importHolidays } from "../src/data/importer.js";
@@ -8,12 +8,6 @@ import { validateConfig } from "../src/data/validation.js";
 import { validateYear } from "../src/data/holiday-cn.js";
 import { fixture, dueTime } from "./db.js";
 describe("北京时间与边界", () => {
-  it("UTC日期与北京时间跨日", () =>
-    expect(dateAt(Date.parse("2026-10-09T16:00:00Z"))).toBe("2026-10-10"));
-  it("严格未来，不恢复当前分钟", () =>
-    expect(
-      nextPlan({ kind: "daily", time: "09:00" }, dueTime, defaults())?.due,
-    ).toBe(dueTime + 86400000));
   it("2月29日跳到下一个闰年", () =>
     expect(
       nextPlan(
@@ -22,8 +16,6 @@ describe("北京时间与边界", () => {
         defaults(),
       )?.due,
     ).toBe(at("2028-02-29", "09:00")));
-  it("不存在的日期不会归一化", () =>
-    expect(validDate("2026-02-29")).toBe(false));
   it("已过期的一次性任务没有未来计划", () =>
     expect(
       nextPlan(

@@ -1,4 +1,4 @@
-import { it, expect } from "vitest";
+import { it, expect, vi } from "vitest";
 import { chromium, type Browser } from "playwright-core";
 import { createServer } from "node:http";
 import { once } from "node:events";
@@ -289,8 +289,54 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       expect(
         JSON.parse(await readFile((await file.path())!, "utf8")).config.tasks,
       ).toHaveLength(1);
+      let sourceFailure = false;
+      vi.stubGlobal("fetch", async (url: string) => {
+        if (sourceFailure && url.includes("2026.json"))
+          return new Response(null, { status: 503 });
+        const year = Number(url.match(/(\d{4})(?:\.json)?$/)![1]);
+        return Response.json(
+          url.includes("uapis.cn")
+            ? festivalResponse(year)
+            : {
+                year,
+                papers: [],
+                days:
+                  year === 2027
+                    ? [
+                        { name: "元旦", date: "2027-01-01", isOffDay: true },
+                        { name: "元旦", date: "2027-01-02", isOffDay: true },
+                        { name: "元旦", date: "2027-01-03", isOffDay: true },
+                      ]
+                    : [],
+              },
+        );
+      });
+      await frame.locator('[data-action="page"][data-id="holidays"]').click();
+      await idle();
+      await frame.locator('[data-action="sync"]').click();
+      await idle();
+      expect(await frame.locator("#status").innerText()).toContain(
+        "2027 放假安排：已更新",
+      );
+      expect(await frame.locator("#app").innerText()).toContain(
+        "2027-01-01 至 2027-01-03",
+      );
+      expect(
+        await frame
+          .locator(
+            '[data-action="edit-festival"][data-id="festival-2027-newyear"]',
+          )
+          .count(),
+      ).toBe(0);
+      sourceFailure = true;
+      await frame.locator('[data-action="sync"]').click();
+      await idle();
+      expect(await frame.locator("#status.error").innerText()).toContain(
+        "HTTP_503",
+      );
       expect(scriptErrors).toEqual([]);
     } finally {
+      vi.unstubAllGlobals();
       await browser?.close();
       server.close();
       await once(server, "close");
