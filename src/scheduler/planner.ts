@@ -1,5 +1,4 @@
-import type { Config, Plan, Schedule } from "../types.js";
-import { packEvents, activeHolidays } from "./events.js";
+import type { Plan, Schedule } from "../types.js";
 export const DAY = 86_400_000;
 export const dateAt = (ms: number) =>
   new Date(ms + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -16,61 +15,18 @@ export const at = (date: string, time: string) =>
   Date.parse(`${date}T${time}:00+08:00`);
 export const addDays = (date: string, days: number) =>
   new Date(Date.parse(date) + days * DAY).toISOString().slice(0, 10);
-export function nextPlan(
-  s: Schedule,
-  after: number,
-  config: Config,
-  handled: ReadonlySet<string> = new Set(),
-): Plan | null {
-  if (s.kind === "holiday_event") {
-    const entries =
-      s.eventKind === "festival"
-        ? config.festivals.map((f) => ({
-            id: f.id,
-            start: f.date,
-            festivalIds: [] as string[],
-          }))
-        : activeHolidays(config).filter((h) => h.kind === s.eventKind);
-    const candidates = entries
-      .map((h) => {
-        const keys = [h.id, ...(h.festivalIds ?? [])].map(
-          (id) => `${id}:${s.offset ?? 0}`,
-        );
-        return { due: at(addDays(h.start, -(s.offset ?? 0)), s.time), keys };
-      })
-      .filter((p) => p.due > after && !p.keys.some((key) => handled.has(key)))
-      .sort((a, b) => a.due - b.due || a.keys[0]!.localeCompare(b.keys[0]!));
-    const first = candidates[0];
-    return first
-      ? {
-          due: first.due,
-          eventKey: packEvents(
-            candidates
-              .filter((p) => p.due === first.due)
-              .flatMap((p) => p.keys),
-          ),
-        }
-      : null;
-  }
+export function nextPlan(s: Schedule, after: number): Plan | null {
   if (s.kind === "once") {
-    const due = at(s.date!, s.time);
-    return due > after ? { due, eventKey: null } : null;
-  }
-  if (s.kind === "yearly") {
-    for (let y = +dateAt(after).slice(0, 4); y <= 2199; y++) {
-      const d = `${y}-${s.monthDay}`;
-      if (validDate(d) && at(d, s.time) > after)
-        return { due: at(d, s.time), eventKey: null };
-    }
-    return null;
+    const due = at(s.date, s.time);
+    return due > after ? { due } : null;
   }
   for (let i = 0; i < 8; i++) {
     const date = addDays(dateAt(after), i),
       due = at(date, s.time),
       weekday = new Date(date).getUTCDay() || 7;
     if (!validDate(date)) return null;
-    if (due > after && (s.kind === "daily" || s.weekdays!.includes(weekday)))
-      return { due, eventKey: null };
+    if (due > after && (s.kind === "daily" || s.weekdays.includes(weekday)))
+      return { due };
   }
   return null;
 }

@@ -14,9 +14,9 @@ import {
   restoreBackup,
   verifyBackup,
 } from "./data/backup.js";
-import { importHolidays } from "./data/importer.js";
-import { hasCalendar } from "./data/calendar.js";
-import { maintenance } from "./data/holiday-cn.js";
+import { importHolidays } from "./modules/holiday/importer.js";
+import { hasCalendar } from "./modules/holiday/calendar.js";
+import { maintenance } from "./data/maintenance.js";
 import {
   defaultReplies,
   replyVariables,
@@ -30,7 +30,7 @@ import { renderMessage } from "./content/renderer.js";
 import { jsonRows, jx } from "./data/sql.js";
 import { finishMany } from "./data/deliveries.js";
 import { resultStatus } from "./scheduler/result.js";
-import { supplementalFestivals } from "./scheduler/events.js";
+import { VARIABLES } from "./content/templates.js";
 import { at, validDate, dateAt } from "./scheduler/planner.js";
 async function body(
   request: Request,
@@ -104,13 +104,17 @@ export async function api({
             ]),
           ),
           currentBotId: ctx.botId,
-          supplementalFestivalIds: supplementalFestivals(s.config).map(
-            (f) => f.id,
-          ),
-          sources: raw.map(({ data, ...source }) => ({
-            ...source,
-            hasData: source.kind === "festival" ? !!data : hasCalendar(data),
-          })),
+          variables: VARIABLES,
+          sources: [0, 1].map((offset) => {
+            const year = +dateAt(Date.now()).slice(0, 4) + offset;
+            const source = raw.find((s) => s.year === year);
+            return {
+              year,
+              updated_at: source?.updated_at ?? 0,
+              error: source?.error ?? null,
+              hasData: source ? hasCalendar(source.data) : false,
+            };
+          }),
           cursors,
           jobs,
           limits: LIMITS,
@@ -171,19 +175,12 @@ export async function api({
         const old = s.config.holidays.find((x) => x.id === h.id);
         if (
           old &&
-          /^holiday-cn:/.test(old.source) &&
-          JSON.stringify(h) !== JSON.stringify(old)
-        )
-          h.manual = true;
-      }
-      for (const f of c.festivals) {
-        const old = s.config.festivals.find((x) => x.id === f.id);
-        if (
-          old &&
           old.source === "uapi" &&
-          JSON.stringify(f) !== JSON.stringify(old)
-        )
-          f.manual = true;
+          JSON.stringify(h) !== JSON.stringify(old)
+        ) {
+          h.manual = true;
+          h.source = "manual";
+        }
       }
       for (const r of c.recipients) {
         const old = s.config.recipients.find((x) => x.id === r.id);
@@ -229,15 +226,22 @@ export async function api({
         b = c.bindings.find(
           (b) => b.taskId === data.taskId && b.recipientId === data.recipientId,
         );
-      if (!t || !b) throw new Error("请选择任务及其绑定目标");
+      if (!t || (action === "test" && !b))
+        throw new Error("请选择任务及其绑定目标");
       const when = data.dueAt === undefined ? Date.now() : Number(data.dueAt);
       if (!Number.isFinite(when) || !validDate(dateAt(when)))
         throw new Error("预览时间错误");
-      const rendered = await renderMessage(t, b, c, when, raw);
+      const rendered = await renderMessage(
+        t,
+        b ?? { overrideText: null },
+        c,
+        when,
+        raw,
+      );
       if (action === "preview") return Response.json(rendered);
       if (data.config || s.config.paused || s.botId !== ctx.botId)
         throw new Error("测试需要已保存的配置且未暂停");
-      const r = c.recipients.find((r) => r.id === b.recipientId)!;
+      const r = c.recipients.find((r) => r.id === b!.recipientId)!;
       if (r.botId !== ctx.botId) throw new Error("不能向其他机器人的目标发送");
       if (!rendered.text) throw new Error("测试内容为空");
       // One-time request ID prevents a double click from sending twice.
@@ -266,8 +270,9 @@ export async function api({
           status: string;
           error: string | null;
           message_id: string | null;
+          details: string | null;
         }>(
-          "SELECT task_id,recipient_id,status,error,message_id FROM {deliveries} WHERE key=?",
+          "SELECT task_id,recipient_id,status,error,message_id,details FROM {deliveries} WHERE key=?",
           key,
         );
         if (!prior || prior.task_id !== t.id || prior.recipient_id !== r.id)
@@ -278,6 +283,9 @@ export async function api({
           error: prior.error,
           messageId: prior.message_id,
           duplicate: true,
+          text: prior.details
+            ? (JSON.parse(prior.details) as { text?: string }).text
+            : undefined,
         });
       }
       const fresh = await snapshot(ctx.db);
@@ -291,7 +299,7 @@ export async function api({
       try {
         const result = await ctx.api.sendMessage(
           { scene: r.scene, id: r.openid },
-          message(rendered.text, rendered.format),
+          message(rendered.text),
         );
         await finishMany(ctx.db, [
           {
@@ -301,7 +309,6 @@ export async function api({
               task_id: t.id,
               recipient_id: r.id,
               due_at: now,
-              event_key: null,
               revision: s.revision,
               status: "sending",
               claimed_at: now,
@@ -316,6 +323,7 @@ export async function api({
           status: resultStatus(result).status,
           error: result.error,
           messageId: result.messageId,
+          text: rendered.text,
         });
       } catch (e) {
         await ctx.db.run(

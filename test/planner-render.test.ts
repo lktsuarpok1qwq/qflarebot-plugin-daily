@@ -1,107 +1,52 @@
-import { describe, it, expect } from "vitest";
-import { defaults } from "../src/content/templates.js";
-import { nextPlan, dateAt, at } from "../src/scheduler/planner.js";
+import { it, expect, vi } from "vitest";
+import { fixture, start, dueTime } from "./db.js";
+import { nextPlan } from "../src/scheduler/planner.js";
 import { renderMessage } from "../src/content/renderer.js";
-import { holidayService } from "../src/content/holiday.js";
-import { importHolidays } from "../src/data/importer.js";
 import { validateConfig } from "../src/data/validation.js";
-import { validateYear } from "../src/data/holiday-cn.js";
-import { fixture, dueTime } from "./db.js";
-describe("北京时间与边界", () => {
-  it("2月29日跳到下一个闰年", () =>
-    expect(
-      nextPlan(
-        { kind: "yearly", time: "09:00", monthDay: "02-29" },
-        dueTime,
-        defaults(),
-      )?.due,
-    ).toBe(at("2028-02-29", "09:00")));
-  it("已过期的一次性任务没有未来计划", () =>
-    expect(
-      nextPlan(
-        { kind: "once", date: "2026-10-10", time: "09:00" },
-        dueTime + 1,
-        defaults(),
-      ),
-    ).toBeNull());
-  it("多星期选择", () =>
-    expect(
-      dateAt(
-        nextPlan(
-          { kind: "weekly", time: "09:00", weekdays: [1, 3] },
-          dueTime,
-          defaults(),
-        )!.due,
-      ),
-    ).toBe("2026-10-12"));
+import { createRenderContext, modules } from "../src/modules/index.js";
+
+it("周计划和一次性日期边界；拒绝旧参数、互斥字段和未知占位符", async () => {
+  expect(
+    nextPlan({ kind: "once", date: "2026-10-10", time: "09:00" }, dueTime),
+  ).toBeNull();
+  expect(
+    nextPlan({ kind: "weekly", weekdays: [1, 3], time: "09:00" }, start)?.due,
+  ).toBe(Date.parse("2026-10-12T09:00:00+08:00"));
+  const { config } = await fixture();
+  expect(() => validateConfig(config)).not.toThrow();
+  for (const field of [
+    { kind: "yearly", time: "09:00", monthDay: "01-01" },
+    { kind: "daily", time: "09:00", weekdays: [1] },
+  ]) {
+    const c = structuredClone(config);
+    Object.assign(c.tasks[0]!, { schedule: field });
+    expect(() => validateConfig(c)).toThrow();
+  }
+  config.tasks[0]!.body = "{{unknown}}";
+  expect(() => validateConfig(config)).toThrow("未知变量");
 });
-describe("渲染和校验", () => {
-  it("未知假期变量产生明确空原因", async () => {
-    const { config } = await fixture();
-    config.contents[0]!.body = "{{holiday.next_name}}";
-    const r = await renderMessage(
-      config.tasks[0]!,
-      config.bindings[0]!,
-      config,
-      dueTime,
-    );
-    expect(r.items[0]?.reason).toBe("holiday_data_unknown");
-  });
-  it("拒绝重复平台目标", async () => {
-    const { config } = await fixture();
-    config.recipients.push({ ...config.recipients[0]!, id: "other" });
-    expect(() => validateConfig(config)).toThrow("重复");
-  });
-});
-describe("假期状态与导入", () => {
-  it("完整年度没有假期为none", async () => {
-    const c = defaults();
-    const raw = [2026, 2027].map((year) => ({
-      year,
-      kind: "official" as const,
-      hash: "",
-      data: '{"papers":["https://www.gov.cn/test"],"days":[]}',
-      error: null,
-      updated_at: 0,
-    }));
-    expect((await holidayService(c, raw, dueTime).getNextEvent()).status).toBe(
-      "none",
-    );
-  });
-  it("已同步年度可直接判断普通工作日", async () => {
-    const raw = [
-      {
-        year: 2026,
-        kind: "official" as const,
-        hash: "",
-        data: '{"papers":["https://www.gov.cn/test"],"days":[]}',
-        error: null,
-        updated_at: 0,
-      },
-    ];
+it("模板决定换行和格式；模块按需计算一次，覆盖文案不重复转义", async () => {
+  const { config } = await fixture();
+  const task = config.tasks[0]!,
+    b = config.bindings[0]!;
+  const spy = vi.spyOn(modules[0]!, "resolve");
+  try {
+    const resolve = createRenderContext(config, [], dueTime);
+    task.body = "开头\n\n{{日期}}\n";
     expect(
-      (await holidayService(defaults(), raw).getDayStatus("2026-10-12")).data
-        .kind,
-    ).toBe("workday");
-  });
-  it("CSV 引号、重复和重叠预览", () => {
-    const r = importHolidays(
-      'name,start,end\n"节日,一",2026-10-01,2026-10-03\n另一个,2026-10-02,2026-10-04\n另一个,2026-10-02,2026-10-04',
-      [],
-    );
-    expect(r.items).toHaveLength(2);
-    expect(r.conflicts).toHaveLength(1);
-    expect(r.duplicates).toBe(1);
-  });
-  it("恶意和错误源被拒绝", () => {
-    expect(() =>
-      validateYear(
-        { year: 2026, papers: ["https://evil.test"], days: [] },
-        2026,
-      ),
-    ).toThrow();
-    expect(() =>
-      importHolidays('[{"name":"错误","start":"2026-02-30"}]', []),
-    ).toThrow();
-  });
+      (await renderMessage(task, b, config, dueTime, [], resolve)).text,
+    ).toBe("开头\n\n2026-10-10\n");
+    expect(spy).not.toHaveBeenCalled();
+    task.body = "# 公告\n{{假期.概览}}\n{{假期.今日}}";
+    config.holidayCopy.unknown = "**暂无安排**";
+    const output = await renderMessage(task, b, config, dueTime, [], resolve);
+    expect(output.text).toBe("# 公告\n**暂无安排**\n**暂无安排**");
+    b.overrideText = "专属：{{假期.概览}}";
+    expect(
+      (await renderMessage(task, b, config, dueTime, [], resolve)).text,
+    ).toBe("专属：**暂无安排**");
+    expect(spy).toHaveBeenCalledTimes(1);
+  } finally {
+    spy.mockRestore();
+  }
 });

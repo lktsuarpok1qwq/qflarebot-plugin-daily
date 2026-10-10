@@ -19,7 +19,6 @@ export const HTML = `<!doctype html>
   <dialog id="decision" aria-labelledby="decisionTitle">
     <h2 id="decisionTitle">确认操作</h2><p id="decisionText"></p>
     <textarea id="decisionValue" aria-label="覆盖文本" hidden></textarea>
-    <label id="decisionFormatLabel" hidden>消息格式<select id="decisionFormat"><option value="plain">纯文本</option><option value="markdown">Markdown</option></select></label>
     <div class="actions"><button id="decisionCancel">取消</button><button id="decisionAccept" class="primary">确定</button></div>
   </dialog>
   <script type="module">${client}  </script>

@@ -24,11 +24,10 @@ it("并发重复Cron，每个目标只发一次", async () => {
   ]);
   expect((await due(e.db, dueTime + 5000)).length).toBe(0);
 });
-it("空汇总即使有标题也不发送，逐目标保存详细原因", async () => {
+it("空白消息不发送，逐目标记录跳过", async () => {
   const e = await fixture(2),
     s = await snapshot(e.db);
-  s.config.contents[0]!.enabled = false;
-  s.config.tasks[0]!.title = "日报";
+  s.config.tasks[0]!.body = " \n  ";
   await saveConfig(e.ctx, s, s.config, start + 1000);
   await dispatch(e.ctx, () => dueTime + 1000);
   const logs = await e.db.all<{ status: string; details: string }>(
@@ -37,10 +36,7 @@ it("空汇总即使有标题也不发送，逐目标保存详细原因", async (
   expect(logs).toHaveLength(2);
   expect(
     logs.every(
-      (x) =>
-        x.status === "skipped_empty" &&
-        JSON.parse(x.details).text === "" &&
-        JSON.parse(x.details).items[0].reason === "disabled",
+      (x) => x.status === "skipped_empty" && JSON.parse(x.details).text === "",
     ),
   ).toBe(true);
   expect(e.send).not.toHaveBeenCalled();
@@ -102,7 +98,7 @@ it("编辑正文不会为已发送窗口产生新身份", async () => {
   const e = await fixture();
   await dispatch(e.ctx, () => dueTime + 1000);
   const s = await snapshot(e.db);
-  s.config.contents[0]!.body = "修改";
+  s.config.tasks[0]!.body = "修改";
   await saveConfig(e.ctx, s, s.config, dueTime + 2000);
   await dispatch(e.ctx, () => dueTime + 3000);
   expect(e.send).toHaveBeenCalledTimes(1);
@@ -154,35 +150,4 @@ it("后台测试中断记录也能收敛，不阻塞恢复", async () => {
       )
     )?.status,
   ).toBe("uncertain");
-});
-it("假期已发送后改日期、清理详细日志都不能重发事件", async () => {
-  const e = await fixture(),
-    s = await snapshot(e.db),
-    c = structuredClone(s.config);
-  c.holidays = [
-    {
-      id: "holiday",
-      name: "假期",
-      start: "2026-10-10",
-      end: "2026-10-10",
-      kind: "holiday",
-      source: "https://www.gov.cn/test",
-    },
-  ];
-  c.tasks[0]!.schedule = {
-    kind: "holiday_event",
-    eventKind: "holiday",
-    offset: 0,
-    time: "09:00",
-  };
-  await saveConfig(e.ctx, s, c, start);
-  await dispatch(e.ctx, () => dueTime + 1000);
-  await e.db.run("DELETE FROM {deliveries}");
-  const current = await snapshot(e.db),
-    edited = structuredClone(current.config);
-  edited.holidays[0]!.start = "2026-10-11";
-  edited.holidays[0]!.end = "2026-10-11";
-  await saveConfig(e.ctx, current, edited, dueTime + 2000);
-  await dispatch(e.ctx, () => dueTime + 86400000 + 1000);
-  expect(e.send).toHaveBeenCalledTimes(1);
 });

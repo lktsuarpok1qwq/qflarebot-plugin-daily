@@ -1,17 +1,8 @@
 import type { Config } from "../types.js";
+import { COPY } from "../copy.js";
 import { defaultReplies } from "./command-templates.js";
-export const VARIABLES = [
-  "date.today",
-  "date.weekday",
-  "holiday.next_name",
-  "holiday.days_until",
-  "holiday.start_date",
-  "holiday.end_date",
-  "holiday.days_off",
-  "festival.name",
-  "festival.date",
-  "festival.days_until",
-] as const;
+import { moduleVariables } from "../modules/index.js";
+export const VARIABLES = ["日期", "星期", ...moduleVariables] as const;
 export function validateTemplate(
   body: string,
   keys: readonly string[] = VARIABLES,
@@ -25,29 +16,24 @@ export function validateTemplate(
   if (rest.includes("{{") || rest.includes("}}"))
     throw new Error("变量格式错误");
 }
-export function expand(
-  body: string,
-  values: Record<string, string>,
-  markdown = false,
-) {
-  return body.replace(/\{\{([^{}]+)\}\}/g, (_, key: string) => {
-    const value = values[key] ?? "";
-    return markdown
-      ? value.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, "\\$1")
-      : value;
-  });
-}
 export function defaults(): Config {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     paused: false,
     retentionDays: 30,
-    contents: [],
-    tasks: [],
+    tasks: [
+      {
+        id: "daily-announcement",
+        ...COPY.announcement,
+        enabled: false,
+        origin: "system",
+        schedule: { kind: "daily", time: "09:00" },
+      },
+    ],
     recipients: [],
     bindings: [],
     holidays: [],
+    holidayCopy: structuredClone(COPY.holiday),
     replies: defaultReplies(),
-    festivals: [],
   };
 }

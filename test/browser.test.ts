@@ -5,8 +5,8 @@ import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { fixture, festivalResponse } from "./db.js";
-import { syncFestivals } from "../src/data/festivals.js";
+import { fixture, holidayResponse } from "./db.js";
+import { syncYear } from "../src/modules/holiday/sync.js";
 import { HTML } from "../src/ui.js";
 import { api } from "../src/admin.js";
 import { exportBackup } from "../src/data/backup.js";
@@ -15,8 +15,8 @@ it.skipIf(!process.env.DAILY_BROWSER)(
   "真实 QFlareBot Bridge + sandbox/CSP：编辑、主题、确认、重试、备份恢复",
   async () => {
     const e = await fixture();
-    await syncFestivals(e.ctx, 2027, async () =>
-      Response.json(festivalResponse(2027)),
+    await syncYear(e.ctx, 2027, async () =>
+      Response.json(holidayResponse(2027)),
     );
     const saved = await exportBackup(e.ctx);
     const root = new URL("../../QFlareBot/", import.meta.url);
@@ -138,6 +138,7 @@ it.skipIf(!process.env.DAILY_BROWSER)(
         headless: true,
       });
       const page = await browser.newPage({ colorScheme: "light" });
+      page.setDefaultTimeout(5000);
       const scriptErrors: string[] = [];
       page.on("pageerror", (error) => scriptErrors.push(error.message));
       await page.addInitScript(() => {
@@ -163,10 +164,32 @@ it.skipIf(!process.env.DAILY_BROWSER)(
           .locator("body")
           .evaluate((el) => getComputedStyle(el).backgroundColor),
       ).toBe("rgb(11, 15, 13)");
+      await frame.locator('[data-action="edit-task"]').click();
+      await idle();
+      expect(await frame.locator("#weeklyFields").isVisible()).toBe(false);
+      expect(await frame.locator("#onceFields").isVisible()).toBe(false);
+      expect(
+        await frame
+          .locator("#taskFormat,#taskMode,#offset,#separator,#taskTitle")
+          .count(),
+      ).toBe(0);
+      await frame.locator("#kind").selectOption("weekly");
+      expect(await frame.locator("#weeklyFields").isVisible()).toBe(true);
+      expect(await frame.locator("#onceFields").isVisible()).toBe(false);
+      await frame.locator("#kind").selectOption("once");
+      expect(await frame.locator("#weeklyFields").isVisible()).toBe(false);
+      expect(await frame.locator("#onceFields").isVisible()).toBe(true);
+      await frame.locator("#kind").selectOption("daily");
+      await frame.locator("#taskBody").fill("# 公告\n{{日期}}\n{{假期.概览}}");
+      await frame.locator('[data-action="preview-task"]').click();
+      await idle();
+      expect(await frame.locator("#taskPreview").innerText()).toContain("元旦");
+      await frame.locator('[data-action="save-task"]').click();
+      await idle();
+      expect(await frame.locator("#status").innerText()).toBe("已保存");
       await frame.locator('[data-action="edit-override"]').click();
       await frame.locator("#decision[open]").waitFor();
-      await frame.locator("#decisionValue").fill("**沙箱中的** {{date.today}}");
-      await frame.locator("#decisionFormat").selectOption("markdown");
+      await frame.locator("#decisionValue").fill("**沙箱中的** {{日期}}");
       await frame.locator("#decisionAccept").click();
       await idle();
       await frame.locator('[data-action="preview"]').click();
@@ -180,18 +203,26 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       expect(await frame.locator("#messagePreview").innerText()).not.toContain(
         "\\",
       );
+      await frame.locator('[data-action="test-task"]').click();
+      await idle();
+      await frame.locator("#testRecipient").selectOption("r0");
       for (let i = 0; i < 2; i++) {
-        await frame.locator('[data-action="test"]').click();
+        await frame.locator('[data-action="send-task-test"]').click();
         expect(await frame.locator("#decision[open]").count()).toBe(0);
         await idle();
       }
       expect(e.send).toHaveBeenCalledTimes(1);
-      expect(await frame.locator("#previewResult").textContent()).toContain(
+      expect(await frame.locator("#testResult").textContent()).toContain(
         "duplicate",
       );
-      await frame.locator('[data-action="page"][data-id="contents"]').click();
+      expect(await frame.locator("#testResult").textContent()).toContain(
+        "发送成功",
+      );
+      expect(await frame.locator("#testMessage strong").innerText()).toBe(
+        "沙箱中的",
+      );
+      await frame.locator('[data-action="page"][data-id="replies"]').click();
       await idle();
-      await frame.locator("#replyFormat").selectOption("markdown");
       const rich =
         '# 自定义帮助\n**内容**\n<img src=x onerror="window.previewExecuted=true">\n[坏链接](javascript:alert(1))';
       await frame.locator("#reply-body").fill(rich);
@@ -223,18 +254,17 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       );
       await frame.locator("#commandName").selectOption("每日");
       expect(await frame.locator("#reply-body").inputValue()).toBe(rich);
-      expect(await frame.locator("#replyFormat").inputValue()).toBe("markdown");
       await frame.locator('[data-action="reset-reply"]').click();
       await idle();
-      expect(await frame.locator("#replyFormat").inputValue()).toBe("plain");
+      expect(await frame.locator("#replyFormat").count()).toBe(0);
       await frame.locator('[data-action="page"][data-id="holidays"]').click();
       await idle();
       expect(await frame.locator("#app").innerText()).not.toMatch(
         /地区|中国|核验/,
       );
-      await frame.locator('[data-action="edit-festival"]').first().click();
-      await frame.locator("#festivalDate").fill("2027-01-02");
-      await frame.locator('[data-action="save-festival"]').click();
+      await frame.locator('[data-action="edit-holiday"]').first().click();
+      await frame.locator("#holidayStart").fill("2027-01-02");
+      await frame.locator('[data-action="save-holiday"]').click();
       await idle();
       expect(await frame.locator("#app").innerText()).toContain("2027-01-02");
       await frame.locator('[data-action="new-holiday"]').click();
@@ -250,6 +280,7 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       await frame.locator('[data-action="preview-import"]').click();
       await idle();
       await frame.locator('[data-action="apply-import"]').click();
+      await frame.locator("#decisionAccept").click();
       await idle();
       expect(await frame.locator("#app").innerText()).toContain("导入假期");
       await frame.locator('[data-action="page"][data-id="tasks"]').click();
@@ -291,43 +322,24 @@ it.skipIf(!process.env.DAILY_BROWSER)(
       ).toHaveLength(1);
       let sourceFailure = false;
       vi.stubGlobal("fetch", async (url: string) => {
-        if (sourceFailure && url.includes("2026.json"))
+        const year = Number(new URL(url).searchParams.get("year"));
+        if (sourceFailure && year === 2026)
           return new Response(null, { status: 503 });
-        const year = Number(url.match(/(\d{4})(?:\.json)?$/)![1]);
-        return Response.json(
-          url.includes("uapis.cn")
-            ? festivalResponse(year)
-            : {
-                year,
-                papers: [],
-                days:
-                  year === 2027
-                    ? [
-                        { name: "元旦", date: "2027-01-01", isOffDay: true },
-                        { name: "元旦", date: "2027-01-02", isOffDay: true },
-                        { name: "元旦", date: "2027-01-03", isOffDay: true },
-                      ]
-                    : [],
-              },
-        );
+        return Response.json(holidayResponse(year));
       });
       await frame.locator('[data-action="page"][data-id="holidays"]').click();
       await idle();
       await frame.locator('[data-action="sync"]').click();
       await idle();
       expect(await frame.locator("#status").innerText()).toContain(
-        "2027 放假安排：已更新",
+        "2027 放假与调休：已有最新数据",
       );
       expect(await frame.locator("#app").innerText()).toContain(
         "2027-01-01 至 2027-01-03",
       );
-      expect(
-        await frame
-          .locator(
-            '[data-action="edit-festival"][data-id="festival-2027-newyear"]',
-          )
-          .count(),
-      ).toBe(0);
+      expect(await frame.locator("#app").innerText()).not.toContain(
+        "节日日期补充",
+      );
       sourceFailure = true;
       await frame.locator('[data-action="sync"]').click();
       await idle();

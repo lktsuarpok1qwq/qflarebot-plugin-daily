@@ -31,7 +31,7 @@ it("宿主安装构建不依赖插件本地 node_modules，清单与产物自包
     expect(result.manifest.apiVersion).toBe(2);
     expect(result.manifest.routes.every((r) => r.auth === "admin")).toBe(true);
     expect(result.manifest.cron.find((c) => c.name === "sync")?.cron).toBe(
-      "10,11,12,13 19 * * *",
+      "10,11 19 * * *",
     );
     const bundle = await readFile(result.outFile, "utf8");
     expect(bundle).not.toContain("node:sqlite");
@@ -43,7 +43,9 @@ it("宿主安装构建不依赖插件本地 node_modules，清单与产物自包
     const help = await runCommand(deployed, "每日", "", {
       ctx: { db: e.db, botId: "bot" },
     });
-    expect(help.replies).toEqual([{ text: COPY.replies.每日.body }]);
+    expect(help.replies).toEqual([
+      { markdown: { content: COPY.replies.每日.body } },
+    ]);
     const stateRoute = deployed.routes.find(
       (r: { method: string; path: string }) =>
         r.method === "GET" && r.path === "/api/:action",

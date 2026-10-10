@@ -205,7 +205,13 @@ dialog textarea {
   min-height: 130px;
   margin: 12px 0;
 }
-.message-preview { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--qb-border); border-radius: 8px; }
+.message-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border: 1px solid var(--qb-border);
+  border-radius: 8px;
+}
 [hidden] {
   display: none !important;
 }

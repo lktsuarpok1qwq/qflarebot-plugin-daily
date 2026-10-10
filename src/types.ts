@@ -1,13 +1,11 @@
+import type { Holiday, HolidayCopy } from "./modules/holiday/types.js";
+export type { Holiday, HolidayCopy, Source } from "./modules/holiday/types.js";
 import type { PluginContext } from "@qqbot/sdk";
-export type MessageFormat = "plain" | "markdown";
 export type CommandName =
   "每日" | "每日 帮助" | "假期" | "假期 帮助" | "假期 下一个" | "假期 剩余";
 export type CommandReply = {
-  format: MessageFormat;
   body: string;
-  official: string;
-  provisional: string;
-  separator: string;
+  item: string;
   empty: string;
   unknown: string;
   stale: string;
@@ -16,44 +14,19 @@ export type CommandReply = {
   error: string;
   tooLong: string;
 };
-export type Festival = {
-  id: string;
-  key: string;
-  name: string;
-  date: string;
-  source: string;
-  manual?: boolean;
-};
 export type Ctx = PluginContext;
 export type Scene = "group" | "c2c";
-export type Schedule = {
-  kind: "daily" | "weekly" | "once" | "yearly" | "holiday_event";
-  time: string;
-  weekdays?: number[];
-  date?: string;
-  monthDay?: string;
-  eventKind?: "holiday" | "makeup" | "festival";
-  offset?: number;
-};
-export type Content = {
-  id: string;
-  name: string;
-  enabled: boolean;
-  kind: "text" | "date" | "holiday";
-  body: string;
-  referenceBody?: string;
-  only?: "always" | "holiday" | "makeup";
-};
+export type Schedule =
+  | { kind: "daily"; time: string }
+  | { kind: "weekly"; time: string; weekdays: number[] }
+  | { kind: "once"; time: string; date: string };
 export type Task = {
   id: string;
   name: string;
   enabled: boolean;
-  mode: "standalone" | "digest";
-  format: MessageFormat;
+  origin: "system" | "manual";
   schedule: Schedule;
-  contentIds: string[];
-  title: string;
-  separator: string;
+  body: string;
 };
 export type Recipient = {
   id: string;
@@ -68,41 +41,26 @@ export type Binding = {
   recipientId: string;
   enabled: boolean;
   overrideText: string | null;
-  overrideFormat: MessageFormat;
-};
-export type Holiday = {
-  id: string;
-  name: string;
-  start: string;
-  end: string;
-  kind: "holiday" | "makeup";
-  source: string;
-  manual?: boolean;
-  sourceHash?: string;
-  batchId?: string;
-  festivalIds?: string[];
 };
 export type Config = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   paused: boolean;
   retentionDays: number;
-  contents: Content[];
   tasks: Task[];
   recipients: Recipient[];
   bindings: Binding[];
   holidays: Holiday[];
+  holidayCopy: HolidayCopy;
   replies: Record<CommandName, CommandReply>;
-  festivals: Festival[];
 };
 export type Snapshot = { revision: number; botId: string; config: Config };
-export type Plan = { due: number; eventKey: string | null };
+export type Plan = { due: number };
 export type Due = {
   key?: string | null;
   id: string;
   task_id: string;
   recipient_id: string;
   due_at: number;
-  event_key: string | null;
   revision: number;
   status: string | null;
   claimed_at: number | null;
@@ -116,27 +74,14 @@ export type DeliveryStatus =
   | "skipped_empty"
   | "skipped_expired"
   | "skipped_disabled"
-  | "skipped_duplicate"
   | "skipped_budget";
 export type Rendered = {
-  format: MessageFormat;
   text: string;
-  items: { contentId: string; reason: string }[];
-};
-export type SourceKind = "official" | "festival";
-export type Source = {
-  kind: SourceKind;
-  year: number;
-  hash: string;
-  data: string;
-  error: string | null;
-  updated_at: number;
 };
 export const LIMITS = {
   tasks: 20,
   recipients: 50,
   bindings: 100,
-  contents: 60,
   holidays: 600,
   bodyBytes: 256_000,
   backupBytes: 8_000_000,

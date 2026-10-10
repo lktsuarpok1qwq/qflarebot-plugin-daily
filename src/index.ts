@@ -1,14 +1,14 @@
 import { definePlugin } from "@qqbot/sdk";
 import { install } from "./data/repository.js";
 import { dispatch } from "./scheduler/dispatcher.js";
-import { maintenance } from "./data/holiday-cn.js";
+import { maintenance } from "./data/maintenance.js";
 import { command } from "./commands.js";
 import { api } from "./admin.js";
 import { HTML } from "./ui.js";
 export default definePlugin({
   name: "daily",
   displayName: "每日助手",
-  description: "定时文字、每日汇总与假期查询",
+  description: "占位符公告、定时提醒与放假调休查询",
   apiVersion: 2,
   permissions: ["db", "net", "proactive", "admin"],
   hooks: { onInstall: install },
@@ -47,7 +47,7 @@ export default definePlugin({
   cron: {
     send: { cron: "* * * * *", handler: ({ ctx }) => dispatch(ctx) },
     sync: {
-      cron: "10,11,12,13 19 * * *",
+      cron: "10,11 19 * * *",
       handler: async ({ ctx, scheduledAt }) => {
         await maintenance(
           ctx,
@@ -55,7 +55,6 @@ export default definePlugin({
           scheduledAt,
           false,
           ((new Date(scheduledAt).getUTCMinutes() - 10) % 2) as 0 | 1,
-          new Date(scheduledAt).getUTCMinutes() < 12 ? "official" : "festival",
         );
       },
     },

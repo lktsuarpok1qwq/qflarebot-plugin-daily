@@ -1,6 +1,6 @@
 import type { Ctx, DeliveryStatus, Due, Rendered } from "../types.js";
 import { LIMITS } from "../types.js";
-import { progress, readData } from "../data/repository.js";
+import { readData } from "../data/repository.js";
 import {
   claimMany,
   deliveryKey,
@@ -11,9 +11,8 @@ import {
 } from "../data/deliveries.js";
 import { message } from "../content/message.js";
 import { renderMessage } from "../content/renderer.js";
-import { holidayService } from "../content/holiday.js";
+import { createRenderContext } from "../modules/index.js";
 import { nextPlan } from "./planner.js";
-import { eventKeys } from "./events.js";
 import { resultStatus } from "./result.js";
 
 export async function dispatch(ctx: Ctx, clock = Date.now): Promise<void> {
@@ -27,26 +26,19 @@ async function dispatchPass(
 ): Promise<void> {
   const rows = await due(ctx.db, clock());
   if (!rows.length) return;
-  const [{ snapshot: s, sources: raw }, done] = await Promise.all([
-    readData(ctx.db),
-    progress(ctx.db, [
-      ...new Set(rows.filter((d) => d.event_key).map((d) => d.id)),
-    ]),
-  ]);
+  const { snapshot: s, sources: raw } = await readData(ctx.db);
   const tasks = new Map(s.config.tasks.map((t) => [t.id, t]));
   const recipients = new Map(s.config.recipients.map((r) => [r.id, r]));
   const bindings = new Map(
     s.config.bindings.map((b) => [`${b.taskId}:${b.recipientId}`, b]),
   );
-  let service: ReturnType<typeof holidayService> | undefined;
+  const contexts = new Map<number, ReturnType<typeof createRenderContext>>();
   const rendered = new Map<string, Promise<Rendered>>();
   const claims: Claim[] = [],
     texts = new Map<string, Rendered>(),
     outcomes: Outcome[] = [];
   const next = (d: Due) => {
-    const task = tasks.get(d.task_id),
-      handled = new Set(done.get(d.id));
-    for (const key of eventKeys(d.event_key)) handled.add(key);
+    const task = tasks.get(d.task_id);
     return task
       ? nextPlan(
           task.schedule,
@@ -56,22 +48,13 @@ async function dispatchPass(
               ? Math.floor(clock() / 60_000) * 60_000 - 1
               : clock(),
           ),
-          s.config,
-          handled,
         )
       : null;
   };
   let admitted = 0,
-    eventRecoveries = 0,
     started = 0;
   for (const d of rows) {
     if (d.status) {
-      if (
-        d.event_key &&
-        ["sending", "success", "uncertain"].includes(d.status) &&
-        ++eventRecoveries > LIMITS.batch
-      )
-        continue;
       if (
         d.status === "sending" &&
         clock() <
@@ -96,10 +79,6 @@ async function dispatchPass(
     const t = tasks.get(d.task_id),
       r = recipients.get(d.recipient_id),
       b = bindings.get(d.id);
-    if (d.event_key) service ??= holidayService(s.config, raw);
-    const activeEvents = d.event_key
-      ? service!.pendingEvents(eventKeys(d.event_key), done.get(d.id))
-      : [];
     let status: DeliveryStatus = "sending",
       error: string | null = null,
       details: unknown = {};
@@ -116,10 +95,7 @@ async function dispatchPass(
     )
       status = "skipped_disabled";
     else if (clock() >= d.due_at + 60_000) status = "skipped_expired";
-    else if (d.event_key && activeEvents.length === 0) {
-      status = "skipped_duplicate";
-      error = "event_already_handled";
-    } else if (clock() >= d.due_at + 60_000 - LIMITS.reserveMs) {
+    else if (clock() >= d.due_at + 60_000 - LIMITS.reserveMs) {
       status = "skipped_budget";
       error = "sdk_budget_reserve";
     } else if (admitted >= remaining) {
@@ -128,26 +104,21 @@ async function dispatchPass(
       error = "minute_capacity_exceeded";
     } else {
       try {
-        if (activeEvents.some((key) => !service!.hasEvent(key.split(":")[0]!)))
-          throw new Error("假期记录已删除或被人工修改覆盖");
-        const key = JSON.stringify([
-          t.id,
-          d.due_at,
-          b.overrideText,
-          b.overrideFormat,
-          t.format,
-          activeEvents,
-        ]);
+        const key = JSON.stringify([t.id, d.due_at, b.overrideText]);
         let value = rendered.get(key);
         if (!value) {
+          if (!contexts.has(d.due_at))
+            contexts.set(
+              d.due_at,
+              createRenderContext(s.config, raw, d.due_at),
+            );
           value = renderMessage(
             t,
             b,
             s.config,
             d.due_at,
             raw,
-            service,
-            activeEvents,
+            contexts.get(d.due_at),
           );
           rendered.set(key, value);
         }
@@ -167,8 +138,7 @@ async function dispatchPass(
       now: clock(),
       details: {
         ...(details as object),
-        reason:
-          status === "skipped_empty" ? "all_contents_inapplicable" : status,
+        reason: status === "skipped_empty" ? "empty_message" : status,
       },
       error,
     });
@@ -206,10 +176,7 @@ async function dispatchPass(
               resultStatus(
                 await ctx.api.sendMessage(
                   { scene: r.scene, id: r.openid },
-                  message(
-                    texts.get(deliveryKey(d))!.text,
-                    texts.get(deliveryKey(d))!.format,
-                  ),
+                  message(texts.get(deliveryKey(d))!.text),
                 ),
               ),
             );

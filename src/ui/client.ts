@@ -8,10 +8,9 @@ let state,
   imported,
   restoreRevision,
   editingTask,
-  editingContent,
+  testingTask,
   editingRecipient,
   editingHoliday,
-  editingFestival,
   selectedCommand = "每日",
   logsOffset = 0,
   testRequests = new Map(),
@@ -35,7 +34,7 @@ const $ = (id) => document.getElementById(id),
 const pages = {
   tasks: "任务管理",
   recipients: "发送对象",
-  contents: "内容与模板",
+  replies: "命令回复",
   holidays: "假期管理",
   status: "运行状态与备份",
 };
@@ -72,8 +71,6 @@ function decide(message, value) {
   $("decisionText").textContent = message;
   $("decisionTitle").textContent = editing ? "编辑覆盖文本" : "确认操作";
   input.hidden = !editing;
-  $("decisionFormatLabel").hidden = !editing;
-  $("decisionFormat").disabled = false;
   input.value = value ?? "";
   input.disabled = false;
   $("decisionAccept").disabled = false;
@@ -121,6 +118,41 @@ async function load() {
   synchronized = true;
   dirty = false;
   render();
+}
+async function sendTest(taskId, recipientId, previewId, resultId) {
+  if (dirty) throw Error("请先保存文案，再测试发送");
+  const id = taskId + ":" + recipientId;
+  if (!testRequests.has(id)) testRequests.set(id, uid());
+  const box = $(resultId);
+  box.hidden = false;
+  box.textContent = "正在发送…";
+  try {
+    const result = await api("test", {
+      taskId,
+      recipientId,
+      requestId: testRequests.get(id),
+    });
+    if (!["sending", "uncertain"].includes(result.status))
+      testRequests.delete(id);
+    if (result.text !== undefined) showMessage(previewId, result);
+    const label = result.ok
+      ? "发送成功"
+      : result.status === "sending"
+        ? "发送处理中"
+        : result.status === "uncertain"
+          ? "发送结果不确定，请到 QQ 查看"
+          : "发送失败";
+    box.textContent =
+      label +
+      (result.error ? "：" + result.error : "") +
+      "\n\n" +
+      JSON.stringify(result, null, 2);
+    status(label, !result.ok);
+  } catch (error) {
+    box.textContent =
+      "未获得发送结果：" + error.message + "。再次点击将查询同一次测试结果。";
+    throw error;
+  }
 }
 async function save(message = "已保存") {
   if (!synchronized) throw Error("配置状态未确认，请先刷新配置");
@@ -176,11 +208,7 @@ function options(items, selected) {
         '<option value="' +
         esc(x.id) +
         '" ' +
-        ((
-          Array.isArray(selected)
-            ? selected.includes(x.id)
-            : selected === x.id
-        )
+        ((Array.isArray(selected) ? selected.includes(x.id) : selected === x.id)
           ? "selected"
           : "") +
         ">" +
@@ -236,26 +264,6 @@ function table(head, rows) {
   );
 }
 
-function formatField(id, value) {
-  return (
-    '<label>消息格式<select id="' +
-    id +
-    '">' +
-    ["plain", "markdown"]
-      .map(
-        (v) =>
-          '<option value="' +
-          v +
-          '" ' +
-          (value === v ? "selected" : "") +
-          ">" +
-          (v === "plain" ? "纯文本" : "Markdown") +
-          "</option>",
-      )
-      .join("") +
-    "</select></label>"
-  );
-}
 function markdown(text) {
   const inline = (line) => {
     const literals = [];
@@ -301,9 +309,7 @@ function markdown(text) {
           "<blockquote>" + inline(line.replace(/^>\s?/, "")) + "</blockquote>"
         );
       if (/^[-*]\s+/.test(line))
-        return (
-          "<ul><li>" + inline(line.replace(/^[-*]\s+/, "")) + "</li></ul>"
-        );
+        return "<ul><li>" + inline(line.replace(/^[-*]\s+/, "")) + "</li></ul>";
       if (/^\d+\.\s+/.test(line))
         return (
           "<ol><li>" + inline(line.replace(/^\d+\.\s+/, "")) + "</li></ol>"
@@ -315,8 +321,7 @@ function markdown(text) {
 function showMessage(id, result) {
   const el = $(id);
   el.hidden = false;
-  if (result.format === "markdown") el.innerHTML = markdown(result.text);
-  else el.textContent = result.text;
+  el.innerHTML = markdown(result.text);
 }
 const toolbar = (id) =>
   '<div class="actions">' +
@@ -336,9 +341,7 @@ const toolbar = (id) =>
   "</div>";
 const replyLabels = {
   body: "完整回复 / 外层模板",
-  official: "放假安排条目",
-  provisional: "节日日期参考条目",
-  separator: "条目分隔符",
+  item: "放假安排条目",
   empty: "没有剩余记录",
   unknown: "没有可靠数据",
   stale: "旧数据提示",
@@ -348,9 +351,8 @@ const replyLabels = {
   tooLong: "平台返回超限时的提示",
 };
 function captureReply() {
-  if (!$("replyFormat")) return;
+  if (!$("reply-body")) return;
   const reply = config.replies[selectedCommand];
-  reply.format = $("replyFormat").value;
   for (const key of Object.keys(replyLabels))
     if ($("reply-" + key)) reply[key] = $("reply-" + key).value;
 }
@@ -366,7 +368,7 @@ function render() {
       '<div class="notice">全局紧急暂停中。查询、预览和每日维护仍可运行。</div>';
   if (page === "tasks") {
     html +=
-      '<section><h2>发送计划</h2><p class="muted">独立任务选择一项内容；汇总按列表顺序拼接。修改内容后请保存，再执行真实测试；无需先启用任务。</p>' +
+      '<section><h2>发送计划</h2><p class="muted">任务使用 Markdown 文案，通过占位符组合模块信息。先建立任务，再绑定发送对象。</p>' +
       btn("新建任务", "new-task", "", "primary");
     html +=
       table(
@@ -376,9 +378,13 @@ function render() {
             "<tr><td>" +
             esc(t.name) +
             "<br><small>" +
-            esc(t.mode === "digest" ? "每日汇总" : "独立消息") +
+            esc(t.origin === "system" ? "系统自带" : "人工添加") +
             "</small></td><td>" +
-            esc(t.schedule.kind) +
+            esc(
+              { daily: "每日", weekly: "每周", once: "一次性" }[
+                t.schedule.kind
+              ],
+            ) +
             " " +
             esc(t.schedule.time) +
             "</td><td>" +
@@ -398,25 +404,38 @@ function render() {
               : "暂停") +
             "</td><td>" +
             btn("编辑", "edit-task", t.id) +
+            btn("立即测试", "test-task", t.id) +
             btn(t.enabled ? "暂停" : "启用", "toggle-task", t.id) +
             btn("复制", "copy-task", t.id) +
             btn("删除", "delete-task", t.id, "danger") +
             "</td></tr>",
         ),
       ) + "</section>";
+    if (testingTask) {
+      const task = config.tasks.find((t) => t.id === testingTask);
+      const targets = config.bindings
+        .filter((b) => b.taskId === testingTask)
+        .map((b) => config.recipients.find((r) => r.id === b.recipientId))
+        .filter(Boolean);
+      if (task)
+        html +=
+          '<section id="eventTest"><h2>事件测试：' +
+          esc(task.name) +
+          '</h2><p class="muted">立即向选中的对象发送已保存的文案，包含该对象的覆盖内容。无需启用任务，不改变定时计划。</p>' +
+          '<label>测试对象<select id="testRecipient">' +
+          options(targets) +
+          "</select></label>" +
+          btn("发送测试消息", "send-task-test", task.id, "primary") +
+          '<div id="testMessage" class="message-preview" hidden></div><pre id="testResult" role="status" hidden></pre></section>';
+    }
     if (editingTask) {
       const t = editingTask,
         s = t.schedule;
       html +=
         '<section><h2>编辑任务</h2><div class="grid">' +
         field("名称", "taskName", t.name) +
-        formatField("taskFormat", t.format) +
-        '<label>模式<select id="taskMode"><option value="standalone" ' +
-        (t.mode === "standalone" ? "selected" : "") +
-        '>独立</option><option value="digest" ' +
-        (t.mode === "digest" ? "selected" : "") +
-        '>汇总</option></select></label><label>周期<select id="kind">' +
-        ["daily", "weekly", "once", "yearly", "holiday_event"]
+        '<label>重复方式<select id="kind">' +
+        ["daily", "weekly", "once"]
           .map(
             (k, i) =>
               '<option value="' +
@@ -424,56 +443,38 @@ function render() {
               '" ' +
               (s.kind === k ? "selected" : "") +
               ">" +
-              ["每日", "每周", "一次", "每年", "假期事件"][i] +
+              ["每日", "每周", "一次性"][i] +
               "</option>",
           )
           .join("") +
         "</select></label>" +
         field("北京时间", "scheduleTime", s.time, "time") +
+        '<div id="weeklyFields"' +
+        (s.kind === "weekly" ? "" : " hidden") +
+        ">" +
         field(
           "每周星期（1–7，逗号分隔）",
           "weekdays",
           (s.weekdays || [1]).join(","),
         ) +
+        "</div>" +
+        '<div id="onceFields"' +
+        (s.kind === "once" ? "" : " hidden") +
+        ">" +
         field("一次性日期", "onceDate", s.date || "", "date") +
-        field("每年月日（例如 02-29）", "monthDay", s.monthDay || "01-01") +
-        '<label>事件类别<select id="eventKind"><option value="holiday">放假开始</option><option value="makeup" ' +
-        (s.eventKind === "makeup" ? "selected" : "") +
-        '>调休上班日</option><option value="festival" ' +
-        (s.eventKind === "festival" ? "selected" : "") +
-        ">节日日期</option></select></label>" +
-        field("提前天数", "offset", s.offset || 0, "number") +
-        field("汇总标题", "taskTitle", t.title) +
-        field(
-          "分隔符（输入 \\n 表示换行）",
-          "separator",
-          t.separator.replace(/\n/g, "\\n"),
-        ) +
+        "</div>" +
         check("启用任务", "taskEnabled", t.enabled) +
-        '</div><label>内容顺序（勾选后用 ↑ ↓ 调整）</label><div id="contentOrder">' +
-        [
-          ...t.contentIds,
-          ...config.contents
-            .filter((c) => !t.contentIds.includes(c.id))
-            .map((c) => c.id),
-        ]
-          .map((id) => {
-            const c = config.contents.find((c) => c.id === id);
-            return c
-              ? '<div class="row" data-content="' +
-                  esc(id) +
-                  '"><label class="check"><input type="checkbox" ' +
-                  (t.contentIds.includes(id) ? "checked" : "") +
-                  ">" +
-                  esc(c.name) +
-                  "</label>" +
-                  btn("↑", "up-content", id) +
-                  btn("↓", "down-content", id) +
-                  "</div>"
-              : "";
-          })
+        '</div><label>消息内容（Markdown）<textarea id="taskBody">' +
+        esc(t.body) +
+        "</textarea></label>" +
+        toolbar("taskBody") +
+        '<div class="actions">' +
+        state.variables
+          .map((v) => btn("{{" + v + "}}", "insert-variable", v))
           .join("") +
-        '</div><div class="actions">' +
+        '</div><p class="muted">标题、换行和模块顺序直接写在文案中。预览使用本地缓存，不发送消息。</p>' +
+        btn("预览公告", "preview-task") +
+        '<div id="taskPreview" class="message-preview" hidden></div><div class="actions">' +
         btn("保存任务", "save-task", "", "primary") +
         btn("取消", "cancel-task") +
         "</div></section>";
@@ -484,7 +485,6 @@ function render() {
       '</select></label><label>发送对象（可多选）<select id="bindRecipient" multiple>' +
       options(config.recipients) +
       '</select></label></div><label>最终整条消息覆盖，留空使用共享内容<textarea id="override"></textarea></label>' +
-      formatField("overrideFormat", "plain") +
       btn("绑定选中对象", "bind", "", "primary");
     html +=
       table(
@@ -504,7 +504,7 @@ function render() {
             "</td><td>" +
             btn("预览", "preview", id) +
             btn("修改覆盖", "edit-override", id) +
-            btn("真实测试", "test", id) +
+            btn("立即测试", "test", id) +
             btn(b.enabled ? "停用" : "启用", "toggle-binding", id) +
             btn("解绑", "unbind", id) +
             "</td></tr>"
@@ -512,16 +512,6 @@ function render() {
         }),
       ) +
       '<div id="messagePreview" class="message-preview" hidden></div><pre id="previewResult" hidden></pre></section>';
-    const repeated = config.contents.filter(
-      (c) =>
-        config.tasks.filter((t) => t.enabled && t.contentIds.includes(c.id))
-          .length > 1,
-    );
-    if (repeated.length)
-      html +=
-        '<div class="notice">内容用于多个启用任务，将分别发送：' +
-        repeated.map((c) => esc(c.name)).join("、") +
-        "</div>";
   }
   if (page === "recipients") {
     html +=
@@ -562,91 +552,7 @@ function render() {
         "</section>";
     }
   }
-  if (page === "contents") {
-    html +=
-      "<section><h2>共享内容</h2>" +
-      btn("新增内容", "new-content", "", "primary") +
-      table(
-        ["名称", "类型", "状态", "操作"],
-        config.contents.map(
-          (c) =>
-            "<tr><td>" +
-            esc(c.name) +
-            "</td><td>" +
-            esc(c.kind) +
-            "</td><td>" +
-            (c.enabled ? "启用" : "停用") +
-            "</td><td>" +
-            btn("编辑", "edit-content", c.id) +
-            btn("复制", "copy-content", c.id) +
-            btn("删除", "delete-content", c.id) +
-            "</td></tr>",
-        ),
-      ) +
-      "</section>";
-    if (editingContent) {
-      const c = editingContent;
-      html +=
-        '<section><h2>编辑内容</h2><div class="grid">' +
-        field("名称", "contentName", c.name) +
-        '<label>类型<select id="contentKind">' +
-        ["text", "date", "holiday"]
-          .map(
-            (v, i) =>
-              '<option value="' +
-              v +
-              '" ' +
-              (c.kind === v ? "selected" : "") +
-              ">" +
-              ["文字", "日期", "假期"][i] +
-              "</option>",
-          )
-          .join("") +
-        '</select></label><label>适用日期<select id="contentOnly">' +
-        ["always", "holiday", "makeup"]
-          .map(
-            (v, i) =>
-              '<option value="' +
-              v +
-              '" ' +
-              ((c.only || "always") === v ? "selected" : "") +
-              ">" +
-              ["每天", "仅放假日", "仅调休上班日"][i] +
-              "</option>",
-          )
-          .join("") +
-        "</select></label>" +
-        check("启用", "contentEnabled", c.enabled) +
-        '</div><label>正文<textarea id="contentBody">' +
-        esc(c.body) +
-        '</textarea></label><div class="actions">' +
-        [
-          "date.today",
-          "date.weekday",
-          "holiday.next_name",
-          "holiday.days_until",
-          "holiday.start_date",
-          "holiday.end_date",
-          "holiday.days_off",
-          "festival.name",
-          "festival.date",
-          "festival.days_until",
-        ]
-          .map((v) => btn("{{" + v + "}}", "insert-variable", v))
-          .join("") +
-        "</div>" +
-        toolbar("contentBody") +
-        '<label>仅日期参考时使用的正文（可选）<textarea id="referenceBody">' +
-        esc(c.referenceBody || "") +
-        "</textarea></label>" +
-        toolbar("referenceBody") +
-        '<p class="muted">格式由任务决定。参考日期使用 festival 变量；holiday 起止日期仅用于放假安排。预览为参考，最终以 QQ 显示为准。</p><div id="contentPreview" class="message-preview">' +
-        markdown(c.body) +
-        "</div>" +
-        btn("保存内容", "save-content", "", "primary") +
-        "</section>";
-    }
-
+  if (page === "replies") {
     const reply = config.replies[selectedCommand];
     html +=
       '<section><h2>命令回复</h2><label>命令<select id="commandName">' +
@@ -660,8 +566,7 @@ function render() {
             "</option>",
         )
         .join("") +
-      "</select></label>" +
-      formatField("replyFormat", reply.format);
+      "</select></label>";
     for (const [key, label] of Object.entries(replyLabels)) {
       if (
         !["假期 下一个", "假期 剩余"].includes(selectedCommand) &&
@@ -683,40 +588,35 @@ function render() {
       state.replyVariables[selectedCommand].body
         .map((v) => btn("{{" + v + "}}", "reply-variable", v))
         .join("") +
-      '</div><p class="muted">变量插入当前编辑框；items 用于完整回复，条目中使用 name、start/end 或 date。日期参考没有放假起止日期。</p>' +
+      '</div><p class="muted">变量插入当前编辑框；items 用于完整回复，条目中使用 name、start/end 等变量。条目之间的换行请直接写在条目模板末尾。</p>' +
       btn("保存回复", "save-reply", "", "primary") +
       btn("恢复当前命令默认", "reset-reply") +
       btn("使用本地数据预览", "preview-reply") +
       '<div id="replyPreview" class="message-preview">' +
-      (reply.format === "markdown" ? markdown(reply.body) : esc(reply.body)) +
+      markdown(reply.body) +
       "</div></section>";
   }
 
   if (page === "holidays") {
     html +=
-      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据。优先使用 holiday-cn 放假安排，缺少对应安排时才用 UAPI 节日日期补充。自动清理往年已结束的记录；人工修改不会被同步覆盖。</p>' +
+      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据。UAPI 仅查询法定放假与调休。自动清理往年已结束的记录；人工修改不会被同步覆盖。</p>' +
       btn("立即同步", "sync", "", "primary") +
       table(
-        ["年份 / 类别", "数据版本时间", "状态", "远程数据源"],
+        ["年份", "数据版本时间", "状态", "来源"],
         state.sources.map(
           (s) =>
             "<tr><td>" +
             s.year +
-            (s.kind === "festival" ? " / 节日日期" : " / 放假安排") +
             "</td><td>" +
-            time(s.updated_at) +
+            (s.updated_at ? time(s.updated_at) : "尚未同步") +
             "</td><td>" +
             esc(
               s.error === "not_published"
-                ? "尚未公布"
-                : s.error || (s.hasData ? "已有数据" : "尚未公布或未同步"),
+                ? "接口暂未提供安排"
+                : s.error || (s.hasData ? "已有数据" : "暂未获取安排"),
             ) +
             '</td><td><a target="_blank" rel="noopener noreferrer" href="' +
-            (s.kind === "festival"
-              ? "https://uapis.cn/docs/api-reference/get-misc-holiday-calendar"
-              : "https://github.com/NateScarlet/holiday-cn/blob/master/" +
-                s.year +
-                ".json") +
+            "https://uapis.cn/docs/api-reference/get-misc-holiday-calendar" +
             '">查看来源</a></td></tr>',
         ),
       ) +
@@ -725,7 +625,7 @@ function render() {
       "<section><h2>放假与调休</h2>" +
       btn("新增假期", "new-holiday", "", "primary") +
       table(
-        ["名称", "日期", "类别", "操作"],
+        ["名称", "日期", "类别", "来源", "操作"],
         config.holidays.map(
           (h) =>
             "<tr><td>" +
@@ -734,6 +634,8 @@ function render() {
             esc(h.start + " 至 " + h.end) +
             "</td><td>" +
             (h.kind === "holiday" ? "放假" : "调休上班") +
+            "</td><td>" +
+            (h.manual || h.source !== "uapi" ? "人工" : "UAPI") +
             "</td><td>" +
             btn("编辑", "edit-holiday", h.id) +
             btn("删除", "delete-holiday", h.id) +
@@ -751,35 +653,36 @@ function render() {
         '<label>类别<select id="holidayKind"><option value="holiday">放假</option><option value="makeup" ' +
         (h.kind === "makeup" ? "selected" : "") +
         ">调休上班</option></select></label>" +
-        field("来源 / 备注（可选）", "holidaySource", h.source) +
         "</div>" +
         btn("保存假期", "save-holiday", "", "primary") +
         "</section>";
     }
 
     html +=
-      '<section><h2>节日日期补充</h2><p class="muted">仅显示尚无对应放假安排的节日日期，不代表放假。holiday-cn 公布后自动由上方安排覆盖。来源：UAPI。</p>' +
-      table(
-        ["节日", "日期", "操作"],
-        config.festivals
-          .filter((f) => state.supplementalFestivalIds.includes(f.id))
-          .map(
-            (f) =>
-              "<tr><td>" +
-              esc(f.name) +
-              "</td><td>" +
-              esc(f.date) +
-              "</td><td>" +
-              btn("编辑", "edit-festival", f.id) +
-              "</td></tr>",
-          ),
-      );
-    if (editingFestival)
-      html +=
-        field("名称", "festivalName", editingFestival.name) +
-        field("节日日期", "festivalDate", editingFestival.date, "date") +
-        btn("保存日期", "save-festival", "", "primary");
-    html += "</section>";
+      '<section><h2>公告占位符文案</h2><p class="muted">概览用于 {{假期.概览}}，今日文案用于 {{假期.今日}}。概览支持 {{name}}、{{start}}、{{end}}、{{days_until}}、{{days_off}}、{{ongoing}}；放假与调休今日文案支持 {{name}}。</p>' +
+      Object.entries({
+        summary: "假期概览",
+        today: "今日放假",
+        makeupToday: "今日调休上班",
+        ordinary: "普通日期",
+        unknown: "暂无数据",
+        none: "已无剩余假期",
+        ongoing: "进行中",
+        stale: "缓存提示",
+      })
+        .map(
+          ([key, label]) =>
+            "<label>" +
+            label +
+            '<textarea id="holiday-copy-' +
+            key +
+            '">' +
+            esc(config.holidayCopy[key]) +
+            "</textarea></label>",
+        )
+        .join("") +
+      btn("保存占位符文案", "save-holiday-copy") +
+      "</section>";
     html +=
       '<section><h2>CSV / JSON 导入</h2><label>文件内容（CSV 表头 name,start,end）<textarea id="importText"></textarea></label><input id="importFile" type="file" accept=".csv,.json"><div class="actions">' +
       btn("预览导入", "preview-import") +
@@ -871,7 +774,7 @@ async function action(a, id) {
     if (dirty && !(await confirmAction("有未保存的编辑，放弃并切换页面？")))
       return;
     dirty = false;
-    editingTask = editingContent = editingRecipient = editingHoliday = null;
+    editingTask = editingRecipient = editingHoliday = null;
     page = id;
     render();
     return;
@@ -880,13 +783,24 @@ async function action(a, id) {
     editingTask = {
       ...structuredClone(state.draftDefaults.task),
       id: uid(),
-      mode: "standalone",
+      origin: "manual",
       enabled: false,
       schedule: { kind: "daily", time: "09:00" },
-      contentIds: [],
-      format: "plain",
     };
     render();
+    return;
+  }
+  if (a === "test-task") {
+    if (dirty) throw Error("请先保存文案，再测试发送");
+    if (!config.bindings.some((b) => b.taskId === id))
+      throw Error("请先为该任务绑定发送对象");
+    testingTask = id;
+    render();
+    $("eventTest").scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  if (a === "send-task-test") {
+    await sendTest(id, $("testRecipient").value, "testMessage", "testResult");
     return;
   }
   if (a === "edit-task") {
@@ -904,43 +818,36 @@ async function action(a, id) {
     if (s.kind === "weekly")
       s.weekdays = $("weekdays").value.split(",").map(Number);
     if (s.kind === "once") s.date = $("onceDate").value;
-    if (s.kind === "yearly") s.monthDay = $("monthDay").value;
-    if (s.kind === "holiday_event")
-      Object.assign(s, {
-        eventKind: $("eventKind").value,
-        offset: +$("offset").value,
-      });
     put(config.tasks, {
       ...editingTask,
       name: $("taskName").value,
-      mode: $("taskMode").value,
-      format: $("taskFormat").value,
       enabled: $("taskEnabled").checked,
       schedule: s,
-      contentIds: [...$("contentOrder").children]
-        .filter((el) => el.querySelector("input").checked)
-        .map((el) => el.dataset.content),
-      title: $("taskTitle").value,
-      separator: $("separator").value.replace(/\\n/g, "\n"),
+      body: $("taskBody").value,
     });
     await save();
     editingTask = null;
     render();
     return;
   }
-  if (a === "up-content" || a === "down-content") {
-    const el = [...$("contentOrder").children].find(
-      (x) => x.dataset.content === id,
+  if (a === "preview-task") {
+    const draft = structuredClone(config);
+    const task = {
+      ...editingTask,
+      name: $("taskName").value,
+      body: $("taskBody").value,
+    };
+    put(draft.tasks, task);
+    showMessage(
+      "taskPreview",
+      await api("preview", { config: draft, taskId: task.id }),
     );
-    if (a === "up-content" && el.previousElementSibling)
-      el.previousElementSibling.before(el);
-    if (a === "down-content" && el.nextElementSibling)
-      el.nextElementSibling.after(el);
     return;
   }
   if (a === "copy-task") {
     const t = structuredClone(config.tasks.find((t) => t.id === id));
     t.id = uid();
+    t.origin = "manual";
     t.name += state.draftDefaults.copySuffix;
     t.enabled = false;
     config.tasks.push(t);
@@ -967,8 +874,7 @@ async function action(a, id) {
           taskId,
           recipientId: o.value,
           enabled: true,
-          overrideText: $("override").value.trim() || null,
-          overrideFormat: $("overrideFormat").value,
+          overrideText: $("override").value.trim() ? $("override").value : null,
         },
         i = config.bindings.findIndex(
           (b) => b.taskId === taskId && b.recipientId === o.value,
@@ -980,9 +886,7 @@ async function action(a, id) {
     return;
   }
   if (
-    ["preview", "test", "unbind", "edit-override", "toggle-binding"].includes(
-      a,
-    )
+    ["preview", "test", "unbind", "edit-override", "toggle-binding"].includes(a)
   ) {
     const [taskId, recipientId] = id.split(":"),
       b = config.bindings.find(
@@ -996,31 +900,23 @@ async function action(a, id) {
       b.enabled = !b.enabled;
       await save();
     } else if (a === "edit-override") {
-      $("decisionFormat").value = b.overrideFormat;
       const text = await promptText(
         "覆盖该任务的最终整条消息；留空恢复共享内容",
         b.overrideText || "",
       );
       if (text !== null) {
-        b.overrideText = text.trim() || null;
-        b.overrideFormat = $("decisionFormat").value;
+        b.overrideText = text.trim() ? text : null;
         await save();
       }
     } else {
-      if (a === "test" && !testRequests.has(id)) testRequests.set(id, uid());
-      const result = await api(a, {
-        taskId,
-        recipientId,
-        ...(a === "test" ? { requestId: testRequests.get(id) } : { config }),
-      });
-      if (a === "test" && !["sending", "uncertain"].includes(result.status))
-        testRequests.delete(id);
-      if (a === "preview") showMessage("messagePreview", result);
-      $("previewResult").hidden = false;
-      $("previewResult").textContent =
-        a === "preview"
-          ? result.text + "\n\n" + JSON.stringify(result.items, null, 2)
-          : JSON.stringify(result, null, 2);
+      if (a === "test")
+        await sendTest(taskId, recipientId, "messagePreview", "previewResult");
+      else {
+        const result = await api("preview", { taskId, recipientId, config });
+        showMessage("messagePreview", result);
+        $("previewResult").hidden = false;
+        $("previewResult").textContent = result.text;
+      }
     }
     return;
   }
@@ -1069,42 +965,8 @@ async function action(a, id) {
     await save();
     return;
   }
-  if (a === "new-content") {
-    editingContent = {
-      ...structuredClone(state.draftDefaults.content),
-      id: uid(),
-      kind: "text",
-      enabled: true,
-      only: "always",
-    };
-    render();
-    return;
-  }
-  if (a === "edit-content") {
-    editingContent = structuredClone(
-      config.contents.find((c) => c.id === id),
-    );
-    render();
-    return;
-  }
-  if (a === "copy-content") {
-    const c = structuredClone(config.contents.find((c) => c.id === id));
-    c.id = uid();
-    c.name += state.draftDefaults.copySuffix;
-    config.contents.push(c);
-    await save();
-    return;
-  }
-  if (a === "delete-content") {
-    if (!(await confirmAction("删除这项内容？"))) return;
-    if (config.tasks.some((t) => t.contentIds.includes(id)))
-      throw Error("内容仍被任务引用，请先从任务移除");
-    config.contents = config.contents.filter((c) => c.id !== id);
-    await save();
-    return;
-  }
   if (a === "insert-variable") {
-    const area = $(lastContentField) || $("contentBody");
+    const area = $("taskBody");
     area.setRangeText(
       "{{" + id + "}}",
       area.selectionStart,
@@ -1114,22 +976,6 @@ async function action(a, id) {
     area.dispatchEvent(new Event("input", { bubbles: true }));
     return;
   }
-  if (a === "save-content") {
-    put(config.contents, {
-      ...editingContent,
-      name: $("contentName").value,
-      kind: $("contentKind").value,
-      body: $("contentBody").value,
-      referenceBody: $("referenceBody").value,
-      enabled: $("contentEnabled").checked,
-      only: $("contentOnly").value,
-    });
-    await save();
-    editingContent = null;
-    render();
-    return;
-  }
-
   if (a === "markup") {
     const { id: target, before, after } = JSON.parse(id),
       el = $(target);
@@ -1176,23 +1022,10 @@ async function action(a, id) {
     );
     return;
   }
-  if (a === "edit-festival") {
-    editingFestival = structuredClone(
-      config.festivals.find((f) => f.id === id),
-    );
-    render();
-    return;
-  }
-  if (a === "save-festival") {
-    put(config.festivals, {
-      ...editingFestival,
-      name: $("festivalName").value,
-      date: $("festivalDate").value,
-      manual: true,
-    });
+  if (a === "save-holiday-copy") {
+    for (const key of Object.keys(config.holidayCopy))
+      config.holidayCopy[key] = $("holiday-copy-" + key).value;
     await save();
-    editingFestival = null;
-    render();
     return;
   }
   if (a === "sync" || a === "cleanup") {
@@ -1215,9 +1048,7 @@ async function action(a, id) {
     return;
   }
   if (a === "edit-holiday") {
-    editingHoliday = structuredClone(
-      config.holidays.find((h) => h.id === id),
-    );
+    editingHoliday = structuredClone(config.holidays.find((h) => h.id === id));
     render();
     return;
   }
@@ -1228,7 +1059,7 @@ async function action(a, id) {
       start: $("holidayStart").value,
       end: $("holidayEnd").value || $("holidayStart").value,
       kind: $("holidayKind").value,
-      source: $("holidaySource").value || "manual",
+      source: "manual",
       manual: true,
     });
     await save();
@@ -1266,8 +1097,7 @@ async function action(a, id) {
   }
   if (a === "rollback-import") {
     const batch = $("batchId").value;
-    if (!batch || !(await confirmAction("删除该批次导入的所有假期？")))
-      return;
+    if (!batch || !(await confirmAction("删除该批次导入的所有假期？"))) return;
     config.holidays = config.holidays.filter((h) => h.batchId !== batch);
     await save();
     return;
@@ -1301,9 +1131,7 @@ async function action(a, id) {
           "<tr><td>" +
           time(l.due_at) +
           "</td><td>" +
-          esc(
-            config.tasks.find((t) => t.id === l.task_id)?.name || l.task_id,
-          ) +
+          esc(config.tasks.find((t) => t.id === l.task_id)?.name || l.task_id) +
           " / " +
           esc(
             config.recipients.find((r) => r.id === l.recipient_id)?.name ||
@@ -1367,8 +1195,7 @@ document.addEventListener("click", (e) => {
   if (b) run(() => action(b.dataset.action, b.dataset.id));
 });
 
-let lastReplyField = "reply-body",
-  lastContentField = "contentBody";
+let lastReplyField = "reply-body";
 document.addEventListener("focusin", (e) => {
   if (e.target.id.startsWith("reply-")) {
     lastReplyField = e.target.id;
@@ -1378,34 +1205,26 @@ document.addEventListener("focusin", (e) => {
       .map((v) => btn("{{" + v + "}}", "reply-variable", v))
       .join("");
   }
-  if (["contentBody", "referenceBody"].includes(e.target.id))
-    lastContentField = e.target.id;
 });
 document.addEventListener("input", (e) => {
-  if (e.target.closest("#app")) dirty = true;
-  if (["contentBody", "referenceBody"].includes(e.target.id))
-    $("contentPreview").innerHTML = markdown(e.target.value);
+  if (e.target.closest("#app") && e.target.id !== "testRecipient") dirty = true;
   if (e.target.id.startsWith("reply-")) {
     captureReply();
     showMessage("replyPreview", {
       text: config.replies[selectedCommand].body,
-      format: config.replies[selectedCommand].format,
     });
   }
 });
 document.addEventListener("change", (e) => {
-  if (e.target.closest("#app")) dirty = true;
+  if (e.target.closest("#app") && e.target.id !== "testRecipient") dirty = true;
   if (e.target.id === "commandName") {
     captureReply();
     selectedCommand = e.target.value;
     render();
   }
-  if (e.target.id === "replyFormat") {
-    captureReply();
-    showMessage("replyPreview", {
-      text: config.replies[selectedCommand].body,
-      format: config.replies[selectedCommand].format,
-    });
+  if (e.target.id === "kind") {
+    $("weeklyFields").hidden = e.target.value !== "weekly";
+    $("onceFields").hidden = e.target.value !== "once";
   }
   if (e.target.id === "importFile")
     run(async () => {

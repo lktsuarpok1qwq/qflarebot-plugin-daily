@@ -1,5 +1,5 @@
-import type { Holiday } from "../types.js";
-import { validDate } from "../scheduler/planner.js";
+import type { Holiday } from "../../types.js";
+import { validDate } from "../../scheduler/planner.js";
 function csv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [],
@@ -103,7 +103,7 @@ export function importHolidays(
       start: x.start,
       end,
       kind: "holiday",
-      source: "manual-import",
+      source: "manual",
       batchId,
     };
     if ([...existing, ...items].some((h) => h.start <= end && h.end >= x.start))

@@ -1,6 +1,6 @@
 {
   "name": "daily",
-  "version": "1.5.2",
+  "version": "2.0.0",
   "apiVersion": 2,
   "permissions": [
     "db",
@@ -70,7 +70,7 @@
     },
     {
       "name": "sync",
-      "cron": "10,11,12,13 19 * * *"
+      "cron": "10,11 19 * * *"
     },
     {
       "name": "cleanup",
@@ -98,7 +98,7 @@
   "services": [],
   "durableObjects": [],
   "displayName": "每日助手",
-  "description": "定时文字、每日汇总与假期查询",
+  "description": "占位符公告、定时提醒与放假调休查询",
   "ui": {
     "path": "/ui/",
     "title": "每日助手",

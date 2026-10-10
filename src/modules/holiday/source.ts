@@ -1,6 +1,5 @@
-import type { Ctx, SourceKind } from "../types.js";
+import type { Ctx } from "../../types.js";
 export type SyncResult = {
-  kind: SourceKind;
   year: number;
   status: "updated" | "cached" | "not_published" | "error";
   error?: string;
@@ -13,7 +12,7 @@ export async function hash(text: string) {
     (x) => x.toString(16).padStart(2, "0"),
   ).join("");
 }
-export async function limitedJson(res: Response, maxBytes = 128_000) {
+export async function limitedJson(res: Response, maxBytes = 256_000) {
   if (!res.body) throw new Error("假期源为空");
   const reader = res.body.getReader();
   let size = 0,
@@ -38,13 +37,11 @@ export async function setError(
   year: number,
   error: string,
   now: number,
-  kind: "official" | "festival" = "official",
 ) {
   await ctx.db.run(
-    "INSERT INTO {sources}(year,hash,data,error,updated_at,kind) VALUES (?,'','',?,?,?) ON CONFLICT(kind,year) DO UPDATE SET error=excluded.error WHERE error IS NOT excluded.error",
+    "INSERT INTO {sources}(year,hash,data,error,updated_at) VALUES (?,'','',?,?) ON CONFLICT(year) DO UPDATE SET error=excluded.error WHERE error IS NOT excluded.error",
     year,
     error,
     now,
-    kind,
   );
 }
