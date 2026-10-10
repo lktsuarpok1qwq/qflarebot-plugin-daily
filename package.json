@@ -1,6 +1,6 @@
 {
   "name": "qflarebot-plugin-daily",
-  "version": "1.4.0",
+  "version": "1.5.1",
   "description": "每日助手：定时消息、假期与汇总",
   "license": "MIT",
   "type": "module",

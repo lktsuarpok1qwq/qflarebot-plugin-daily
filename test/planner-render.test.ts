@@ -44,33 +44,6 @@ describe("北京时间与边界", () => {
     ).toBe("2026-10-12"));
 });
 describe("渲染和校验", () => {
-  it("覆盖作用于最终消息且支持变量", async () => {
-    const { config } = await fixture();
-    config.bindings[0]!.overrideText = "专属 {{date.today}}";
-    expect(
-      (
-        await renderMessage(
-          config.tasks[0]!,
-          config.bindings[0]!,
-          config,
-          dueTime,
-        )
-      ).text,
-    ).toBe("专属 2026-10-10");
-  });
-  it("标题不能使空汇总有效", async () => {
-    const { config } = await fixture();
-    config.tasks[0]!.title = "日报";
-    config.contents[0]!.enabled = false;
-    const r = await renderMessage(
-      config.tasks[0]!,
-      config.bindings[0]!,
-      config,
-      dueTime,
-    );
-    expect(r.text).toBe("");
-    expect(r.items[0]?.reason).toBe("disabled");
-  });
   it("未知假期变量产生明确空原因", async () => {
     const { config } = await fixture();
     config.contents[0]!.body = "{{holiday.next_name}}";
@@ -82,14 +55,6 @@ describe("渲染和校验", () => {
     );
     expect(r.items[0]?.reason).toBe("holiday_data_unknown");
   });
-  it("未知变量、汇总预算超长不能保存", async () => {
-    const { config } = await fixture();
-    config.contents[0]!.body = "{{arbitrary.code}}";
-    expect(() => validateConfig(config)).toThrow("未知变量");
-    config.contents[0]!.body = "字".repeat(500);
-    config.tasks[0]!.title = "标题";
-    expect(() => validateConfig(config)).toThrow("长度");
-  });
   it("拒绝重复平台目标", async () => {
     const { config } = await fixture();
     config.recipients.push({ ...config.recipients[0]!, id: "other" });
@@ -97,45 +62,25 @@ describe("渲染和校验", () => {
   });
 });
 describe("假期状态与导入", () => {
-  it("无数据为unknown而非none", async () =>
-    expect(
-      (await holidayService(defaults(), [], dueTime).getNextHoliday()).status,
-    ).toBe("unknown"));
   it("完整年度没有假期为none", async () => {
     const c = defaults();
     const raw = [2026, 2027].map((year) => ({
       year,
+      kind: "official" as const,
       hash: "",
       data: '{"papers":["https://www.gov.cn/test"],"days":[]}',
       error: null,
       updated_at: 0,
     }));
-    expect(
-      (await holidayService(c, raw, dueTime).getNextHoliday()).status,
-    ).toBe("none");
-  });
-  it("手动录入无需来源网址或年度确认，保存后直接可查", async () => {
-    const c = defaults();
-    c.holidays = [
-      {
-        id: "h",
-        name: "假期",
-        start: "2026-10-01",
-        end: "2026-10-12",
-        kind: "holiday",
-        source: "",
-      },
-    ];
-    validateConfig(c);
-    const q = await holidayService(c, [], dueTime).getNextHoliday();
-    expect(q.status).toBe("known");
-    expect(q.data?.id).toBe("h");
-    expect(q.coverage.complete).toBe(false);
+    expect((await holidayService(c, raw, dueTime).getNextEvent()).status).toBe(
+      "none",
+    );
   });
   it("已同步年度可直接判断普通工作日", async () => {
     const raw = [
       {
         year: 2026,
+        kind: "official" as const,
         hash: "",
         data: '{"papers":["https://www.gov.cn/test"],"days":[]}',
         error: null,

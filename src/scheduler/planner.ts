@@ -23,14 +23,23 @@ export function nextPlan(
   handled: ReadonlySet<string> = new Set(),
 ): Plan | null {
   if (s.kind === "holiday_event") {
-    const candidates = activeHolidays(config)
-      .filter((h) => h.kind === s.eventKind)
-      .map((h) => ({
-        due: at(addDays(h.start, -(s.offset ?? 0)), s.time),
-        eventKey: `${h.id}:${s.offset ?? 0}`,
-      }))
-      .filter((p) => p.due > after && !handled.has(p.eventKey))
-      .sort((a, b) => a.due - b.due || a.eventKey.localeCompare(b.eventKey));
+    const entries =
+      s.eventKind === "festival"
+        ? config.festivals.map((f) => ({
+            id: f.id,
+            start: f.date,
+            festivalIds: [] as string[],
+          }))
+        : activeHolidays(config).filter((h) => h.kind === s.eventKind);
+    const candidates = entries
+      .map((h) => {
+        const keys = [h.id, ...(h.festivalIds ?? [])].map(
+          (id) => `${id}:${s.offset ?? 0}`,
+        );
+        return { due: at(addDays(h.start, -(s.offset ?? 0)), s.time), keys };
+      })
+      .filter((p) => p.due > after && !p.keys.some((key) => handled.has(key)))
+      .sort((a, b) => a.due - b.due || a.keys[0]!.localeCompare(b.keys[0]!));
     const first = candidates[0];
     return first
       ? {
@@ -38,7 +47,7 @@ export function nextPlan(
           eventKey: packEvents(
             candidates
               .filter((p) => p.due === first.due)
-              .map((p) => p.eventKey),
+              .flatMap((p) => p.keys),
           ),
         }
       : null;

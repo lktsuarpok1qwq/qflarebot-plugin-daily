@@ -16,6 +16,15 @@ import {
 import { importHolidays } from "./data/importer.js";
 import { hasCalendar } from "./data/calendar.js";
 import { maintenance } from "./data/holiday-cn.js";
+import {
+  defaultReplies,
+  replyVariables,
+  REPLY_FIELDS,
+  COMMAND_NAMES,
+} from "./content/command-templates.js";
+import { renderCommand } from "./commands.js";
+import { message } from "./content/message.js";
+import type { CommandName } from "./types.js";
 import { renderMessage } from "./content/renderer.js";
 import { jsonRows, jx } from "./data/sql.js";
 import { finishMany } from "./data/deliveries.js";
@@ -79,10 +88,22 @@ export async function api({
         ]);
         return Response.json({
           ...s,
+          replyDefaults: defaultReplies(),
+          replyVariables: Object.fromEntries(
+            COMMAND_NAMES.map((name) => [
+              name,
+              Object.fromEntries(
+                REPLY_FIELDS.map((field) => [
+                  field,
+                  replyVariables(name, field),
+                ]),
+              ),
+            ]),
+          ),
           currentBotId: ctx.botId,
           sources: raw.map(({ data, ...source }) => ({
             ...source,
-            hasData: hasCalendar(data),
+            hasData: source.kind === "festival" ? !!data : hasCalendar(data),
           })),
           cursors,
           jobs,
@@ -125,7 +146,13 @@ export async function api({
           ? LIMITS.backupBytes + 4096
           : LIMITS.bodyBytes + 4096,
       ),
-      { snapshot: s, sources: raw } = await readData(ctx.db);
+      { snapshot: s, sources: raw } = [
+        "preview",
+        "test",
+        "command-preview",
+      ].includes(action)
+        ? await readData(ctx.db)
+        : { snapshot: await snapshot(ctx.db), sources: [] };
     if (action === "config") {
       if (data.revision !== s.revision) throw new Error("配置已变化，请刷新");
       const c = validateConfig(data.config);
@@ -137,6 +164,15 @@ export async function api({
           JSON.stringify(h) !== JSON.stringify(old)
         )
           h.manual = true;
+      }
+      for (const f of c.festivals) {
+        const old = s.config.festivals.find((x) => x.id === f.id);
+        if (
+          old &&
+          old.source === "uapi" &&
+          JSON.stringify(f) !== JSON.stringify(old)
+        )
+          f.manual = true;
       }
       for (const r of c.recipients) {
         const old = s.config.recipients.find((x) => x.id === r.id);
@@ -163,8 +199,18 @@ export async function api({
           throw new Error("一次性任务必须设置未来时间");
       }
       return Response.json({
-        revision: await saveConfig(ctx, s, c, Date.now()),
+        revision:
+          s.botId === ctx.botId &&
+          JSON.stringify(c) === JSON.stringify(s.config)
+            ? s.revision
+            : await saveConfig(ctx, s, c, Date.now()),
       });
+    }
+    if (action === "command-preview") {
+      const c = validateConfig(data.config);
+      const name = data.command as CommandName;
+      if (!Object.hasOwn(c.replies, name)) throw new Error("命令错误");
+      return Response.json(await renderCommand(ctx, name, c, Date.now(), raw));
     }
     if (action === "preview" || action === "test") {
       const c = data.config ? validateConfig(data.config) : s.config,
@@ -199,7 +245,7 @@ export async function api({
         now,
         now,
         now,
-        JSON.stringify({ manual: true, text: rendered.text }),
+        JSON.stringify({ manual: true, ...rendered }),
         s.revision,
       );
       if (!claimed.changes) {
@@ -234,7 +280,7 @@ export async function api({
       try {
         const result = await ctx.api.sendMessage(
           { scene: r.scene, id: r.openid },
-          { text: rendered.text },
+          message(rendered.text, rendered.format),
         );
         await finishMany(ctx.db, [
           {

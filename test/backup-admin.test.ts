@@ -15,8 +15,6 @@ import {
 import { dispatch } from "../src/scheduler/dispatcher.js";
 import { api } from "../src/admin.js";
 import { syncYear } from "../src/data/holiday-cn.js";
-import plugin from "../src/index.js";
-import { runCommand, createMockSession } from "@qqbot/sdk/testing";
 const request = (action: string, data?: unknown) =>
   new Request(
     "https://bot.test/p/daily/api/" + action,
@@ -28,14 +26,12 @@ const request = (action: string, data?: unknown) =>
           body: JSON.stringify(data),
         },
   );
-it("兼容旧备份字段，恢复原enabled，重复导入不增目标或恢复旧窗口", async () => {
+it("备份恢复原启用状态，重复导入不增目标或恢复过期窗口", async () => {
   const e = await fixture(2);
   vi.spyOn(Date, "now").mockReturnValue(dueTime + 5000);
   try {
     const backup = await exportBackup(e.ctx);
     Object.assign(backup.config, {
-      regions: [{ id: "CN", name: "old" }],
-      coverage: [],
       holidays: [
         {
           id: "h",
@@ -44,8 +40,6 @@ it("兼容旧备份字段，恢复原enabled，重复导入不增目标或恢复
           end: "2026-10-12",
           kind: "holiday",
           source: "",
-          region: "CN",
-          verified: false,
         },
       ],
     });
@@ -53,10 +47,6 @@ it("兼容旧备份字段，恢复原enabled，重复导入不增目标或恢复
     await restoreBackup(e.ctx, backup, (await snapshot(e.db)).revision);
     await restoreBackup(e.ctx, backup, (await snapshot(e.db)).revision);
     const s = await snapshot(e.db);
-    expect(s.config).not.toHaveProperty("regions");
-    expect(s.config).not.toHaveProperty("coverage");
-    expect(s.config.holidays[0]).not.toHaveProperty("region");
-    expect(s.config.holidays[0]).not.toHaveProperty("verified");
     expect(s.config.holidays[0]?.id).toBe("h");
     expect(s.config.recipients).toHaveLength(2);
     expect(s.config.recipients.every((r) => r.enabled)).toBe(true);
@@ -129,62 +119,6 @@ it("源哈希不变不写，连续相同失败不追加记录", async () => {
     (await e.db.first<{ error: string }>("SELECT error FROM {sources}"))?.error,
   ).toBe("offline");
 });
-it("所有注册命令保留但没有每日下次", async () => {
-  expect(Object.keys(plugin.commands!)).toEqual([
-    "每日",
-    "每日 帮助",
-    "假期",
-    "假期 帮助",
-    "假期 下一个",
-    "假期 剩余",
-  ]);
-  const e = await fixture();
-  const session = createMockSession({ scene: "c2c" });
-  const r = await runCommand(plugin, "每日 帮助", "", {
-    ctx: { db: e.db, botId: "bot" },
-    session: { scene: "c2c" },
-  });
-  expect(JSON.stringify(r)).toContain("自动发送");
-});
-it("源变化不撤销或覆盖手动录入的假期", async () => {
-  const e = await fixture();
-  const initial = {
-    year: 2026,
-    papers: ["https://www.gov.cn/test"],
-    days: [
-      { name: "A", date: "2026-10-01", isOffDay: true },
-      { name: "B", date: "2026-05-01", isOffDay: true },
-    ],
-  };
-  await syncYear(e.ctx, 2026, async () => Response.json(initial));
-  const s = await snapshot(e.db),
-    c = structuredClone(s.config);
-  c.holidays = [
-    {
-      id: "a",
-      name: "A",
-      start: "2026-10-01",
-      end: "2026-10-03",
-      kind: "holiday",
-      source: "https://www.gov.cn/test",
-    },
-    {
-      id: "b",
-      name: "B",
-      start: "2026-05-01",
-      end: "2026-05-03",
-      kind: "holiday",
-      source: "https://www.gov.cn/test",
-    },
-  ];
-  await saveConfig(e.ctx, s, c, start);
-  const changed = structuredClone(initial);
-  changed.days[0]!.isOffDay = false;
-  await syncYear(e.ctx, 2026, async () => Response.json(changed));
-  const after = (await snapshot(e.db)).config;
-  expect(after.holidays.find((h) => h.id === "a")?.end).toBe("2026-10-03");
-  expect(after.holidays.find((h) => h.id === "b")?.end).toBe("2026-05-03");
-});
 it("后台只读取实际游标和来源摘要，不重算五次计划或拉取永久进度", async () => {
   const e = await fixture();
   await e.db.run("UPDATE {bindings} SET due_at=?", dueTime + 12345);
@@ -193,7 +127,10 @@ it("后台只读取实际游标和来源摘要，不重算五次计划或拉取�
     papers: [],
     days: [{ date: "2026-10-10", name: "示例", isOffDay: true }],
   });
-  await e.db.run("INSERT INTO {sources} VALUES (2026,'hash',?,NULL,0)", raw);
+  await e.db.run(
+    "INSERT INTO {sources}(kind,year,hash,data,error,updated_at) VALUES ('official',2026,'hash',?,NULL,0)",
+    raw,
+  );
   const before = e.metrics.queries;
   const res = await api({
     ctx: e.ctx,

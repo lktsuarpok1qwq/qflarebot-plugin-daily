@@ -1,9 +1,7 @@
 import type { DBStatement, PluginDB } from "@qqbot/sdk";
 import type { Config, Ctx, Snapshot, Source } from "../types.js";
-import { LIMITS } from "../types.js";
-import { normalizeConfig } from "./validation.js";
 import { defaults } from "../content/templates.js";
-import { activeHolidays } from "../scheduler/events.js";
+import { activeHolidays, eventKeys } from "../scheduler/events.js";
 import { refreshHolidays } from "./calendar.js";
 import { nextPlan, dateAt } from "../scheduler/planner.js";
 import { jsonRows, jx, jsonChunks } from "./sql.js";
@@ -21,7 +19,7 @@ export async function install(ctx: Ctx) {
     CREATE INDEX IF NOT EXISTS {logs_task} ON {deliveries}(task_id,due_at);
     CREATE INDEX IF NOT EXISTS {logs_target} ON {deliveries}(recipient_id,due_at);
     CREATE TABLE IF NOT EXISTS {event_progress}(binding_id TEXT NOT NULL, event_key TEXT NOT NULL, PRIMARY KEY(binding_id,event_key));
-    CREATE TABLE IF NOT EXISTS {sources}(year INTEGER PRIMARY KEY, hash TEXT NOT NULL, data TEXT NOT NULL, error TEXT, updated_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS {sources}(year INTEGER NOT NULL, hash TEXT NOT NULL, data TEXT NOT NULL, error TEXT, updated_at INTEGER NOT NULL, kind TEXT NOT NULL, PRIMARY KEY(kind,year));
     CREATE TABLE IF NOT EXISTS {maintenance}(job TEXT PRIMARY KEY, day TEXT NOT NULL, error TEXT);
   `);
   await ctx.db.run(
@@ -31,28 +29,15 @@ export async function install(ctx: Ctx) {
     "initial",
   );
 }
-// The host runs onInstall only once across deployments; upgrades belong in onBoot.
-export async function migrate(ctx: Ctx, now = Date.now()) {
-  const rows = await ctx.db.batch([
-    { sql: "SELECT revision,bot_id,config FROM {state} WHERE id=1" },
-    { sql: "SELECT * FROM {sources}" },
-  ]);
-  const stored = rows[0]!.results[0] as
-    { revision: number; bot_id: string; config: string } | undefined;
-  if (!stored) return;
-  const s = {
-    revision: stored.revision,
-    botId: stored.bot_id,
-    config: JSON.parse(stored.config) as Config,
-  };
-  const current = { sources: rows[1]!.results as Source[] };
-  const config = normalizeConfig(structuredClone(s.config));
-  refreshHolidays(config, current.sources, now);
-  // Compare against persisted JSON so retired fields are removed on upgrade too.
-  if (JSON.stringify(config) !== stored.config)
+/** Refresh cached calendar views and remove completed past years. */
+export async function refreshCalendar(ctx: Ctx, now = Date.now()) {
+  const { snapshot: s, sources: current } = await readData(ctx.db);
+  const config = structuredClone(s.config);
+  refreshHolidays(config, current, now);
+  if (JSON.stringify(config) !== JSON.stringify(s.config))
     await saveConfig(ctx, s, config, now);
   const year = +dateAt(now).slice(0, 4);
-  if (current.sources.some((source) => source.year < year))
+  if (current.some((source) => source.year < year))
     await ctx.db.run("DELETE FROM {sources} WHERE year<?", year);
 }
 export async function snapshot(db: PluginDB): Promise<Snapshot> {
@@ -65,7 +50,7 @@ export async function snapshot(db: PluginDB): Promise<Snapshot> {
   return {
     revision: s.revision,
     botId: s.bot_id,
-    config: normalizeConfig(JSON.parse(s.config) as Config),
+    config: JSON.parse(s.config) as Config,
   };
 }
 export const sources = (db: PluginDB) =>
@@ -85,7 +70,7 @@ export async function readData(
     snapshot: {
       revision: state.revision,
       botId: state.bot_id,
-      config: normalizeConfig(JSON.parse(state.config) as Config),
+      config: JSON.parse(state.config) as Config,
     },
     sources: rows[1]!.results as Source[],
   };
@@ -97,13 +82,17 @@ export async function progress(db: PluginDB, bindingIds?: string[]) {
       "SELECT binding_id,event_key FROM {event_progress}" +
       (bindingIds
         ? ` WHERE binding_id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`
+        : "") +
+      " UNION ALL SELECT task_id||':'||recipient_id AS binding_id,event_key FROM {deliveries} WHERE status='sending' AND event_key IS NOT NULL" +
+      (bindingIds
+        ? ` AND task_id||':'||recipient_id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`
         : ""),
     ...(bindingIds ? [JSON.stringify(bindingIds.map((id) => ({ id })))] : []),
   );
   const map = new Map<string, Set<string>>();
   for (const r of rows) {
     if (!map.has(r.binding_id)) map.set(r.binding_id, new Set());
-    map.get(r.binding_id)!.add(r.event_key);
+    for (const key of eventKeys(r.event_key)) map.get(r.binding_id)!.add(key);
   }
   return map;
 }
@@ -118,10 +107,11 @@ export async function saveConfig(
     progress: { binding_id: string; event_key: string }[];
   },
   publishedSource?: Source,
+  resetPlans = false,
 ) {
-  config = normalizeConfig(config);
   const year = +dateAt(now).slice(0, 4);
   config.holidays = config.holidays.filter((h) => h.end >= `${year}-01-01`);
+  config.festivals = config.festivals.filter((f) => f.date >= `${year}-01-01`);
   const [cursors, done] = await Promise.all([
     ctx.db.all<{
       id: string;
@@ -156,10 +146,12 @@ export async function saveConfig(
   const calendar = (value: Config) =>
     JSON.stringify(
       activeHolidays(value)
-        .map((h) => [h.id, h.start, h.kind])
+        .map((h) => [h.id, h.start, h.kind, h.festivalIds])
         .sort(),
     );
-  const calendarChanged = calendar(old.config) !== calendar(config);
+  const calendarChanged =
+    calendar(old.config) !== calendar(config) ||
+    JSON.stringify(old.config.festivals) !== JSON.stringify(config.festivals);
   const byId = new Map(cursors.map((x) => [x.id, x])),
     rows = [];
   for (const b of config.bindings) {
@@ -180,7 +172,7 @@ export async function saveConfig(
       task.schedule.kind === "holiday_event" && calendarChanged;
     const preserve =
       !restore &&
-      !("regions" in old.config) &&
+      !resetPlans &&
       enabled &&
       previous?.enabled &&
       previous.due_at !== null &&
@@ -243,7 +235,7 @@ export async function saveConfig(
       restored.sources.filter((source) => source.year >= year),
     ))
       statements.push({
-        sql: `${jsonRows} INSERT INTO {sources}(year,hash,data,error,updated_at) SELECT ${["year", "hash", "data", "error", "updated_at"].map(jx).join(",")} FROM idx CROSS JOIN input WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?)`,
+        sql: `${jsonRows} INSERT INTO {sources}(year,hash,data,error,updated_at,kind) SELECT ${["year", "hash", "data", "error", "updated_at", "kind"].map(jx).join(",")} FROM idx CROSS JOIN input WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?)`,
         params: [chunk, token],
       });
     for (const chunk of jsonChunks(restored.progress))
@@ -254,13 +246,14 @@ export async function saveConfig(
   }
   if (publishedSource)
     statements.push({
-      sql: "INSERT INTO {sources}(year,hash,data,error,updated_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?) ON CONFLICT(year) DO UPDATE SET hash=excluded.hash,data=excluded.data,error=excluded.error,updated_at=excluded.updated_at",
+      sql: "INSERT INTO {sources}(year,hash,data,error,updated_at,kind) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?) ON CONFLICT(kind,year) DO UPDATE SET hash=excluded.hash,data=excluded.data,error=excluded.error,updated_at=excluded.updated_at",
       params: [
         publishedSource.year,
         publishedSource.hash,
         publishedSource.data,
         publishedSource.error,
         publishedSource.updated_at,
+        publishedSource.kind,
         token,
       ],
     });

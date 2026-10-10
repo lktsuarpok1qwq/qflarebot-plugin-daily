@@ -118,6 +118,7 @@ export async function fixture(count = 1) {
       name: "每日任务",
       enabled: true,
       mode: "standalone",
+      format: "plain",
       schedule: { kind: "daily", time: "09:00" },
       contentIds: ["text"],
       title: "",
@@ -138,8 +139,29 @@ export async function fixture(count = 1) {
       recipientId: "r" + i,
       enabled: true,
       overrideText: null,
+      overrideFormat: "plain",
     });
   }
   await saveConfig(env.ctx, await snapshot(env.db), c, start);
   return { ...env, config: c };
+}
+
+/** Compact provider fixture; legal-rest predictions are intentionally separate. */
+export function festivalResponse(year: number) {
+  return {
+    query: { year: String(year) },
+    holidays: [
+      ["元旦", "01-01", "solar_festival"],
+      ["春节", "02-06", "lunar_festival"],
+      ["清明节", "04-05", "solar_festival"],
+      ["五一劳动节", "05-01", "solar_festival"],
+      ["端午节", "06-09", "lunar_festival"],
+      ["中秋节", "09-15", "lunar_festival"],
+      ["国庆节", "10-01", "solar_festival"],
+    ].map(([name, date, type]) => ({
+      name: name!,
+      date: `${year}-${date}`,
+      type: type!,
+    })),
+  };
 }

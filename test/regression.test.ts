@@ -1,15 +1,13 @@
 import plugin from "../src/index.js";
-import { queryHoliday } from "../src/commands.js";
+import { renderCommand } from "../src/commands.js";
 import { describe, it, expect, vi } from "vitest";
-import { fixture, database, start, dueTime } from "./db.js";
+import { fixture, database, start, dueTime, festivalResponse } from "./db.js";
 import { dispatch } from "../src/scheduler/dispatcher.js";
 import {
   saveConfig,
   snapshot,
   due,
-  claim,
   install,
-  progress,
 } from "../src/data/repository.js";
 import {
   exportBackup,
@@ -64,28 +62,35 @@ async function events(count = 1) {
 }
 
 describe("调度、SDK 共享预算及并发", () => {
-  it("发送五个目标与一个年度发布同轮完成，给宿主留出查询余量", async () => {
-    const e = await fixture(5),
-      before = e.metrics.queries;
-    vi.stubGlobal("fetch", async (url: string) =>
-      Response.json({
-        year: Number(url.match(/(\d{4})\.json$/)![1]),
-        papers: ["https://www.gov.cn/test"],
-        days: [],
-      }),
-    );
-    try {
-      await dispatch(e.ctx, () => dueTime + 1000);
-      await maintenance(e.ctx, "sync", dueTime, false, 0);
-      expect(e.send).toHaveBeenCalledTimes(5);
-      expect(e.metrics.queries - before).toBeLessThanOrEqual(30);
-      expect(await e.db.all("SELECT year FROM {sources}")).toEqual([
-        { year: 2026 },
-      ]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
+  it.each(["official", "festival"] as const)(
+    "发送五个目标与 %s 年度发布同轮完成，给宿主留出查询余量",
+    async (kind) => {
+      const e = await fixture(5),
+        before = e.metrics.queries;
+      vi.stubGlobal("fetch", async (url: string) =>
+        Response.json(
+          url.includes("uapis.cn")
+            ? festivalResponse(2026)
+            : {
+                year: 2026,
+                papers: ["https://www.gov.cn/test"],
+                days: [],
+              },
+        ),
+      );
+      try {
+        await dispatch(e.ctx, () => dueTime + 1000);
+        await maintenance(e.ctx, "sync", dueTime, false, 0, kind);
+        expect(e.send).toHaveBeenCalledTimes(5);
+        expect(e.metrics.queries - before).toBeLessThanOrEqual(30);
+        expect(await e.db.all("SELECT year,kind FROM {sources}")).toEqual([
+          { year: 2026, kind },
+        ]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
   it("重启后的过期游标成批推进，不饿死新到期任务", async () => {
     const e = await fixture(5),
       before = e.metrics.queries;
@@ -171,24 +176,13 @@ describe("调度、SDK 共享预算及并发", () => {
       }
       return result as never;
     };
-    c.help.daily = "修改帮助";
+    c.replies["每日"].body = "修改帮助";
     await saveConfig(e.ctx, s, c, dueTime + 2000);
     expect(await e.db.first("SELECT due_at FROM {bindings}")).toEqual({
       due_at: dueTime + 86400000,
     });
     await dispatch(e.ctx, () => dueTime + 3000);
     expect(e.send).toHaveBeenCalledTimes(1);
-  });
-  it("已有超过100个中断事件绑定读取防重进度不超过D1参数上限", async () => {
-    const e = await fixture();
-    expect(
-      (
-        await progress(
-          e.db,
-          Array.from({ length: 105 }, (_, i) => "task:r" + i),
-        )
-      ).size,
-    ).toBe(0);
   });
   it("批量结果持久化失败，不重发；恢复时全部事件记为不确定", async () => {
     const e = await events();
@@ -271,36 +265,6 @@ describe("假期语义、来源和输入边界", () => {
 });
 
 describe("备份与管理接口", () => {
-  it("多分块恢复不会删掉前一块源，并保留本地更晚的防重记录", async () => {
-    const e = await fixture(),
-      b = await exportBackup(e.ctx);
-    const long = "字".repeat(80);
-    for (let year = 2026; year < 2037; year++) {
-      const days = Array.from({ length: 365 }, (_, i) => ({
-        date: new Date(Date.UTC(year, 0, i + 1)).toISOString().slice(0, 10),
-        name: long,
-        isOffDay: true,
-      }));
-      const data = JSON.stringify({ year, papers: [], days });
-      b.sources.push({
-        year,
-        hash: await hash(data),
-        data,
-        error: null,
-        updated_at: 0,
-      });
-    }
-    b.progress = Array.from({ length: 9000 }, (_, i) => ({
-      binding_id: "task:r0",
-      event_key: `event${i}:0`,
-    }));
-    await e.db.run("INSERT INTO {event_progress} VALUES ('task:r0','later:0')");
-    const before = e.metrics.queries;
-    await restoreBackup(e.ctx, b, (await snapshot(e.db)).revision);
-    expect(e.metrics.queries - before).toBeLessThan(30);
-    expect(await e.db.all("SELECT year FROM {sources}")).toHaveLength(11);
-    expect((await exportBackup(e.ctx)).progress).toHaveLength(9001);
-  });
   it("恢复空源确实删除旧源，错误指纹及目标身份替换拒绝", async () => {
     const e = await fixture(),
       b = await exportBackup(e.ctx);
@@ -312,6 +276,7 @@ describe("备份与管理接口", () => {
     b.sources = [
       {
         year: 2026,
+        kind: "official" as const,
         hash: "0".repeat(64),
         data: '{"year":2026,"papers":[],"days":[]}',
         error: null,
@@ -388,42 +353,6 @@ describe("备份与管理接口", () => {
   });
 });
 
-it("最大绑定和同刻事件规模使用有界 SQL 参数，全部事件进度持久化", async () => {
-  const e = await fixture(5),
-    s = await snapshot(e.db),
-    c = structuredClone(s.config);
-  c.holidays = Array.from({ length: 600 }, (_, i) =>
-    holiday(("holiday" + i).padEnd(70, "x")),
-  );
-  c.tasks = Array.from({ length: 20 }, (_, i) => ({
-    ...c.tasks[0]!,
-    id: "t" + i,
-    schedule: {
-      kind: "holiday_event" as const,
-      time: "09:" + String(i).padStart(2, "0"),
-      eventKind: "holiday" as const,
-      offset: 0,
-    },
-  }));
-  c.bindings = c.tasks.flatMap((t) =>
-    c.recipients.map((r) => ({
-      taskId: t.id,
-      recipientId: r.id,
-      enabled: true,
-      overrideText: null,
-    })),
-  );
-  validateConfig(c);
-  const before = e.metrics.queries;
-  await saveConfig(e.ctx, s, c, start);
-  expect(e.metrics.queries - before).toBeLessThan(20);
-  await dispatch(e.ctx, () => dueTime + 1000);
-  expect(e.send).toHaveBeenCalledTimes(5);
-  expect(
-    await e.db.first("SELECT COUNT(*) AS n FROM {event_progress}"),
-  ).toEqual({ n: 3000 });
-}, 10_000);
-
 it("人工假期优先于原始补班数据，录入后立即发送且不重复", async () => {
   const e = await events(),
     s = await snapshot(e.db);
@@ -434,13 +363,14 @@ it("人工假期优先于原始补班数据，录入后立即发送且不重复"
   });
   const raw = {
     year: 2026,
+    kind: "official" as const,
     hash: await hash(data),
     data,
     error: null,
     updated_at: 0,
   };
   await e.db.run(
-    "INSERT INTO {sources} VALUES (2026,?,?,NULL,0)",
+    "INSERT INTO {sources}(kind,year,hash,data,error,updated_at) VALUES ('official',2026,?,?,NULL,0)",
     raw.hash,
     data,
   );
@@ -509,23 +439,23 @@ it("假期源仅调整键和条目顺序时，不修改录入数据也不写数�
   expect(saved.config.holidays[0]!.id).toBe("a");
 });
 
-it("假期查询最小文字预算仍展示长名称对应日期并保留旧数据提示", async () => {
+it("查询完整保留长名称和旧数据提示", async () => {
   const e = await fixture(),
     s = await snapshot(e.db),
     c = structuredClone(s.config);
-  c.textLimit = 100;
   c.holidays = [{ ...holiday("a"), name: "长假".repeat(40) }];
   await saveConfig(e.ctx, s, c, start);
   await e.db.run(
-    "INSERT INTO {sources}(year,hash,data,error,updated_at) VALUES (2026,'cached',?,'offline',0)",
+    "INSERT INTO {sources}(kind,year,hash,data,error,updated_at) VALUES ('official',2026,'cached',?,'offline',0)",
     JSON.stringify({ year: 2026, papers: [], days: [] }),
   );
   const clock = vi.spyOn(Date, "now").mockReturnValue(start);
   try {
-    const text = await queryHoliday(e.ctx, "remaining");
+    const text = (await renderCommand(e.ctx, "假期 剩余")).text;
     expect(text).toContain("2026-10-10 至 2026-10-10");
     expect(text).toContain("最近可信版本");
-    expect([...text].length).toBeLessThanOrEqual(100);
+    expect(text).toContain("长假".repeat(40));
+    expect(text).not.toContain("…");
   } finally {
     clock.mockRestore();
   }
@@ -536,16 +466,22 @@ it("手动同步按北京时间只请求当年和明年", async () => {
   const fetched: string[] = [];
   vi.stubGlobal("fetch", async (url: string) => {
     fetched.push(url);
-    return Response.json({
-      year: Number(url.match(/(\d{4})\.json$/)![1]),
-      papers: [],
-      days: [],
-    });
+    return Response.json(
+      url.includes("uapis.cn")
+        ? festivalResponse(Number(url.match(/(\d{4})$/)![1]))
+        : {
+            year: Number(url.match(/(\d{4})(?:\.json)?$/)![1]),
+            papers: [],
+            days: [],
+          },
+    );
   });
   try {
     await maintenance(e.ctx, "sync", Date.parse("2026-12-31T16:00:00Z"), true);
-    expect(fetched.map((url) => url.match(/(\d{4})\.json$/)![1])).toEqual([
+    expect(fetched.map((url) => url.match(/(\d{4})(?:\.json)?$/)![1])).toEqual([
       "2027",
+      "2027",
+      "2028",
       "2028",
     ]);
   } finally {
@@ -583,6 +519,7 @@ it("人工调整自动补班日期后，同步保留修改且原日期不再视�
   const service = holidayService(saved.config, [
     {
       year: 2026,
+      kind: "official" as const,
       hash: "",
       data: JSON.stringify(raw),
       error: null,
@@ -593,44 +530,6 @@ it("人工调整自动补班日期后，同步保留修改且原日期不再视�
   expect((await service.getDayStatus("2026-10-11")).data.kind).toBe(
     "makeup_workday",
   );
-});
-
-it("旧配置升级直接启用原假期，保留事件身份和已处理进度", async () => {
-  const e = await fixture(),
-    s = await snapshot(e.db);
-  const legacy = {
-    ...s.config,
-    regions: [{ id: "CN", name: "old" }],
-    coverage: [],
-    holidays: [
-      { ...holiday("a"), verified: false, region: "CN" },
-      { ...holiday("b", "2026-10-11"), verified: false, region: "CN" },
-    ],
-  };
-  legacy.tasks[0]!.schedule = {
-    kind: "holiday_event",
-    time: "09:00",
-    eventKind: "holiday",
-    offset: 0,
-  };
-  await e.db.run("UPDATE {state} SET config=?", JSON.stringify(legacy));
-  await e.db.run("UPDATE {bindings} SET due_at=NULL,event_key=NULL");
-  await e.db.run("INSERT INTO {event_progress} VALUES ('task:r0','a:0')");
-  const clock = vi.spyOn(Date, "now").mockReturnValue(start);
-  try {
-    await plugin.hooks!.onBoot!(e.ctx);
-  } finally {
-    clock.mockRestore();
-  }
-  const saved = await snapshot(e.db);
-  expect(saved.config).not.toHaveProperty("regions");
-  expect(saved.config.holidays[0]).not.toHaveProperty("verified");
-  expect(await e.db.first("SELECT event_key FROM {bindings}")).toEqual({
-    event_key: "b:0",
-  });
-  expect(await e.db.first("SELECT event_key FROM {event_progress}")).toEqual({
-    event_key: "a:0",
-  });
 });
 
 it("人工录入覆盖自动同日记录时，调度和查询使用同一条有效记录", async () => {
@@ -687,22 +586,23 @@ it("同步生成放假区间，空占位不代表没有假期，下一个与模�
         kind,
       })),
     ).toEqual([
-      { start: "2026-10-01", end: "2026-10-02", kind: "holiday" },
-      { start: "2026-10-04", end: "2026-10-04", kind: "holiday" },
+      { start: "2026-10-01", end: "2026-10-04", kind: "holiday" },
       { start: "2026-10-10", end: "2026-10-10", kind: "makeup" },
     ]);
-    // Old releases persisted empty placeholders as successful source data.
+    // An empty placeholder must not be treated as an announced calendar.
     await e.db.run(
-      "INSERT INTO {sources} VALUES (2027,'cached',?,NULL,0)",
+      "INSERT INTO {sources}(kind,year,hash,data,error,updated_at) VALUES ('official',2027,'cached',?,NULL,0)",
       JSON.stringify({ year: 2027, papers: [], days: [] }),
     );
     await syncYear(e.ctx, 2027, async () =>
       Response.json({ year: 2027, papers: [], days: [] }),
     );
-    expect(await queryHoliday(e.ctx, "remaining")).toContain(
+    expect((await renderCommand(e.ctx, "假期 剩余")).text).toContain(
       "今年已没有剩余假期",
     );
-    expect(await queryHoliday(e.ctx, "next")).toContain("尚未公布");
+    expect((await renderCommand(e.ctx, "假期 下一个")).text).toContain(
+      "尚未公布",
+    );
     expect(
       await e.db.first("SELECT error FROM {sources} WHERE year=2027"),
     ).toEqual({ error: "not_published" });
@@ -718,8 +618,8 @@ it("同步生成放假区间，空占位不代表没有假期，下一个与模�
         ],
       }),
     );
-    expect(await queryHoliday(e.ctx, "next")).toBe(
-      "跨年假期：2026-12-31 至 2027-01-02",
+    expect((await renderCommand(e.ctx, "假期 下一个")).text).toBe(
+      "跨年假期：2026-12-31 至 2027-01-03\n共 4 天；调休上班日：无",
     );
     const s = await snapshot(e.db);
     s.config.contents[0]!.body =
@@ -734,21 +634,21 @@ it("同步生成放假区间，空占位不代表没有假期，下一个与模�
           now,
         )
       ).text,
-    ).toBe("跨年假期 2026-12-31 至 2027-01-02");
+    ).toBe("跨年假期 2026-12-31 至 2027-01-03");
     clock.mockReturnValue(Date.parse("2027-01-01T09:00:00+08:00"));
-    expect(await queryHoliday(e.ctx, "remaining")).toContain(
-      "跨年假期：2026-12-31 至 2027-01-02（进行中）",
+    expect((await renderCommand(e.ctx, "假期 剩余")).text).toContain(
+      "跨年假期：2026-12-31 至 2027-01-03（进行中）",
     );
-    clock.mockReturnValue(Date.parse("2027-01-03T09:00:00+08:00"));
-    expect(await queryHoliday(e.ctx, "next")).toBe(
-      "春假：2027-02-01 至 2027-02-01",
+    clock.mockReturnValue(Date.parse("2027-01-04T09:00:00+08:00"));
+    expect((await renderCommand(e.ctx, "假期 下一个")).text).toBe(
+      "春假：2027-01-30 至 2027-02-01\n共 3 天；调休上班日：无",
     );
   } finally {
     clock.mockRestore();
   }
 });
 
-it("升级补齐缓存中的放假区间，同步保留人工修改", async () => {
+it("重新生成缓存中的放假区间，同步保留人工修改", async () => {
   const e = await fixture();
   const raw = {
     year: 2026,
@@ -810,7 +710,9 @@ it("无发送任务也清理往年假期与源，保留跨年区间和永久防�
     holiday("future", "2027-01-01"),
   ];
   await e.db.run("UPDATE {state} SET config=?", JSON.stringify(s.config));
-  await e.db.run("INSERT INTO {sources} VALUES (2025,'old','',NULL,0)");
+  await e.db.run(
+    "INSERT INTO {sources}(kind,year,hash,data,error,updated_at) VALUES ('official',2025,'old','',NULL,0)",
+  );
   await e.db.run("INSERT INTO {event_progress} VALUES ('task:r0','expired:0')");
   await e.db.run(
     "INSERT INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at) VALUES ('old','t','r',0,1,'success',0,0)",

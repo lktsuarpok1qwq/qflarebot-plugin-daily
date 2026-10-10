@@ -110,7 +110,7 @@ export async function finishMany(db: PluginDB, outcomes: Outcome[]) {
         params: [data],
       },
       {
-        sql: `${records} UPDATE {bindings} AS b SET last_due=MAX(COALESCE(last_due,0),due_at),due_at=(SELECT next FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision),event_key=(SELECT event FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision) WHERE EXISTS(SELECT 1 FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision)`,
+        sql: `${records} UPDATE {bindings} AS b SET last_due=MAX(COALESCE(last_due,0),due_at),due_at=(SELECT next FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision),event_key=(SELECT event FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision) WHERE b.id IN (SELECT id FROM records) AND EXISTS(SELECT 1 FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision)`,
         params: [data],
       },
     );

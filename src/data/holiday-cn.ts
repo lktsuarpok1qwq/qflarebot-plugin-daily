@@ -1,8 +1,14 @@
 import type { Ctx, Source } from "../types.js";
 import { dateAt, validDate } from "../scheduler/planner.js";
 import { validateConfig } from "./validation.js";
-import { saveConfig, snapshot, readData, migrate } from "./repository.js";
+import {
+  saveConfig,
+  snapshot,
+  readData,
+  refreshCalendar,
+} from "./repository.js";
 import { refreshHolidays, hasCalendar } from "./calendar.js";
+import { syncFestivals } from "./festivals.js";
 export type RawYear = {
   year: number;
   papers: string[];
@@ -56,7 +62,7 @@ export async function hash(text: string) {
     (x) => x.toString(16).padStart(2, "0"),
   ).join("");
 }
-async function limitedJson(res: Response) {
+export async function limitedJson(res: Response, maxBytes = 128_000) {
   if (!res.body) throw new Error("假期源为空");
   const reader = res.body.getReader();
   let size = 0,
@@ -67,7 +73,7 @@ async function limitedJson(res: Response) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 128_000) throw new Error("假期源超过128KB");
+      if (size > maxBytes) throw new Error("假期源过大");
       text += decoder.decode(value, { stream: true });
     }
     text += decoder.decode();
@@ -85,7 +91,7 @@ export async function syncYear(
   if (!Number.isInteger(year) || year < 2000 || year > 2199)
     throw new Error("同步年度非法");
   const previous = await ctx.db.first<Source>(
-    "SELECT * FROM {sources} WHERE year=?",
+    "SELECT * FROM {sources} WHERE year=? AND kind='official'",
     year,
   );
   try {
@@ -108,7 +114,7 @@ export async function syncYear(
     if (previous?.hash === digest) {
       if (previous.error)
         await ctx.db.run(
-          "UPDATE {sources} SET error=NULL,updated_at=? WHERE year=?",
+          "UPDATE {sources} SET error=NULL,updated_at=? WHERE year=? AND kind='official'",
           now,
           year,
         );
@@ -118,7 +124,8 @@ export async function syncYear(
     const current = await readData(ctx.db),
       s = current.snapshot,
       config = structuredClone(s.config);
-    const published = {
+    const published: Source = {
+      kind: "official",
       year,
       hash: digest,
       data,
@@ -127,7 +134,12 @@ export async function syncYear(
     };
     refreshHolidays(
       config,
-      [...current.sources.filter((s) => s.year !== year), published],
+      [
+        ...current.sources.filter(
+          (s) => s.year !== year || s.kind === "festival",
+        ),
+        published,
+      ],
       now,
     );
     validateConfig(config);
@@ -141,12 +153,19 @@ export async function syncYear(
     );
   }
 }
-async function setError(ctx: Ctx, year: number, error: string, now: number) {
+export async function setError(
+  ctx: Ctx,
+  year: number,
+  error: string,
+  now: number,
+  kind: "official" | "festival" = "official",
+) {
   await ctx.db.run(
-    "INSERT INTO {sources}(year,hash,data,error,updated_at) VALUES (?,'','',?,?) ON CONFLICT(year) DO UPDATE SET error=excluded.error WHERE error IS NOT excluded.error",
+    "INSERT INTO {sources}(year,hash,data,error,updated_at,kind) VALUES (?,'','',?,?,?) ON CONFLICT(kind,year) DO UPDATE SET error=excluded.error WHERE error IS NOT excluded.error",
     year,
     error,
     now,
+    kind,
   );
 }
 export async function maintenance(
@@ -155,10 +174,13 @@ export async function maintenance(
   scheduledAt: number,
   manual = false,
   yearOffset?: 0 | 1,
+  sourceKind?: "official" | "festival",
 ) {
   const day = dateAt(scheduledAt);
   const jobKey =
-    job === "sync" && yearOffset !== undefined ? `sync:${yearOffset}` : job;
+    job === "sync" && yearOffset !== undefined
+      ? `sync:${sourceKind ?? "all"}:${yearOffset}`
+      : job;
   if (!manual) {
     const r = await ctx.db.run(
       "INSERT INTO {maintenance}(job,day,error) VALUES (?,?,NULL) ON CONFLICT(job) DO UPDATE SET day=excluded.day WHERE day<>excluded.day",
@@ -168,13 +190,20 @@ export async function maintenance(
     if (!r.changes) return;
   }
   try {
-    await migrate(ctx, scheduledAt);
+    // Changed sources rebuild the calendar when published. Only daily cleanup
+    // and a manual refresh need to rebuild an unchanged cache.
+    if (job === "cleanup" || manual) await refreshCalendar(ctx, scheduledAt);
     if (job === "sync") {
       const year = +day.slice(0, 4);
       for (const y of yearOffset === undefined
         ? [year, year + 1]
         : [year + yearOffset])
-        if (y >= 2000 && y <= 2199) await syncYear(ctx, y, fetch, scheduledAt);
+        if (y >= 2000 && y <= 2199) {
+          if (sourceKind !== "festival")
+            await syncYear(ctx, y, fetch, scheduledAt);
+          if (sourceKind !== "official")
+            await syncFestivals(ctx, y, fetch, scheduledAt, manual);
+        }
     } else {
       const s = await snapshot(ctx.db);
       await ctx.db.run(

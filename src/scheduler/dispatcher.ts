@@ -9,6 +9,7 @@ import {
   type Claim,
   type Outcome,
 } from "../data/deliveries.js";
+import { message } from "../content/message.js";
 import { renderMessage } from "../content/renderer.js";
 import { holidayService } from "../content/holiday.js";
 import { nextPlan } from "./planner.js";
@@ -37,10 +38,10 @@ async function dispatchPass(
   const bindings = new Map(
     s.config.bindings.map((b) => [`${b.taskId}:${b.recipientId}`, b]),
   );
-  const service = holidayService(s.config, raw);
+  let service: ReturnType<typeof holidayService> | undefined;
   const rendered = new Map<string, Promise<Rendered>>();
   const claims: Claim[] = [],
-    texts = new Map<string, string>(),
+    texts = new Map<string, Rendered>(),
     outcomes: Outcome[] = [];
   const next = (d: Due) => {
     const task = tasks.get(d.task_id),
@@ -95,6 +96,10 @@ async function dispatchPass(
     const t = tasks.get(d.task_id),
       r = recipients.get(d.recipient_id),
       b = bindings.get(d.id);
+    if (d.event_key) service ??= holidayService(s.config, raw);
+    const activeEvents = d.event_key
+      ? service!.pendingEvents(eventKeys(d.event_key), done.get(d.id))
+      : [];
     let status: DeliveryStatus = "sending",
       error: string | null = null,
       details: unknown = {};
@@ -111,10 +116,7 @@ async function dispatchPass(
     )
       status = "skipped_disabled";
     else if (clock() >= d.due_at + 60_000) status = "skipped_expired";
-    else if (
-      d.event_key &&
-      eventKeys(d.event_key).every((key) => done.get(d.id)?.has(key))
-    ) {
+    else if (d.event_key && activeEvents.length === 0) {
       status = "skipped_duplicate";
       error = "event_already_handled";
     } else if (clock() >= d.due_at + 60_000 - LIMITS.reserveMs) {
@@ -122,15 +124,14 @@ async function dispatchPass(
       error = "sdk_budget_reserve";
     } else {
       try {
-        const activeEvents = eventKeys(d.event_key).filter(
-          (key) => !done.get(d.id)?.has(key),
-        );
-        if (activeEvents.some((key) => !service.hasEvent(key.split(":")[0]!)))
+        if (activeEvents.some((key) => !service!.hasEvent(key.split(":")[0]!)))
           throw new Error("假期记录已删除或被人工修改覆盖");
         const key = JSON.stringify([
           t.id,
           d.due_at,
           b.overrideText,
+          b.overrideFormat,
+          t.format,
           activeEvents,
         ]);
         let value = rendered.get(key);
@@ -147,8 +148,8 @@ async function dispatchPass(
           rendered.set(key, value);
         }
         const result = await value;
-        texts.set(deliveryKey(d), result.text);
-        details = { items: result.items, text: result.text };
+        texts.set(deliveryKey(d), result);
+        details = result;
         if (!result.text) status = "skipped_empty";
       } catch (e) {
         status = "failed_validation";
@@ -204,7 +205,10 @@ async function dispatchPass(
               resultStatus(
                 await ctx.api.sendMessage(
                   { scene: r.scene, id: r.openid },
-                  { text: texts.get(deliveryKey(d))! },
+                  message(
+                    texts.get(deliveryKey(d))!.text,
+                    texts.get(deliveryKey(d))!.format,
+                  ),
                 ),
               ),
             );

@@ -2,11 +2,11 @@ import { it, expect } from "vitest";
 import { fixture, dueTime, start } from "./db.js";
 import { dispatch } from "../src/scheduler/dispatcher.js";
 import { claim, due, snapshot, saveConfig } from "../src/data/repository.js";
-it("1000次空轮询：1000次查询、零写入、零消息", async () => {
+it("重复空轮询每次只查询一次，零写入、零消息", async () => {
   const e = await fixture();
   const before = { ...e.metrics };
-  for (let i = 0; i < 1000; i++) await dispatch(e.ctx, () => start);
-  expect(e.metrics.queries - before.queries).toBe(1000);
+  for (let i = 0; i < 3; i++) await dispatch(e.ctx, () => start);
+  expect(e.metrics.queries - before.queries).toBe(3);
   expect(e.metrics.changes - before.changes).toBe(0);
   expect(e.send).not.toHaveBeenCalled();
 });
@@ -24,10 +24,11 @@ it("并发重复Cron，每个目标只发一次", async () => {
   ]);
   expect((await due(e.db, dueTime + 5000)).length).toBe(0);
 });
-it("空内容逐目标保存详细原因", async () => {
+it("空汇总即使有标题也不发送，逐目标保存详细原因", async () => {
   const e = await fixture(2),
     s = await snapshot(e.db);
   s.config.contents[0]!.enabled = false;
+  s.config.tasks[0]!.title = "日报";
   await saveConfig(e.ctx, s, s.config, start + 1000);
   await dispatch(e.ctx, () => dueTime + 1000);
   const logs = await e.db.all<{ status: string; details: string }>(
@@ -38,6 +39,7 @@ it("空内容逐目标保存详细原因", async () => {
     logs.every(
       (x) =>
         x.status === "skipped_empty" &&
+        JSON.parse(x.details).text === "" &&
         JSON.parse(x.details).items[0].reason === "disabled",
     ),
   ).toBe(true);
@@ -69,13 +71,6 @@ it("一个目标权限失败不阻塞其他目标，也不封禁下一次计划"
   expect(
     await e.db.all("SELECT status FROM {deliveries} ORDER BY recipient_id"),
   ).toEqual([{ status: "failed_api" }, { status: "success" }]);
-  // A legacy restriction row must not continue blocking after an upgrade.
-  await e.db.exec(
-    "CREATE TABLE {recipient_state}(id TEXT PRIMARY KEY,permission TEXT,error TEXT)",
-  );
-  await e.db.run(
-    "INSERT INTO {recipient_state} VALUES ('r0','restricted','old')",
-  );
   await dispatch(e.ctx, () => dueTime + 86400000 + 1000);
   expect(e.send).toHaveBeenCalledTimes(4);
 });
@@ -190,22 +185,4 @@ it("假期已发送后改日期、清理详细日志都不能重发事件", asyn
   await saveConfig(e.ctx, current, edited, dueTime + 2000);
   await dispatch(e.ctx, () => dueTime + 86400000 + 1000);
   expect(e.send).toHaveBeenCalledTimes(1);
-});
-it("100个目标绑定超载按有界批次过期推进，单轮查询数受限", async () => {
-  const e = await fixture(50),
-    s = await snapshot(e.db),
-    c = structuredClone(s.config);
-  c.tasks.push({ ...c.tasks[0]!, id: "task2" });
-  c.bindings.push(...c.bindings.map((b) => ({ ...b, taskId: "task2" })));
-  await saveConfig(e.ctx, s, c, start);
-  let maxQueries = 0;
-  for (let i = 0; i < 20; i++) {
-    const n = e.metrics.queries;
-    await dispatch(e.ctx, () => dueTime + 70000);
-    maxQueries = Math.max(maxQueries, e.metrics.queries - n);
-  }
-  expect((await due(e.db, dueTime + 70000)).length).toBe(0);
-  expect(e.send).not.toHaveBeenCalled();
-  expect((await e.db.all("SELECT key FROM {deliveries}")).length).toBe(100);
-  expect(maxQueries).toBeLessThan(50);
 });

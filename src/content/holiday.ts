@@ -1,4 +1,4 @@
-import type { Config, Holiday, Source } from "../types.js";
+import type { Config, Holiday, Source, Festival } from "../types.js";
 import { automaticHolidays } from "../data/calendar.js";
 import { activeHolidays } from "../scheduler/events.js";
 import { dateAt, validDate } from "../scheduler/planner.js";
@@ -17,7 +17,7 @@ export function holidayService(
   const rawDays = new Map<string, "holiday" | "makeup_workday">();
   const publishedYears = new Set<number>();
   for (const source of [...sources].sort((a, b) => a.year - b.year))
-    if (source.data) {
+    if (source.data && source.kind !== "festival") {
       const raw = JSON.parse(source.data) as {
         papers?: string[];
         days: { date: string; isOffDay: boolean }[];
@@ -41,7 +41,41 @@ export function holidayService(
           rawDays.delete(date);
   }
   const active = activeHolidays(config);
-  const activeIds = new Set(active.map((h) => h.id));
+  const festivals = [...config.festivals].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
+  );
+  const activeIds = new Set([
+    ...active.flatMap((h) => [h.id, ...(h.festivalIds ?? [])]),
+    ...festivals.map((f) => f.id),
+  ]);
+  const families = new Map<string, Set<string>>();
+  for (const h of active) {
+    const family = [h.id, ...(h.festivalIds ?? [])];
+    for (const id of family) {
+      const related = families.get(id) ?? new Set<string>();
+      for (const member of family) related.add(member);
+      families.set(id, related);
+    }
+  }
+  const visibleFestivals = festivals.filter(
+    (f) =>
+      !active.some(
+        (h) =>
+          h.kind === "holiday" &&
+          ((h.festivalIds ?? []).includes(f.id) ||
+            (h.start <= f.date && f.date <= h.end)),
+      ),
+  );
+  const events = (from: string, to: string): (Holiday | Festival)[] =>
+    [
+      ...active.filter(
+        (h) => h.kind === "holiday" && h.end >= from && h.start <= to,
+      ),
+      ...visibleFestivals.filter((f) => f.date >= from && f.date <= to),
+    ].sort(
+      (a, b) =>
+        eventDate(a).localeCompare(eventDate(b)) || a.id.localeCompare(b.id),
+    );
   function check(date: string) {
     if (!validDate(date)) throw new Error("日期错误");
   }
@@ -78,34 +112,44 @@ export function holidayService(
           : "unknown",
     };
   }
-  const sorted = (from: string, to: string) =>
-    active
-      .filter((h) => h.kind === "holiday" && h.end >= from && h.start <= to)
-      .sort(
-        (a, b) =>
-          a.start.localeCompare(b.start) ||
-          a.end.localeCompare(b.end) ||
-          a.id.localeCompare(b.id),
-      );
   return {
     hasEvent: (id: string) => activeIds.has(id),
-    async getNextHoliday(from = dateAt(now)): Promise<Query<Holiday | null>> {
-      check(from);
-      const to = `${Math.min(2199, +from.slice(0, 4) + 1)}-12-31`,
-        h = sorted(from, "2199-12-31")[0] ?? null;
-      return result(from, h ? (h.start < from ? from : h.start) : to, h, !!h);
+    pendingEvents(keys: string[], handled: ReadonlySet<string> = new Set()) {
+      return keys.filter((key) => {
+        const [id, offset] = key.split(":");
+        return (
+          !handled.has(key) &&
+          ![...(families.get(id!) ?? [])].some((member) =>
+            handled.has(`${member}:${offset}`),
+          )
+        );
+      });
     },
-    async getRemainingHolidays(
-      year: number,
-      from = dateAt(now),
-    ): Promise<Query<Holiday[]>> {
+    async getNextFestival(from = dateAt(now)) {
       check(from);
-      if (!Number.isInteger(year) || year < 2000 || year > 2199)
-        throw new Error("年份错误");
-      const lower = from > `${year}-01-01` ? from : `${year}-01-01`,
-        to = `${year}-12-31`,
-        rows = lower > to ? [] : sorted(lower, to);
-      return result(lower, to, rows, rows.length > 0);
+      return festivals.find((f) => f.date >= from) ?? null;
+    },
+    async getNextEvent(from = dateAt(now)) {
+      check(from);
+      const h = events(from, "2199-12-31")[0] ?? null;
+      return result(
+        from,
+        h
+          ? eventDate(h) < from
+            ? from
+            : eventDate(h)
+          : `${Math.min(2199, +from.slice(0, 4) + 1)}-12-31`,
+        h,
+        !!h,
+      );
+    },
+    async getRemainingEvents(year: number, from = dateAt(now)) {
+      check(from);
+      const rows = events(
+        from > `${year}-01-01` ? from : `${year}-01-01`,
+        `${year}-12-31`,
+      );
+      return result(from, `${year}-12-31`, rows, !!rows.length);
     },
     async getDayStatus(
       date: string,
@@ -140,3 +184,6 @@ export function holidayService(
     },
   };
 }
+
+export const eventDate = (h: Holiday | Festival) =>
+  "date" in h ? h.date : h.start;

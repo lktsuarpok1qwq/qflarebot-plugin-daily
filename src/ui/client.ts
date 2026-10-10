@@ -11,6 +11,8 @@ let state,
   editingContent,
   editingRecipient,
   editingHoliday,
+  editingFestival,
+  selectedCommand = "每日",
   logsOffset = 0,
   testRequests = new Map(),
   running = false,
@@ -70,6 +72,8 @@ function decide(message, value) {
   $("decisionText").textContent = message;
   $("decisionTitle").textContent = editing ? "编辑覆盖文本" : "确认操作";
   input.hidden = !editing;
+  $("decisionFormatLabel").hidden = !editing;
+  $("decisionFormat").disabled = false;
   input.value = value ?? "";
   input.disabled = false;
   $("decisionAccept").disabled = false;
@@ -227,6 +231,123 @@ function table(head, rows) {
     "</tbody></table></div>"
   );
 }
+
+function formatField(id, value) {
+  return (
+    '<label>消息格式<select id="' +
+    id +
+    '">' +
+    ["plain", "markdown"]
+      .map(
+        (v) =>
+          '<option value="' +
+          v +
+          '" ' +
+          (value === v ? "selected" : "") +
+          ">" +
+          (v === "plain" ? "纯文本" : "Markdown") +
+          "</option>",
+      )
+      .join("") +
+    "</select></label>"
+  );
+}
+function markdown(text) {
+  const inline = (line) => {
+    const literals = [];
+    const hold = (html) => "\u0000" + (literals.push(html) - 1) + "\u0000";
+    return esc(
+      line.replace(/\\([\\\x60*_{}[\]()<>#+.!|~-])/g, (_, c) => hold(esc(c))),
+    )
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) =>
+        hold(
+          '<a href="' +
+            url +
+            '" target="_blank" rel="noopener noreferrer">' +
+            label +
+            "</a>",
+        ),
+      )
+      .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/~~([^~]+)~~/g, "<del>$1</del>")
+      .replace(
+        /\u0000(\d+)\u0000/g,
+        (_, index) => literals[Number(index)] || "",
+      );
+  };
+  return text
+    .split("\n")
+    .map((line) => {
+      if (/^---+$/.test(line)) return "<hr>";
+      const heading = line.match(/^(#{1,2})\s+(.*)/);
+      if (heading)
+        return (
+          "<h" +
+          heading[1].length +
+          ">" +
+          inline(heading[2]) +
+          "</h" +
+          heading[1].length +
+          ">"
+        );
+      if (/^>\s?/.test(line))
+        return (
+          "<blockquote>" + inline(line.replace(/^>\s?/, "")) + "</blockquote>"
+        );
+      if (/^[-*]\s+/.test(line))
+        return "<ul><li>" + inline(line.replace(/^[-*]\s+/, "")) + "</li></ul>";
+      if (/^\d+\.\s+/.test(line))
+        return (
+          "<ol><li>" + inline(line.replace(/^\d+\.\s+/, "")) + "</li></ol>"
+        );
+      return "<div>" + inline(line || " ") + "</div>";
+    })
+    .join("");
+}
+function showMessage(id, result) {
+  const el = $(id);
+  el.hidden = false;
+  if (result.format === "markdown") el.innerHTML = markdown(result.text);
+  else el.textContent = result.text;
+}
+const toolbar = (id) =>
+  '<div class="actions">' +
+  [
+    ["标题", "# ", ""],
+    ["加粗", "**", "**"],
+    ["斜体", "*", "*"],
+    ["删除线", "~~", "~~"],
+    ["链接", "[", "](https://example.com)"],
+    ["列表", "- ", ""],
+    ["引用", "> ", ""],
+  ]
+    .map(([label, before, after]) =>
+      btn(label, "markup", JSON.stringify({ id, before, after })),
+    )
+    .join("") +
+  "</div>";
+const replyLabels = {
+  body: "完整回复 / 外层模板",
+  official: "放假安排条目",
+  provisional: "节日日期参考条目",
+  separator: "条目分隔符",
+  empty: "没有剩余记录",
+  unknown: "没有可靠数据",
+  stale: "旧数据提示",
+  ongoing: "进行中提示",
+  makeupEmpty: "没有调休上班日时的文字",
+  error: "查询失败提示",
+  tooLong: "平台返回超限时的提示",
+};
+function captureReply() {
+  if (!$("replyFormat")) return;
+  const reply = config.replies[selectedCommand];
+  reply.format = $("replyFormat").value;
+  for (const key of Object.keys(replyLabels))
+    if ($("reply-" + key)) reply[key] = $("reply-" + key).value;
+}
 function render() {
   $("nav").innerHTML = Object.entries(pages)
     .map(([id, name]) => btn(name, "page", id, id === page ? "active" : ""))
@@ -283,6 +404,7 @@ function render() {
       html +=
         '<section><h2>编辑任务</h2><div class="grid">' +
         field("名称", "taskName", t.name) +
+        formatField("taskFormat", t.format) +
         '<label>模式<select id="taskMode"><option value="standalone" ' +
         (t.mode === "standalone" ? "selected" : "") +
         '>独立</option><option value="digest" ' +
@@ -311,7 +433,9 @@ function render() {
         field("每年月日（例如 02-29）", "monthDay", s.monthDay || "01-01") +
         '<label>事件类别<select id="eventKind"><option value="holiday">放假开始</option><option value="makeup" ' +
         (s.eventKind === "makeup" ? "selected" : "") +
-        ">调休上班日</option></select></label>" +
+        '>调休上班日</option><option value="festival" ' +
+        (s.eventKind === "festival" ? "selected" : "") +
+        ">节日日期</option></select></label>" +
         field("提前天数", "offset", s.offset || 0, "number") +
         field("汇总标题", "taskTitle", t.title) +
         field(
@@ -354,6 +478,7 @@ function render() {
       '</select></label><label>发送对象（可多选）<select id="bindRecipient" multiple>' +
       options(config.recipients) +
       '</select></label></div><label>最终整条消息覆盖，留空使用共享内容<textarea id="override"></textarea></label>' +
+      formatField("overrideFormat", "plain") +
       btn("绑定选中对象", "bind", "", "primary");
     html +=
       table(
@@ -379,7 +504,8 @@ function render() {
             "</td></tr>"
           );
         }),
-      ) + '<pre id="previewResult" hidden></pre></section>';
+      ) +
+      '<div id="messagePreview" class="message-preview" hidden></div><pre id="previewResult" hidden></pre></section>';
     const repeated = config.contents.filter(
       (c) =>
         config.tasks.filter((t) => t.enabled && t.contentIds.includes(c.id))
@@ -495,42 +621,97 @@ function render() {
           "holiday.days_until",
           "holiday.start_date",
           "holiday.end_date",
+          "holiday.days_off",
+          "festival.name",
+          "festival.date",
+          "festival.days_until",
         ]
           .map((v) => btn("{{" + v + "}}", "insert-variable", v))
           .join("") +
         "</div>" +
+        toolbar("contentBody") +
+        '<label>仅日期参考时使用的正文（可选）<textarea id="referenceBody">' +
+        esc(c.referenceBody || "") +
+        "</textarea></label>" +
+        toolbar("referenceBody") +
+        '<p class="muted">格式由任务决定。参考日期使用 festival 变量；holiday 起止日期仅用于放假安排。预览为参考，最终以 QQ 显示为准。</p><div id="contentPreview" class="message-preview">' +
+        markdown(c.body) +
+        "</div>" +
         btn("保存内容", "save-content", "", "primary") +
         "</section>";
     }
+
+    const reply = config.replies[selectedCommand];
     html +=
-      '<section><h2>中文帮助</h2><div class="grid"><label>每日帮助<textarea id="dailyHelp">' +
-      esc(config.help.daily) +
-      '</textarea></label><label>假期帮助<textarea id="holidayHelp">' +
-      esc(config.help.holiday) +
-      '</textarea></label></div><details open><summary>实时预览</summary><pre id="helpPreview">' +
-      esc(config.help.daily + "\n\n" + config.help.holiday) +
-      "</pre></details>" +
-      btn("保存帮助", "save-help", "", "primary") +
-      btn("恢复默认帮助", "reset-help") +
-      "</section>";
+      '<section><h2>命令回复</h2><label>命令<select id="commandName">' +
+      Object.keys(config.replies)
+        .map(
+          (name) =>
+            "<option " +
+            (name === selectedCommand ? "selected" : "") +
+            ">" +
+            esc(name) +
+            "</option>",
+        )
+        .join("") +
+      "</select></label>" +
+      formatField("replyFormat", reply.format);
+    for (const [key, label] of Object.entries(replyLabels)) {
+      if (
+        !["假期 下一个", "假期 剩余"].includes(selectedCommand) &&
+        !["body", "error", "tooLong"].includes(key)
+      )
+        continue;
+      html +=
+        "<label>" +
+        label +
+        '<textarea id="reply-' +
+        key +
+        '">' +
+        esc(reply[key]) +
+        "</textarea></label>" +
+        toolbar("reply-" + key);
+    }
+    html +=
+      '<div class="actions" id="replyVariables">' +
+      state.replyVariables[selectedCommand].body
+        .map((v) => btn("{{" + v + "}}", "reply-variable", v))
+        .join("") +
+      '</div><p class="muted">变量插入当前编辑框；items 用于完整回复，条目中使用 name、start/end 或 date。日期参考没有放假起止日期。</p>' +
+      btn("保存回复", "save-reply", "", "primary") +
+      btn("恢复当前命令默认", "reset-reply") +
+      btn("使用本地数据预览", "preview-reply") +
+      '<div id="replyPreview" class="message-preview">' +
+      (reply.format === "markdown" ? markdown(reply.body) : esc(reply.body)) +
+      "</div></section>";
   }
+
   if (page === "holidays") {
     html +=
-      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的数据，自动生成放假区间和调休上班日；自动清理往年已结束的记录。录入或导入后直接生效，人工修改不会被后续同步覆盖。</p>' +
+      '<section><h2>年度数据</h2><p class="muted">只同步当年和明年的放假安排与节日日期。日期参考不代表放假；自动清理往年已结束的记录。录入或导入后直接生效，人工修改不会被后续同步覆盖。</p>' +
       btn("立即同步", "sync", "", "primary") +
       table(
-        ["年份", "可信数据版本时间", "状态", "远程数据源"],
+        ["年份 / 类别", "数据版本时间", "状态", "远程数据源"],
         state.sources.map(
           (s) =>
             "<tr><td>" +
             s.year +
+            (s.kind === "festival" ? " / 节日日期" : " / 放假安排") +
             "</td><td>" +
             time(s.updated_at) +
             "</td><td>" +
-            esc(s.error === "not_published" ? "尚未公布" : s.error || (s.hasData ? "已有数据" : "尚未公布或未同步")) +
-            '</td><td><a target="_blank" rel="noopener noreferrer" href="https://github.com/NateScarlet/holiday-cn/blob/master/' +
-            s.year +
-            '.json">查看来源</a></td></tr>',
+            esc(
+              s.error === "not_published"
+                ? "尚未公布"
+                : s.error || (s.hasData ? "已有数据" : "尚未公布或未同步"),
+            ) +
+            '</td><td><a target="_blank" rel="noopener noreferrer" href="' +
+            (s.kind === "festival"
+              ? "https://uapis.cn/docs/api-reference/get-misc-holiday-calendar"
+              : "https://github.com/NateScarlet/holiday-cn/blob/master/" +
+                s.year +
+                ".json") +
+            '">查看来源</a></td></tr>',
         ),
       ) +
       "</section>";
@@ -569,6 +750,28 @@ function render() {
         btn("保存假期", "save-holiday", "", "primary") +
         "</section>";
     }
+
+    html +=
+      '<section><h2>节日日期</h2><p class="muted">用于节日提醒和倒计时。已有对应放假安排时，查询优先展示安排；此处保留节日当天日期。来源：UAPI。</p>' +
+      table(
+        ["节日", "日期", "操作"],
+        config.festivals.map(
+          (f) =>
+            "<tr><td>" +
+            esc(f.name) +
+            "</td><td>" +
+            esc(f.date) +
+            "</td><td>" +
+            btn("编辑", "edit-festival", f.id) +
+            "</td></tr>",
+        ),
+      );
+    if (editingFestival)
+      html +=
+        field("名称", "festivalName", editingFestival.name) +
+        field("节日日期", "festivalDate", editingFestival.date, "date") +
+        btn("保存日期", "save-festival", "", "primary");
+    html += "</section>";
     html +=
       '<section><h2>CSV / JSON 导入</h2><label>文件内容（CSV 表头 name,start,end）<textarea id="importText"></textarea></label><input id="importFile" type="file" accept=".csv,.json"><div class="actions">' +
       btn("预览导入", "preview-import") +
@@ -603,12 +806,6 @@ function render() {
         )
         .join("") +
       "</select></label>" +
-      field(
-        "应用消息长度上限（100–500）",
-        "textLimit",
-        config.textLimit,
-        "number",
-      ) +
       "</div>" +
       btn("保存设置", "save-settings") +
       "<pre>" +
@@ -681,6 +878,7 @@ async function action(a, id) {
       contentIds: [],
       title: "",
       separator: "\n\n",
+      format: "plain",
     };
     render();
     return;
@@ -710,6 +908,7 @@ async function action(a, id) {
       ...editingTask,
       name: $("taskName").value,
       mode: $("taskMode").value,
+      format: $("taskFormat").value,
       enabled: $("taskEnabled").checked,
       schedule: s,
       contentIds: [...$("contentOrder").children]
@@ -763,6 +962,7 @@ async function action(a, id) {
           recipientId: o.value,
           enabled: true,
           overrideText: $("override").value.trim() || null,
+          overrideFormat: $("overrideFormat").value,
         },
         i = config.bindings.findIndex(
           (b) => b.taskId === taskId && b.recipientId === o.value,
@@ -788,12 +988,14 @@ async function action(a, id) {
       b.enabled = !b.enabled;
       await save();
     } else if (a === "edit-override") {
+      $("decisionFormat").value = b.overrideFormat;
       const text = await promptText(
         "覆盖该任务的最终整条消息；留空恢复共享内容",
         b.overrideText || "",
       );
       if (text !== null) {
         b.overrideText = text.trim() || null;
+        b.overrideFormat = $("decisionFormat").value;
         await save();
       }
     } else {
@@ -805,6 +1007,7 @@ async function action(a, id) {
       });
       if (a === "test" && !["sending", "uncertain"].includes(result.status))
         testRequests.delete(id);
+      if (a === "preview") showMessage("messagePreview", result);
       $("previewResult").hidden = false;
       $("previewResult").textContent =
         a === "preview"
@@ -892,12 +1095,14 @@ async function action(a, id) {
     return;
   }
   if (a === "insert-variable") {
-    $("contentBody").setRangeText(
+    const area = $(lastContentField) || $("contentBody");
+    area.setRangeText(
       "{{" + id + "}}",
-      $("contentBody").selectionStart,
-      $("contentBody").selectionEnd,
+      area.selectionStart,
+      area.selectionEnd,
       "end",
     );
+    area.dispatchEvent(new Event("input", { bubbles: true }));
     return;
   }
   if (a === "save-content") {
@@ -906,6 +1111,7 @@ async function action(a, id) {
       name: $("contentName").value,
       kind: $("contentKind").value,
       body: $("contentBody").value,
+      referenceBody: $("referenceBody").value,
       enabled: $("contentEnabled").checked,
       only: $("contentOnly").value,
     });
@@ -914,22 +1120,70 @@ async function action(a, id) {
     render();
     return;
   }
-  if (a === "save-help") {
-    config.help = {
-      daily: $("dailyHelp").value,
-      holiday: $("holidayHelp").value,
-    };
+
+  if (a === "markup") {
+    const { id: target, before, after } = JSON.parse(id),
+      el = $(target);
+    const selected =
+      el.value.slice(el.selectionStart, el.selectionEnd) || "文字";
+    el.setRangeText(
+      before + selected + after,
+      el.selectionStart,
+      el.selectionEnd,
+      "end",
+    );
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.focus();
+    return;
+  }
+  if (a === "reply-variable") {
+    const el = $(lastReplyField) || $("reply-body");
+    el.setRangeText(
+      "{{" + id + "}}",
+      el.selectionStart,
+      el.selectionEnd,
+      "end",
+    );
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
+  if (a === "save-reply") {
+    captureReply();
     await save();
     return;
   }
-  if (a === "reset-help") {
-    config.help = {
-      daily:
-        "📅 每日助手 · 使用帮助\n\n/每日 帮助    查看使用帮助\n\n自动发送由机器人所有者在管理后台设置。",
-      holiday:
-        "📅 假期助手 · 使用帮助\n\n/假期 下一个  查询下一个假期\n/假期 剩余    查询今年剩余假期\n/假期 帮助    查看使用帮助。",
-    };
+  if (a === "reset-reply") {
+    config.replies[selectedCommand] = structuredClone(
+      state.replyDefaults[selectedCommand],
+    );
     await save();
+    return;
+  }
+  if (a === "preview-reply") {
+    captureReply();
+    showMessage(
+      "replyPreview",
+      await api("command-preview", { config, command: selectedCommand }),
+    );
+    return;
+  }
+  if (a === "edit-festival") {
+    editingFestival = structuredClone(
+      config.festivals.find((f) => f.id === id),
+    );
+    render();
+    return;
+  }
+  if (a === "save-festival") {
+    put(config.festivals, {
+      ...editingFestival,
+      name: $("festivalName").value,
+      date: $("festivalDate").value,
+      manual: true,
+    });
+    await save();
+    editingFestival = null;
+    render();
     return;
   }
   if (a === "sync" || a === "cleanup") {
@@ -1012,7 +1266,6 @@ async function action(a, id) {
   }
   if (a === "save-settings") {
     config.retentionDays = +$("retention").value;
-    config.textLimit = +$("textLimit").value;
     await save();
     return;
   }
@@ -1098,14 +1351,47 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("button[data-action]");
   if (b) run(() => action(b.dataset.action, b.dataset.id));
 });
+
+let lastReplyField = "reply-body",
+  lastContentField = "contentBody";
+document.addEventListener("focusin", (e) => {
+  if (e.target.id.startsWith("reply-")) {
+    lastReplyField = e.target.id;
+    $("replyVariables").innerHTML = state.replyVariables[selectedCommand][
+      e.target.id.slice(6)
+    ]
+      .map((v) => btn("{{" + v + "}}", "reply-variable", v))
+      .join("");
+  }
+  if (["contentBody", "referenceBody"].includes(e.target.id))
+    lastContentField = e.target.id;
+});
 document.addEventListener("input", (e) => {
   if (e.target.closest("#app")) dirty = true;
-  if (["dailyHelp", "holidayHelp"].includes(e.target.id))
-    $("helpPreview").textContent =
-      $("dailyHelp").value + "\n\n" + $("holidayHelp").value;
+  if (["contentBody", "referenceBody"].includes(e.target.id))
+    $("contentPreview").innerHTML = markdown(e.target.value);
+  if (e.target.id.startsWith("reply-")) {
+    captureReply();
+    showMessage("replyPreview", {
+      text: config.replies[selectedCommand].body,
+      format: config.replies[selectedCommand].format,
+    });
+  }
 });
 document.addEventListener("change", (e) => {
   if (e.target.closest("#app")) dirty = true;
+  if (e.target.id === "commandName") {
+    captureReply();
+    selectedCommand = e.target.value;
+    render();
+  }
+  if (e.target.id === "replyFormat") {
+    captureReply();
+    showMessage("replyPreview", {
+      text: config.replies[selectedCommand].body,
+      format: config.replies[selectedCommand].format,
+    });
+  }
   if (e.target.id === "importFile")
     run(async () => {
       const file = e.target.files?.[0];

@@ -1,41 +1,53 @@
 import type { Config } from "../types.js";
-export const HELP = {
-  daily:
-    "📅 每日助手 · 使用帮助\n\n/每日 帮助    查看使用帮助\n\n自动发送由机器人所有者在管理后台设置。",
-  holiday:
-    "📅 假期助手 · 使用帮助\n\n/假期 下一个  查询下一个假期\n/假期 剩余    查询今年剩余假期\n/假期 帮助    查看使用帮助。",
-};
-export const VARIABLES: Record<string, number> = {
-  "date.today": 10,
-  "date.weekday": 3,
-  "holiday.next_name": 80,
-  "holiday.days_until": 5,
-  "holiday.start_date": 10,
-  "holiday.end_date": 10,
-};
-export function validateTemplate(body: string, limit: number) {
+import { defaultReplies } from "./command-templates.js";
+export const VARIABLES = [
+  "date.today",
+  "date.weekday",
+  "holiday.next_name",
+  "holiday.days_until",
+  "holiday.start_date",
+  "holiday.end_date",
+  "holiday.days_off",
+  "festival.name",
+  "festival.date",
+  "festival.days_until",
+] as const;
+export function validateTemplate(
+  body: string,
+  keys: readonly string[] = VARIABLES,
+) {
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body))
     throw new Error("文字包含不支持的控制字符");
-  const budget = body.replace(/\{\{([^{}]+)\}\}/g, (_, key: string) => {
-    if (!Object.hasOwn(VARIABLES, key)) throw new Error(`未知变量：${key}`);
-    return "字".repeat(VARIABLES[key]!);
+  const rest = body.replace(/\{\{([^{}]+)\}\}/g, (_, key: string) => {
+    if (!keys.includes(key)) throw new Error(`未知变量：${key}`);
+    return "";
   });
-  if (budget.includes("{{") || budget.includes("}}"))
+  if (rest.includes("{{") || rest.includes("}}"))
     throw new Error("变量格式错误");
-  if ([...budget].length > limit)
-    throw new Error(`模板最大展开长度超过 ${limit}`);
+}
+export function expand(
+  body: string,
+  values: Record<string, string>,
+  markdown = false,
+) {
+  return body.replace(/\{\{([^{}]+)\}\}/g, (_, key: string) => {
+    const value = values[key] ?? "";
+    return markdown
+      ? value.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, "\\$1")
+      : value;
+  });
 }
 export function defaults(): Config {
   return {
     schemaVersion: 1,
     paused: false,
     retentionDays: 30,
-    textLimit: 500,
     contents: [],
     tasks: [],
     recipients: [],
     bindings: [],
     holidays: [],
-    help: { ...HELP },
+    replies: defaultReplies(),
+    festivals: [],
   };
 }

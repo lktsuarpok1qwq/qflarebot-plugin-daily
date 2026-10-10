@@ -1,6 +1,6 @@
 {
   "name": "daily",
-  "version": "1.4.0",
+  "version": "1.5.1",
   "apiVersion": 2,
   "permissions": [
     "db",
@@ -70,7 +70,7 @@
     },
     {
       "name": "sync",
-      "cron": "10,11 19 * * *"
+      "cron": "10,11,12,13 19 * * *"
     },
     {
       "name": "cleanup",

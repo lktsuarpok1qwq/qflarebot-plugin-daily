@@ -1,5 +1,6 @@
 import type { Config, Holiday, Source } from "../types.js";
-import { dateAt, DAY } from "../scheduler/planner.js";
+import { festivalIds, validateFestivalYear } from "./festivals.js";
+import { dateAt, DAY, addDays } from "../scheduler/planner.js";
 import type { RawYear } from "./holiday-cn.js";
 
 // An empty upstream placeholder is not an announced annual calendar.
@@ -12,7 +13,7 @@ export function hasCalendar(data: string): boolean {
 export function automaticHolidays(sources: Source[]): Holiday[] {
   const days = new Map<string, RawYear["days"][number] & { source: Source }>();
   for (const source of [...sources].sort((a, b) => a.year - b.year)) {
-    if (!source.data) continue;
+    if (!source.data || source.kind === "festival") continue;
     const raw = JSON.parse(source.data) as RawYear;
     for (const day of raw.days) days.set(day.date, { ...day, source });
   }
@@ -37,9 +38,51 @@ export function automaticHolidays(sources: Source[]): Holiday[] {
       kind,
       source: `holiday-cn:${day.source.year}`,
       sourceHash: day.source.hash,
+      ...(kind === "holiday"
+        ? {
+            festivalIds: festivalIds(
+              day.name,
+              +date.slice(0, 4) +
+                (day.name.includes("元旦") && date.slice(5, 7) === "12"
+                  ? 1
+                  : 0),
+            ),
+          }
+        : {}),
     });
   }
-  return rows;
+  // Include adjacent ordinary weekends, but never bridge an explicit workday
+  // or another named holiday. No dates from an unpublished year are inferred.
+  const years = new Set(
+    sources
+      .filter((s) => s.kind !== "festival" && hasCalendar(s.data))
+      .map((s) => s.year),
+  );
+  const weekend = (date: string) =>
+    [0, 6].includes(new Date(date).getUTCDay()) &&
+    years.has(+date.slice(0, 4)) &&
+    !days.has(date);
+  for (const h of rows)
+    if (h.kind === "holiday") {
+      while (weekend(addDays(h.start, -1))) h.start = addDays(h.start, -1);
+      while (weekend(addDays(h.end, 1))) h.end = addDays(h.end, 1);
+    }
+  const merged: Holiday[] = [];
+  for (const h of rows) {
+    const previous = merged.at(-1);
+    if (
+      h.kind === "holiday" &&
+      previous?.kind === "holiday" &&
+      h.name === previous.name &&
+      h.start <= addDays(previous.end, 1)
+    ) {
+      previous.end = h.end > previous.end ? h.end : previous.end;
+      previous.festivalIds = [
+        ...new Set([...(previous.festivalIds ?? []), ...(h.festivalIds ?? [])]),
+      ];
+    } else merged.push(h);
+  }
+  return merged;
 }
 
 export function refreshHolidays(
@@ -47,6 +90,19 @@ export function refreshHolidays(
   sources: Source[],
   now: number,
 ) {
+  const retained = config.festivals.filter(
+    (f) => f.manual || f.source !== "uapi",
+  );
+  const retainedIds = new Set(retained.map((f) => f.id));
+  config.festivals = [
+    ...retained,
+    ...sources
+      .filter((s) => s.kind === "festival" && s.data)
+      .flatMap(
+        (s) => validateFestivalYear(JSON.parse(s.data), s.year).festivals,
+      )
+      .filter((f) => !retainedIds.has(f.id)),
+  ].filter((f) => f.date >= `${dateAt(now).slice(0, 4)}-01-01`);
   const automatic = config.holidays.filter((h) =>
     /^holiday-cn:\d{4}$/.test(h.source),
   );

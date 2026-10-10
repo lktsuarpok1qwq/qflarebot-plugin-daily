@@ -2,6 +2,7 @@ import type { Config, Ctx, Source } from "../types.js";
 import { snapshot, saveConfig } from "./repository.js";
 import { LIMITS } from "../types.js";
 import { validateConfig } from "./validation.js";
+import { validateFestivalYear } from "./festivals.js";
 import { validateYear, hash } from "./holiday-cn.js";
 export type Backup = {
   schemaVersion: 1;
@@ -50,14 +51,15 @@ export function parseBackup(value: unknown, currentBot: string): Backup {
   for (const r of b.config.recipients)
     if (r.enabled && r.botId !== currentBot)
       throw new Error("发送目标尚未绑定当前机器人");
-  const years = new Set<number>();
+  const years = new Set<string>();
   for (const s of b.sources) {
     if (
       !s ||
       !Number.isInteger(s.year) ||
       s.year < 2000 ||
       s.year > 2199 ||
-      years.has(s.year) ||
+      !["official", "festival"].includes(s.kind) ||
+      years.has(`${s.kind}:${s.year}`) ||
       typeof s.data !== "string" ||
       new TextEncoder().encode(s.data).length > 128000 ||
       typeof s.hash !== "string" ||
@@ -66,8 +68,12 @@ export function parseBackup(value: unknown, currentBot: string): Backup {
       !Number.isFinite(s.updated_at)
     )
       throw new Error("假期源备份非法");
-    years.add(s.year);
-    if (s.data) validateYear(JSON.parse(s.data), s.year);
+    years.add(`${s.kind}:${s.year}`);
+    if (s.data)
+      (s.kind === "festival" ? validateFestivalYear : validateYear)(
+        JSON.parse(s.data),
+        s.year,
+      );
   }
   for (const p of b.progress)
     if (

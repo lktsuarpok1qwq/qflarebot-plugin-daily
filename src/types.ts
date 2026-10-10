@@ -1,4 +1,29 @@
 import type { PluginContext } from "@qqbot/sdk";
+export type MessageFormat = "plain" | "markdown";
+export type CommandName =
+  "每日" | "每日 帮助" | "假期" | "假期 帮助" | "假期 下一个" | "假期 剩余";
+export type CommandReply = {
+  format: MessageFormat;
+  body: string;
+  official: string;
+  provisional: string;
+  separator: string;
+  empty: string;
+  unknown: string;
+  stale: string;
+  ongoing: string;
+  makeupEmpty: string;
+  error: string;
+  tooLong: string;
+};
+export type Festival = {
+  id: string;
+  key: string;
+  name: string;
+  date: string;
+  source: string;
+  manual?: boolean;
+};
 export type Ctx = PluginContext;
 export type Scene = "group" | "c2c";
 export type Schedule = {
@@ -7,7 +32,7 @@ export type Schedule = {
   weekdays?: number[];
   date?: string;
   monthDay?: string;
-  eventKind?: "holiday" | "makeup";
+  eventKind?: "holiday" | "makeup" | "festival";
   offset?: number;
 };
 export type Content = {
@@ -16,6 +41,7 @@ export type Content = {
   enabled: boolean;
   kind: "text" | "date" | "holiday";
   body: string;
+  referenceBody?: string;
   only?: "always" | "holiday" | "makeup";
 };
 export type Task = {
@@ -23,6 +49,7 @@ export type Task = {
   name: string;
   enabled: boolean;
   mode: "standalone" | "digest";
+  format: MessageFormat;
   schedule: Schedule;
   contentIds: string[];
   title: string;
@@ -41,6 +68,7 @@ export type Binding = {
   recipientId: string;
   enabled: boolean;
   overrideText: string | null;
+  overrideFormat: MessageFormat;
 };
 export type Holiday = {
   id: string;
@@ -52,18 +80,19 @@ export type Holiday = {
   manual?: boolean;
   sourceHash?: string;
   batchId?: string;
+  festivalIds?: string[];
 };
 export type Config = {
   schemaVersion: 1;
   paused: boolean;
   retentionDays: number;
-  textLimit: number;
   contents: Content[];
   tasks: Task[];
   recipients: Recipient[];
   bindings: Binding[];
   holidays: Holiday[];
-  help: { daily: string; holiday: string };
+  replies: Record<CommandName, CommandReply>;
+  festivals: Festival[];
 };
 export type Snapshot = { revision: number; botId: string; config: Config };
 export type Plan = { due: number; eventKey: string | null };
@@ -90,10 +119,13 @@ export type DeliveryStatus =
   | "skipped_duplicate"
   | "skipped_budget";
 export type Rendered = {
+  format: MessageFormat;
   text: string;
   items: { contentId: string; reason: string }[];
 };
+export type SourceKind = "official" | "festival";
 export type Source = {
+  kind: SourceKind;
   year: number;
   hash: string;
   data: string;
