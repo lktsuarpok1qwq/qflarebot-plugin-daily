@@ -1,5 +1,5 @@
-import type { WeatherState } from "./types.js";
-import { ATTRIBUTION } from "./copy.js";
+import { renderWeather } from "./rendering.js";
+import type { WeatherConfig } from "./types.js";
 import { lookup, request, parseCurrent, parseForecast, NoWeatherData } from "./provider.js";
 import { expand, commandLink, commandUrl } from "../../shared/interpolation.js";
 export function localDay(now: number, tz: string, offset = 0) {
@@ -13,28 +13,13 @@ export function localDay(now: number, tz: string, offset = 0) {
     const day = `${part("year")}-${part("month")}-${part("day")}`;
     return new Date(Date.parse(day) + offset * 86_400_000).toISOString().slice(0, 10);
 }
-function sourceText(values: string[]) {
-    return (
-        ATTRIBUTION +
-        "\n" +
-        [...new Set(values)]
-            .map((value) => {
-                if (/^https:\/\/[^\s<>()[\]\\]+$/.test(value)) {
-                    return "[数据来源声明](" + value + ")";
-                }
-
-                return expand("{{value}}", { value });
-            })
-            .join("\n")
-    );
-}
 export async function queryWeather(
-    state: WeatherState,
+    config: WeatherConfig,
     args: string[],
     now = Date.now(),
     fetcher: typeof fetch = fetch,
 ) {
-    const copy = state.config.copy;
+    const copy = config.copy;
 
     if (!args.length) {
         return { text: copy.help };
@@ -48,11 +33,11 @@ export async function queryWeather(
         return { text: copy.help };
     }
 
-    if (!state.config.host || !state.config.apiKey) {
-        return { text: copy.notConfigured };
+    if (!config.host || !config.apiKey) {
+        throw new Error("天气 API 尚未配置");
     }
 
-    const cities = await lookup(state.config, query, fetcher);
+    const cities = await lookup(config, query, fetcher);
 
     if (!cities.length) {
         return { text: copy.notFound };
@@ -65,37 +50,33 @@ export async function queryWeather(
 
     if (!city) {
         return {
-            text:
-                copy.choose +
-                "\n\n" +
-                cities
-                    .map((c) => {
-                        const command = "/天气 " + c.id + (tomorrow ? " 明天" : "");
-                        return expand(copy.candidate, { city: c.name, area: c.area, command }, {
-                            command_link: commandLink(command, command),
-                        });
-                    })
-                    .join("\n\n") +
-                "\n\n" +
-                ATTRIBUTION,
+            text: renderWeather(copy, "candidate", {
+                candidates: cities.map((c) => {
+                    const command = "/天气 " + c.id + (tomorrow ? " 明天" : "");
+                    return { city: c.name, area: c.area, command, command_link: commandLink(command, command), command_url: commandUrl(command) };
+                })
+            }, expand),
         };
     }
 
     const day = localDay(now, city.tz, tomorrow ? 1 : 0);
     const suffix = "/" + city.lat + "/" + city.lon;
+    const body = tomorrow ? copy.tomorrow : copy.current;
+    const needsForecast = ["low", "high", "day", "night"].some((key) => body.includes("{{" + key + "}}"));
+    const needsCurrent = !tomorrow && ["condition", "temp", "feels", "humidity", "wind"].some((key) => body.includes("{{" + key + "}}"));
 
     try {
         const [forecast, current] = await Promise.all([
-            request(state.config, "/weather/v1/daily" + suffix + "?days=2&localTime=true&lang=zh", fetcher).then(
-                parseForecast,
-            ),
-            tomorrow
-                ? Promise.resolve(null)
-                : request(state.config, "/weather/v1/current" + suffix + "?localTime=true&lang=zh", fetcher).then(
+            needsForecast
+                ? request(config, "/weather/v1/daily" + suffix + "?days=2&localTime=true&lang=zh", fetcher).then(parseForecast)
+                : Promise.resolve(null),
+            needsCurrent
+                ? request(config, "/weather/v1/current" + suffix + "?localTime=true&lang=zh", fetcher).then(
                     parseCurrent,
-                ),
+                )
+                : Promise.resolve(null),
         ]);
-        const daily = forecast.days.find((item) => item.date === day);
+        const daily = forecast ? forecast.days.find((item) => item.date === day) : { date: day };
 
         if (!daily) {
             return { text: copy.unavailable };
@@ -105,7 +86,7 @@ export async function queryWeather(
 
         if (tomorrow) {
             return {
-                text: expand(copy.tomorrow, { ...daily, city: cityLabel }, { current_url: commandUrl("/天气 " + city.id) }) + "\n\n" + sourceText(forecast.attributions),
+                text: renderWeather(copy, "tomorrow", { values: { ...daily, city: cityLabel }, fragments: { current_url: commandUrl("/天气 " + city.id) } }, expand),
             };
         }
 
@@ -119,9 +100,7 @@ export async function queryWeather(
         }).format(now);
         return {
             text:
-                expand(copy.current, { ...daily, ...current!, attributions: "", city: cityLabel, updated }, { tomorrow_url: commandUrl("/天气 " + city.id + " 明天") }) +
-                "\n\n" +
-                sourceText([...forecast.attributions, ...current!.attributions]),
+                renderWeather(copy, "current", { values: { ...daily, ...current!, city: cityLabel, updated }, fragments: { tomorrow_url: commandUrl("/天气 " + city.id + " 明天") } }, expand),
         };
     } catch (error) {
         if (error instanceof NoWeatherData) {

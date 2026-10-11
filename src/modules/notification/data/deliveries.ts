@@ -1,7 +1,7 @@
 import type { PluginDB, DBStatement } from "@qqbot/sdk";
 import type { DeliveryStatus, Due, Plan } from "../types.js";
 import { LIMITS } from "../types.js";
-import { jsonRows, jx, jsonChunks } from "../shared/sql.js";
+import { jsonRows, jx, jsonChunks } from "./sql.js";
 
 export const deliveryKey = (d: Pick<Due, "task_id" | "recipient_id" | "due_at"> & { key?: string | null }) =>
     d.key ?? `${d.task_id}:${d.recipient_id}:${d.due_at}`;
@@ -30,12 +30,12 @@ export type Claim = {
     details: unknown;
     error: string | null;
 };
-export async function claimMany(db: PluginDB, claims: Claim[]): Promise<Set<string>> {
+// Configuration guards the rendered snapshot; binding revisions guard each schedule.
+export async function claimMany(db: PluginDB, claims: Claim[], configRevision: number): Promise<Set<string>> {
     if (!claims.length) {
         return new Set();
     }
 
-    const token = crypto.randomUUID();
     const chunks = jsonChunks(
         claims.map((c) => ({
             key: deliveryKey(c.d),
@@ -45,25 +45,19 @@ export async function claimMany(db: PluginDB, claims: Claim[]): Promise<Set<stri
             status: c.status,
             now: c.now,
             error: c.error,
-            details: { ...(c.details as object), claimToken: token },
+            details: c.details,
         })),
         1_900_000,
     );
     // D1 limits each bound value to 2 MB; all chunks share one atomic claim transaction.
-    const result = await db.batch<{ key: string }>([
-        ...chunks.map((data) => ({
-            sql: `${jsonRows} INSERT OR IGNORE INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at,details,error)
+    const result = await db.batch<{ key: string }>(chunks.map((data) => ({
+        sql: `${jsonRows} INSERT OR IGNORE INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at,details,error)
       SELECT ${jx("key")},b.task_id,b.recipient_id,b.due_at,b.revision,${jx("status")},${jx("now")},${jx("now")},${jx("details")},${jx("error")}
       FROM idx CROSS JOIN input JOIN {bindings} b ON b.id=${jx("id")} JOIN {state} s ON s.id=1
-      WHERE b.enabled=1 AND b.due_at=${jx("due")} AND b.revision=${jx("revision")} AND s.revision=b.revision`,
-            params: [data],
-        })),
-        {
-            sql: `${jsonRows} SELECT d.key FROM idx CROSS JOIN input JOIN {deliveries} d ON d.key=${jx("key")} WHERE json_extract(d.details,'$.claimToken')=?`,
-            params: [JSON.stringify(claims.map((c) => ({ key: deliveryKey(c.d) }))), token],
-        },
-    ]);
-    return new Set(result.at(-1)!.results.map((r) => r.key));
+      WHERE b.enabled=1 AND b.due_at=${jx("due")} AND b.revision=${jx("revision")} AND s.revision=? RETURNING key`,
+        params: [data, configRevision],
+    })));
+    return new Set(result.flatMap((chunk) => chunk.results.map((r) => r.key)));
 }
 export type Outcome = {
     d: Due;

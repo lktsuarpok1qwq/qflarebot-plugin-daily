@@ -1,7 +1,7 @@
 export const calendarEntries = String.raw`
 function createCalendarEntries(app, ui) {
     const { $, esc, uid, time, options, field, btn, table, put, check, mergeDraft } = ui;
-    let editingEvent, originalEvent, imported, importText = "";
+    let editingEvent, originalEvent;
 
     function render() {
         let html = "";
@@ -22,7 +22,7 @@ function createCalendarEntries(app, ui) {
                         "</td><td>" +
                         (s.refreshDays === 7 ? "每 7 天" : "每天") +
                         "</td><td>" +
-                        esc(
+                        (s.cached ? "使用缓存；" : "") + esc(
                             s.error === "not_published"
                                 ? "接口暂未提供安排"
                                 : s.error ||
@@ -36,7 +36,8 @@ function createCalendarEntries(app, ui) {
             ) +
             "<details><summary>日历维护详情</summary><pre>" +
             esc(JSON.stringify(app.state.jobs, null, 2)) +
-            "</pre></details></section>";
+            "</pre></details>" +
+            (app.state.conflicts.length ? '<p class="notice">以下放假与调休记录冲突，已暂停用于查询和通知，请编辑核对</p><ul>' + app.state.conflicts.map((h) => '<li>' + esc(h.name + ' · ' + h.start + (h.end !== h.start ? ' 至 ' + h.end : '') + ' · ' + (h.kind === 'holiday' ? '放假' : '调休')) + '</li>').join('') + '</ul>' : '') + '</section>';
         html +=
             '<section><h2>日历条目</h2><p class="muted">停用条目不参与查询和通知，数据保留</p>' +
             btn("新增事件", "new-event", "", "primary") +
@@ -120,18 +121,6 @@ function createCalendarEntries(app, ui) {
                 btn("取消", "cancel-event") +
                 "</section>";
         }
-
-        html +=
-            '<section><h2>CSV / JSON 导入</h2><label>文件内容（必填 name,start；可选 end,kind,repeat；kind：event/holiday/makeup；repeat：once/yearly，默认 event、once）<textarea id="importText">' + esc(importText) + '</textarea></label><label>选择 CSV 或 JSON 文件<input id="importFile" type="file" accept=".csv,.json"></label><div class="actions">' +
-            btn("预览导入", "preview-import") +
-            btn("确认预览批次", "apply-import") +
-            '</div><pre id="importPreview" hidden></pre><label>回滚导入批次<select id="batchId">' +
-            [...new Set(app.config.events.map((h) => h.batchId).filter(Boolean))]
-                .map((id) => "<option>" + esc(id) + "</option>")
-                .join("") +
-            "</select></label>" +
-            btn("回滚批次", "rollback-import", "", "danger") +
-            "</section>";
 
         return html;
     }
@@ -265,92 +254,16 @@ function createCalendarEntries(app, ui) {
             app.render();
             return;
         }
-
-        if (a === "preview-import") {
-            imported = await app.api("import-preview", {
-                text: $("importText").value,
-            });
-            $("importPreview").hidden = false;
-            $("importPreview").textContent = JSON.stringify(imported, null, 2);
-            return;
-        }
-
-        if (a === "apply-import") {
-            if (!imported) {
-                throw Error("请先预览导入");
-            }
-
-            if (imported.revision !== app.state.revision) {
-                throw Error("日历已变化，请刷新后重新预览导入");
-            }
-
-            if (imported.conflicts.length && !(await app.confirmAction("存在重叠放假或调休，仍保留为独立条目？"))) {
-                return;
-            }
-
-            if (app.dirty) {
-                throw Error("请先保存事件编辑，再导入");
-            }
-
-            app.config.events.push(...imported.items);
-            await app.save();
-            imported = null;
-            importText = "";
-            app.render();
-            return;
-        }
-
-        if (a === "rollback-import") {
-            if (app.dirty) {
-                throw Error("请先保存事件编辑，再回滚");
-            }
-
-            const batch = $("batchId").value;
-
-            if (!batch || !(await app.confirmAction("删除该批次导入的所有假期？"))) {
-                return;
-            }
-
-            app.config.events = app.config.events.filter((h) => h.batchId !== batch);
-            await app.save();
-            return;
-        }
     }
     function reset() {
         editingEvent = null;
-        imported = null;
-        importText = "";
     }
 
-    function input(el) {
-        if (el.id === "importText") {
-            importText = el.value;
-            imported = null;
-        }
-    }
-    async function change(el) {
+    function change(el) {
         if (el.id === "eventKind") {
             $("eventEndField").hidden = el.value !== "holiday";
             $("eventRepeatField").hidden = el.value !== "event";
             $("eventRepeatHelp").hidden = el.value !== "event";
-        }
-
-        if (el.id === "importFile") {
-            await app.run(async () => {
-                const file = el.files?.[0];
-
-                if (!file) {
-                    return;
-                }
-
-                if (file.size > 128000) {
-                    throw Error("导入文件超过128KB");
-                }
-
-                importText = await file.text();
-                $("importText").value = importText;
-                imported = null;
-            });
         }
     }
     return {
@@ -358,9 +271,7 @@ function createCalendarEntries(app, ui) {
         action,
         reset,
         change,
-        input,
         discardActions: ["toggle-event", "new-event", "edit-event", "delete-event", "sync"],
-        transientInputs: ["importFile", "importText", "batchId"],
     };
 }
 `;

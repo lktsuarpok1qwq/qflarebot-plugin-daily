@@ -1,10 +1,11 @@
+import { readJson } from "../../shared/json.js";
 import type { Ctx } from "../../shared/types.js";
-import type { Source } from "./types.js";
+import type { Source, SourceSummary } from "./types.js";
 import { dateAt, DAY } from "../../shared/date.js";
 import { validateCalendar } from "./validation.js";
-import { readData, saveConfig, SOURCE_QUERY } from "./repository.js";
-import { parseResponse, refreshEvents, validateYear, refreshDays, mergeYear, type CalendarYear } from "./calendar.js";
-import { hash, limitedJson, recordCheck, type SyncResult } from "./source.js";
+import { readData, saveConfig, SOURCE_QUERY, SOURCE_SUMMARY_QUERY } from "./repository.js";
+import { parseResponse, refreshEvents, validateYear, refreshDays, mergeYear, summarizeYear, type CalendarYear } from "./calendar.js";
+import { hash, recordCheck, type SyncResult } from "./source.js";
 export async function syncYear(
     ctx: Ctx,
     year: number,
@@ -20,12 +21,8 @@ export async function syncYear(
 
     try {
         if (!force) {
-            const source = await ctx.db.first<Source>(`${SOURCE_QUERY} WHERE year=?`, year);
-            let interval = 0;
-
-            try {
-                interval = refreshDays(source?.data ?? "", year > currentYear);
-            } catch { }
+            const source = await ctx.db.first<SourceSummary>(`${SOURCE_SUMMARY_QUERY} WHERE year=?`, year);
+            const interval = refreshDays(source ?? undefined, year > currentYear);
 
             if (
                 interval &&
@@ -39,6 +36,7 @@ export async function syncYear(
 
         const res = await fetcher(`https://uapis.cn/api/v1/misc/holiday-calendar?year=${year}&holiday_type=legal`, {
             signal: AbortSignal.timeout(8_000),
+            redirect: "manual",
         });
 
         if (!res.ok) {
@@ -46,38 +44,46 @@ export async function syncYear(
             throw new Error(`HTTP_${res.status}`);
         }
 
-        const response = parseResponse(await limitedJson(res), year);
-        const current = await readData(ctx.db);
-        const previous = current.sources.find((s) => s.year === year);
-        let old: CalendarYear | undefined;
+        const response = parseResponse(await readJson(res, 256_000, "假期源"), year);
+        const previous = await ctx.db.first<Source>(`${SOURCE_QUERY} WHERE year=?`, year);
 
-        if (previous?.data) {
-            try {
-                old = validateYear(JSON.parse(previous.data), year);
-            } catch {
-                // A valid interface response can replace an unreadable cache.
-            }
+        if (previous && Math.max(previous.checked_at, previous.updated_at) > now) {
+            return { year, status: "skipped" };
         }
 
-        const { value, incomplete } = mergeYear(response, old);
-        const error = incomplete ? "年度安排不完整，保留此前已知记录" : null;
+        let prepared = await prepare(response, previous);
 
-        if (!value.holidays.length && !value.dates?.length) {
+        if (!prepared.value.holidays.length && !prepared.value.dates?.length) {
             await recordCheck(ctx, year, "not_published", now, true);
             return { year, status: "not_published" };
         }
 
-        const data = JSON.stringify(value),
-            digest = await hash(data);
-
-        if (previous?.hash === digest) {
-            await recordCheck(ctx, year, error, now, true);
-            return error ? { year, status: "error", error } : { year, status: "cached" };
+        if (previous?.hash === prepared.digest) {
+            await recordCheck(ctx, year, prepared.error, now, true);
+            return prepared.error ? { year, status: "error", error: prepared.error } : { year, status: "cached" };
         }
 
+        // Read editable state only when publishing changed data, then merge against the latest source.
+        const current = await readData(ctx.db), latest = current.sources.find((s) => s.year === year);
+
+        if (latest && Math.max(latest.checked_at, latest.updated_at) > now) {
+            return { year, status: "skipped" };
+        }
+
+        if (latest?.hash !== previous?.hash) {
+            prepared = await prepare(response, latest);
+
+            if (latest?.hash === prepared.digest) {
+                await recordCheck(ctx, year, prepared.error, now, true);
+                return prepared.error ? { year, status: "error", error: prepared.error } : { year, status: "cached" };
+            }
+        }
+
+        const { data, digest, error } = prepared;
         const published: Source = {
             year,
             hash: digest,
+            ...summarizeYear(prepared.value),
             data,
             error,
             updated_at: now,
@@ -93,4 +99,20 @@ export async function syncYear(
         await recordCheck(ctx, year, error, now, false);
         return { year, status: "error", error };
     }
+}
+
+async function prepare(response: CalendarYear, previous: Source | null | undefined) {
+    let old: CalendarYear | undefined;
+
+    if (previous?.data) {
+        try {
+            old = validateYear(JSON.parse(previous.data), response.year);
+        } catch {
+            // A valid interface response can replace an unreadable cache.
+        }
+    }
+
+    const { value, incomplete } = mergeYear(response, old);
+    const data = JSON.stringify(value);
+    return { value, data, digest: await hash(data), error: incomplete ? "年度安排不完整，保留此前已知记录" : null };
 }

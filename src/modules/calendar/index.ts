@@ -1,28 +1,23 @@
+import { sampleVariables } from "./samples.js";
+import { renderCalendarDocument } from "./rendering.js";
 import type { ModuleAPI } from "../contract.js";
-import { install, readData } from "./repository.js";
-import {
-    calendarVariables,
-    calendarVariableDescriptions,
-    calendarVariableGroups,
-    calendarValues,
-} from "./placeholders.js";
+import { install, readQueryData } from "./repository.js";
+import { calendarVariables } from "./copy.js";
+import { calendarValues } from "./placeholders.js";
 import { calendarCommands } from "./commands.js";
 import { maintenance } from "./maintenance.js";
 import { api } from "./admin.js";
-import { backup } from "./backup.js";
 import { calendarPage } from "./ui/page.js";
 import { calendarEntries } from "./ui/entries.js";
-import { calendarCopyPage } from "./ui/copy.js";
 export const calendar: ModuleAPI = {
     id: "calendar",
     install,
-    variables: calendarVariables,
-    variableDescriptions: calendarVariableDescriptions,
-    variableGroups: calendarVariableGroups,
+    ...calendarVariables,
+    sampleVariables,
     createResolver(ctx) {
-        let data: ReturnType<typeof readData> | undefined;
+        let data: ReturnType<typeof readQueryData> | undefined;
         return async (at) => {
-            data ??= readData(ctx.db);
+            data ??= readQueryData(ctx.db);
             const { snapshot, sources } = await data;
             return calendarValues(snapshot.config, sources, at);
         };
@@ -42,16 +37,10 @@ export const calendar: ModuleAPI = {
             },
         },
     },
-    routes: (["GET", "POST"] as const).map((method) => ({
-        method,
-        path: "/api/calendar/:action",
-        auth: "admin" as const,
-        handler: api,
-    })),
+    admin: api,
     ui: {
         title: "日历",
-        source: [calendarPage, calendarEntries, calendarCopyPage].join("\n"),
+        source: [`const renderCalendarSample = ${renderCalendarDocument.toString()};`, calendarPage, calendarEntries].join("\n"),
         factory: "createCalendarPage",
     },
-    backup,
 };

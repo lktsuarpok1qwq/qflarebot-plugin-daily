@@ -1,6 +1,6 @@
 export const tasksPage = String.raw`
 function createTasksPage(app, ui) {
-    const { $, esc, uid, options, field, check, btn, table, showMessage, put, toolbar, mergeDraft } = ui;
+    const { $, esc, uid, options, field, check, btn, table, showMessage, put, mergeDraft } = ui;
     let editingTask,
         testingTask,
         draftBody = "",
@@ -9,6 +9,12 @@ function createTasksPage(app, ui) {
         originalTask,
         originalTargets;
 
+    const preview = createMessageEditor(app, ui, {
+        id: "task", samples: () => messageSamples(app.state.copySamples, draftBody),
+        renderSample: (sample, mark) => [{ text: mark(inlineCommandTools.expand($("taskBody").value, {}, sample.values)) }],
+        currentValue: () => $("taskBody").value,
+        sampleHint: "虚构数据，使用模块默认文案在本地组合，不查询接口",
+    });
     function edit(task) {
         editingTask = structuredClone(task);
         originalTask = structuredClone(app.state.config.tasks.find((t) => t.id === task.id));
@@ -172,18 +178,7 @@ function createTasksPage(app, ui) {
                 "</div>" +
                 check("启用任务", "taskEnabled", t.enabled) +
                 "</div>" +
-                '<div class="markdown-workspace"><div class="markdown-editor"><label>消息内容（Markdown）<textarea id="taskBody">' +
-                esc(draftBody) +
-                "</textarea></label>" +
-                toolbar("taskBody") +
-                "</div>" +
-                ui.previewPanel() +
-                "</div>" +
-                ui.variableReference(
-                    [{ label: "消息内容", variables: app.state.variables }],
-                    app.state.variableDescriptions,
-                    app.state.variableGroups,
-                ) +
+                preview.render([{ id: "taskBody", label: "消息内容", value: draftBody, variables: app.state.variableDescriptions }], { variableGroups: app.state.variableGroups }) +
                 '<p class="muted">改写内容仅用于当前任务，所有通知对象共用</p>' +
                 (app.state.config.tasks.some((task) => task.id === t.id)
                     ? '<fieldset><legend>通知对象</legend><div class="grid">' +
@@ -209,34 +204,13 @@ function createTasksPage(app, ui) {
                     : '<p class="muted">保存后可选择通知对象</p>') +
                 '<div class="actions">' +
                 btn("保存任务", "save-task", "", "primary") +
-                btn("取消", "cancel-task") +
-                btn("实际预览", "preview-task") +
-                '</div><p id="taskPreviewHint" class="muted">点击“实际预览”替换变量</p><div id="taskPreview" class="message-preview" hidden></div></section>';
+                btn("取消", "cancel-task") + "</div>" + preview.reference() + "</section>";
         }
 
         return html;
     }
     async function action(a, id) {
-        if (a === "preview-task") {
-            const config = structuredClone(app.config);
-            const templateId = $("taskTemplate").value || uid();
-            put(config.templates, {
-                id: templateId,
-                name: $("taskName").value || app.state.draftDefaults.task.name,
-                body: $("taskBody").value,
-            });
-            invalidate("正在预览…");
-
-            try {
-                showMessage("taskPreview", await app.api("preview", { config, templateId }));
-                $("taskPreviewHint").hidden = true;
-            } catch (error) {
-                invalidate("预览失败，请重试");
-                throw error;
-            }
-
-            return;
-        }
+        if (await preview.action(a)) { return; }
 
         if (a === "new-task") {
             edit({
@@ -411,7 +385,8 @@ function createTasksPage(app, ui) {
             draftBody = baseBody;
             draftTemplateId = null;
             $("taskBody").value = draftBody;
-            invalidate();
+
+            preview.refresh();
         }
 
         if (el.id === "kind") {
@@ -419,20 +394,18 @@ function createTasksPage(app, ui) {
             $("onceFields").hidden = el.value !== "once";
         }
     }
-    function invalidate(text = "内容已变化，请重新预览") {
-        $("taskPreview").hidden = true;
-        $("taskPreviewHint").hidden = false;
-        $("taskPreviewHint").textContent = text;
-    }
     return {
+        discardActions: ["new-task", "edit-task", "copy-task", "toggle-task", "delete-task"],
+        get transientInputs() { return ["testRecipient", ...preview.transientInputs]; },
         render,
+        refresh: preview.refresh,
         action,
         reset,
-        change,
-        input: (el) => {
-            if (el.id === "taskBody") {
-                invalidate();
-            }
+        change(el) { if (!preview.change(el)) { change(el); } },
+        input(el) {
+            if (el.id === "taskBody") { draftBody = el.value; }
+
+            return preview.input(el);
         },
     };
 }

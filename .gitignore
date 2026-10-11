@@ -29,6 +29,7 @@ test-results/
 *.code-workspace
 
 # Local implementation documents and verification reports
+/TODO.md
 /qflarebot-plugin-daily_V*.md
 /reports/
 

@@ -91,13 +91,25 @@ function createUI() {
             "</tbody></table></div>"
         );
     }
-    function markdown(text) {
+    function markdown(text, markers) {
         const inline = (line) => {
+            if (markers) {
+                line = line.replace(/\[([^\]]*)\]\(([^)\n]*)\)/g, (link, label, url) => {
+                    const start = url.includes(markers.start), end = url.includes(markers.end);
+
+                    if (!start && !end) { return link; }
+
+                    const clean = url.split(markers.start).join('').split(markers.end).join('');
+                    return (start ? markers.start : '') + '[' + label + '](' + clean + ')' + (end ? markers.end : '');
+                });
+            }
+
             const literals = [];
             const hold = (html) => "\u0000" + (literals.push(html) - 1) + "\u0000";
+            const restore = (text) => text.replace(/\u0000(\d+)\u0000/g, (_, index) => literals[Number(index)] || "");
             return esc(line.replace(/\\([\\\x60*_{}[\]()<>#+.!|~-])/g, (_, c) => hold(esc(c))))
-                .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) =>
-                    hold('<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + "</a>"),
+                .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mqqapi:\/\/aio\/inlinecmd\?[^\s)]+)\)/g, (_, label, url) =>
+                    hold('<a href="' + restore(url) + '" target="_blank" rel="noopener noreferrer">' + restore(label) + "</a>"),
                 )
                 .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
                 .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
@@ -108,29 +120,41 @@ function createUI() {
         return text
             .split("\n")
             .map((line) => {
+                let prefix = '';
+
+                if (markers) {
+                    // Move leading provenance tokens past block syntax without changing the Markdown.
+                    while (line.startsWith(markers.start) || line.startsWith(markers.end)) {
+                        const token = line.startsWith(markers.start) ? markers.start : markers.end;
+                        prefix += token; line = line.slice(token.length);
+                    }
+                }
+
+                const content = (value) => inline(prefix + value);
+
                 if (/^---+$/.test(line)) {
-                    return "<hr>";
+                    return content("") + "<hr>";
                 }
 
                 const heading = line.match(/^(#{1,2})\s+(.*)/);
 
                 if (heading) {
-                    return "<h" + heading[1].length + ">" + inline(heading[2]) + "</h" + heading[1].length + ">";
+                    return "<h" + heading[1].length + ">" + content(heading[2]) + "</h" + heading[1].length + ">";
                 }
 
                 if (/^>\s?/.test(line)) {
-                    return "<blockquote>" + inline(line.replace(/^>\s?/, "")) + "</blockquote>";
+                    return "<blockquote>" + content(line.replace(/^>\s?/, "")) + "</blockquote>";
                 }
 
                 if (/^[-*]\s+/.test(line)) {
-                    return "<ul><li>" + inline(line.replace(/^[-*]\s+/, "")) + "</li></ul>";
+                    return "<ul><li>" + content(line.replace(/^[-*]\s+/, "")) + "</li></ul>";
                 }
 
                 if (/^\d+\.\s+/.test(line)) {
-                    return "<ol><li>" + inline(line.replace(/^\d+\.\s+/, "")) + "</li></ol>";
+                    return "<ol><li>" + content(line.replace(/^\d+\.\s+/, "")) + "</li></ol>";
                 }
 
-                return "<div>" + inline(line || " ") + "</div>";
+                return "<div>" + content(line || " ") + "</div>";
             })
             .join("");
     }
@@ -155,10 +179,16 @@ function createUI() {
             .map(([label, before, after]) => btn(label, "markup", JSON.stringify({ id, before, after })))
             .join("") +
         "</div>";
-    const previewPanel = () =>
-        '<div class="local-preview"><h3>排版预览 · <span id="markdownPreviewLabel">当前文案</span></h3><p class="muted">变量保持原样</p><div id="markdownPreview" class="message-preview"></div></div>';
-    function variableReference(groups, descriptions, sections) {
+    function variableReference(groups, descriptions, sections, compositions = {}) {
         const names = [...new Set(groups.flatMap((group) => group.variables))];
+        const composition = (name) => {
+            const info = compositions[name];
+
+            if (!info) { return ''; }
+
+            return '<details class="variable-composition"><summary>查看组成</summary><p>' + esc(info.description) + '</p><p class="muted">' + esc(info.scope) + '</p><dl>' +
+                Object.entries(info.fields).map(([key, description]) => '<dt><code>' + esc('{{' + key + '}}') + '</code></dt><dd>' + esc(description) + '</dd>').join('') + '</dl></details>';
+        };
         const rows = (variables) =>
             variables
                 .filter((name) => names.includes(name))
@@ -167,14 +197,7 @@ function createUI() {
                         "<tr><td><code>" +
                         esc("{{" + name + "}}") +
                         "</code></td><td>" +
-                        esc(descriptions[name]) +
-                        "</td><td>" +
-                        esc(
-                            groups
-                                .filter((group) => group.variables.includes(name))
-                                .map((group) => group.label)
-                                .join("、"),
-                        ) +
+                        esc(descriptions[name]) + composition(name) +
                         "</td></tr>",
                 );
         return (
@@ -185,7 +208,7 @@ function createUI() {
                         const content = rows(section.variables);
                         return content.length
                             ? (section.label ? "<h4>" + esc(section.label) + "</h4>" : "") +
-                            table(["变量", "说明", "适用文案"], content)
+                            table(["变量", "说明"], content)
                             : "";
                     })
                     .join("")
@@ -239,7 +262,6 @@ function createUI() {
         markdown,
         showMessage,
         toolbar,
-        previewPanel,
         variableReference,
         put,
         mergeDraft,

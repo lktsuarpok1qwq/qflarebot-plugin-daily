@@ -7,6 +7,15 @@ export type SayingState = { revision: number; config: SayingConfig };
 export function defaults(): SayingConfig {
     return { schemaVersion: 1, copy: { ...SAYING_COPY } };
 }
+export function parseConfig(raw: string): SayingConfig {
+    const c = JSON.parse(raw) as SayingConfig;
+
+    if (c?.schemaVersion !== 1 || !c.copy || Array.isArray(c.copy) || Object.keys(SAYING_COPY).some((key) => typeof c.copy[key as keyof typeof SAYING_COPY] !== "string")) {
+        throw new Error("一言配置格式错误");
+    }
+
+    return c;
+}
 export function validate(value: unknown): SayingConfig {
     const config = value as SayingConfig;
 
@@ -21,8 +30,11 @@ export function validate(value: unknown): SayingConfig {
     }
 
     fields(config.copy, Object.keys(SAYING_COPY));
-    str(config.copy.body, Infinity, "一言文案");
-    validateTemplate(config.copy.body, Object.keys(SAYING_FIELDS));
+
+    for (const key of Object.keys(SAYING_COPY) as (keyof typeof SAYING_COPY)[]) {
+        str(config.copy[key], Infinity, "一言文案");
+        validateTemplate(config.copy[key], Object.keys(SAYING_FIELDS));
+    }
 
     if (new TextEncoder().encode(JSON.stringify(config)).length > BODY_BYTES) {
         throw new Error("一言配置总量超限");

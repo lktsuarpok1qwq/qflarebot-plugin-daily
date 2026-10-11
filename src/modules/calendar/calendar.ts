@@ -1,4 +1,4 @@
-import type { CalendarConfig, CalendarEvent, Source } from "./types.js";
+import type { CalendarConfig, CalendarEvent, Source, SourceSummary } from "./types.js";
 import { dateAt, DAY, validDate, addDays } from "../../shared/date.js";
 export const FESTIVALS = ["元旦", "春节", "清明节", "劳动节", "端午节", "中秋节", "国庆节"] as const;
 const aliases: Record<string, string> = {
@@ -117,20 +117,16 @@ export function parseResponse(value: unknown, year: number): CalendarYear {
 
     return validateYear({ year, holidays: x.holidays, dates: [...dates.values()] }, year);
 }
-export function hasCalendar(data: string): boolean {
-    return !!data && (JSON.parse(data) as CalendarYear).holidays.some((h) => h.type === "legal_rest");
-}
-export function completeCalendar(data: string): boolean {
-    if (!data) {
-        return false;
-    }
-
-    const rows = (JSON.parse(data) as CalendarYear).holidays.filter((h) => h.type === "legal_rest");
-    return FESTIVALS.every((name) => rows.some((h) => matches(h.name, name)));
+export function summarizeYear(value: CalendarYear) {
+    const rows = value.holidays.filter((h) => h.type === "legal_rest");
+    return {
+        has_schedule: rows.length ? 1 : 0,
+        is_complete: FESTIVALS.every((name) => rows.some((h) => matches(h.name, name))) ? 1 : 0,
+    };
 }
 /** Only a complete next year can reduce its refresh frequency. */
-export function refreshDays(data: string, nextYear: boolean): number {
-    return (nextYear ? completeCalendar(data) : hasCalendar(data)) ? 7 : 1;
+export function refreshDays(source: Pick<SourceSummary, "has_schedule" | "is_complete"> | undefined, nextYear: boolean): number {
+    return (nextYear ? source?.is_complete : source?.has_schedule) === 1 ? 7 : 1;
 }
 /** Replace returned festivals as a unit; absent festivals retain known data. */
 export function mergeYear(incoming: CalendarYear, previous: CalendarYear | undefined) {
@@ -326,7 +322,7 @@ export function refreshEvents(config: CalendarConfig, sources: Source[], now: nu
         if (current && !sources.some((s) => s.year === +old.start.slice(0, 4))) {
             current.start = old.start;
             current.id = old.id;
-        } else if (!current && !sources.some((s) => s.year === year && hasCalendar(s.data))) {
+        } else if (!current && !sources.some((s) => s.year === year && s.has_schedule === 1)) {
             automatic.push(old);
         }
     }

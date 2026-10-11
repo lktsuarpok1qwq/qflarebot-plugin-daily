@@ -1,7 +1,13 @@
 export const copyTemplates = String.raw`
 function createCopyTemplates(app, ui) {
-    const { $, esc, uid, field, btn, table, toolbar, put, showMessage, mergeDraft } = ui;
+    const { $, esc, uid, field, btn, table, put, mergeDraft } = ui;
     let editing, original;
+    const preview = createMessageEditor(app, ui, {
+        id: "template", samples: () => messageSamples(app.state.copySamples, editing.body),
+        renderSample: (sample, mark) => [{ text: mark(inlineCommandTools.expand($("templateBody").value, {}, sample.values)) }],
+        currentValue: () => $("templateBody").value,
+        sampleHint: "虚构数据，使用模块默认文案在本地组合，不查询接口",
+    });
     function render() {
         let html =
             '<section><h2>通知模板</h2><p class="muted">修改模板会同步影响使用它的任务</p>' +
@@ -32,22 +38,9 @@ function createCopyTemplates(app, ui) {
                     "</p>"
                     : "") +
                 field("模板名称", "templateName", editing.name) +
-                '<div class="markdown-workspace"><div class="markdown-editor"><label>消息内容（Markdown）<textarea id="templateBody">' +
-                esc(editing.body) +
-                "</textarea></label>" +
-                toolbar("templateBody") +
-                "</div>" +
-                ui.previewPanel() +
-                "</div>" +
-                ui.variableReference(
-                    [{ label: "消息内容", variables: app.state.variables }],
-                    app.state.variableDescriptions,
-                    app.state.variableGroups,
-                ) +
+                preview.render([{ id: "templateBody", label: "消息内容", value: editing.body, variables: app.state.variableDescriptions }], { variableGroups: app.state.variableGroups }) +
                 btn("保存模板", "save-template", "", "primary") +
-                btn("取消", "cancel-template") +
-                btn("实际预览", "preview-template") +
-                '<p id="templatePreviewHint" class="muted">点击“实际预览”替换变量</p><div id="templatePreview" class="message-preview" hidden></div>' +
+                btn("取消", "cancel-template") + preview.reference() +
                 "</section>";
         }
 
@@ -63,22 +56,7 @@ function createCopyTemplates(app, ui) {
         editing = null;
     }
     async function action(a, id) {
-        if (a === "preview-template") {
-            capture();
-            const config = structuredClone(app.config);
-            put(config.templates, structuredClone(editing));
-            invalidate("正在预览…");
-
-            try {
-                showMessage("templatePreview", await app.api("preview", { config, templateId: editing.id }));
-                $("templatePreviewHint").hidden = true;
-            } catch (error) {
-                invalidate("预览失败，请重试");
-                throw error;
-            }
-
-            return;
-        }
+        if (await preview.action(a)) { return; }
 
         if (a === "new-template" || a === "edit-template") {
             editing =
@@ -125,20 +103,19 @@ function createCopyTemplates(app, ui) {
             app.render();
         }
     }
-    function invalidate(text = "内容已变化，请重新预览") {
-        $("templatePreview").hidden = true;
-        $("templatePreviewHint").hidden = false;
-        $("templatePreviewHint").textContent = text;
-    }
     return {
+        discardActions: ["new-template", "edit-template", "delete-template"],
         render,
+        refresh: preview.refresh,
         action,
         capture,
         reset,
-        input: (el) => {
-            if (el.id === "templateBody") {
-                invalidate();
-            }
+        change: preview.change,
+        get transientInputs() { return preview.transientInputs; },
+        input(el) {
+            if (el.id === "templateBody") { editing.body = el.value; }
+
+            return preview.input(el);
         },
     };
 }

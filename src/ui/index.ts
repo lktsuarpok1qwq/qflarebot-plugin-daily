@@ -1,5 +1,5 @@
-import { styles } from "./ui/styles.js";
-import { client } from "./ui/client.js";
+import { styles } from "./styles.js";
+import { client } from "./client.js";
 export const HTML = `<!doctype html>
 <html lang="zh-CN">
     <meta charset="utf-8" /><meta

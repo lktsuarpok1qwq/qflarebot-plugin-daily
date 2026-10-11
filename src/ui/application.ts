@@ -2,7 +2,8 @@ export const application = String.raw`
 function createApp(bridge, ui, factories) {
     const { $ } = ui;
     const markdownPreview = createMarkdownPreview(ui);
-    const app = { state: null, config: null, page: "tasks", dirty: false, synchronized: false };
+    const selectPicker = createSelectPicker();
+    const app = { state: null, config: null, page: Object.keys(factories)[0], dirty: false, synchronized: false };
     let running = false,
         pendingFocus;
     const stores = Object.fromEntries(
@@ -36,26 +37,7 @@ function createApp(bridge, ui, factories) {
         $("status").textContent = text;
         $("status").className = error ? "error" : "";
     }
-    function confirmAction(message) {
-        const dialog = $("decision");
-        $("decisionText").textContent = message;
-        $("decisionAccept").disabled = false;
-        $("decisionCancel").disabled = false;
-        return new Promise((resolve) => {
-            const close = (accepted) => {
-                dialog.close();
-                resolve(accepted);
-            };
-            $("decisionAccept").onclick = () => close(true);
-            $("decisionCancel").onclick = () => close(false);
-            dialog.oncancel = (event) => {
-                event.preventDefault();
-                close(false);
-            };
-            dialog.showModal();
-            $("decisionCancel").focus();
-        });
-    }
+    const confirmAction = createConfirmation(ui);
     function focusState() {
         const el = document.activeElement;
         return el
@@ -223,11 +205,8 @@ function createApp(bridge, ui, factories) {
             html += '<div class="notice">配置未确认，请刷新</div>';
         }
 
-        if (app.config.paused) {
-            html += '<div class="notice">发送已暂停，查询和维护照常运行</div>';
-        }
-
         $("app").innerHTML = html + (current().state ? pages[app.page].render() : "");
+        selectPicker.refresh();
 
         for (const id of expanded) {
             if ($(id)) {
@@ -237,6 +216,7 @@ function createApp(bridge, ui, factories) {
 
         updateDirty();
         markdownPreview.refresh();
+        pages[app.page].refresh?.();
         restoreFocus(previousFocus);
         const nextEditor = document.querySelector(".markdown-editor");
 
@@ -251,20 +231,6 @@ function createApp(bridge, ui, factories) {
             "reload",
             "page",
             "section",
-            "new-template",
-            "edit-template",
-            "delete-template",
-            "new-task",
-            "edit-task",
-            "copy-task",
-            "toggle-task",
-            "delete-task",
-            "new-recipient",
-            "edit-recipient",
-            "toggle-recipient",
-            "delete-recipient",
-            "cleanup",
-            "pause",
         ];
 
         if (app.dirty && [...discardsDraft, ...(pages[app.page].discardActions || [])].includes(a)) {
@@ -301,13 +267,6 @@ function createApp(bridge, ui, factories) {
             return;
         }
 
-        if (a === "cleanup") {
-            const result = await api("maintenance", { job: a });
-            await load();
-            status(result.message, !result.ok);
-            return;
-        }
-
         if (a === "markup") {
             const { id: target, before, after } = JSON.parse(id),
                 el = $(target);
@@ -322,7 +281,6 @@ function createApp(bridge, ui, factories) {
     }
     const changesConfig = (el) =>
         el.closest("#app") &&
-        !["testRecipient", "commandName", "logTask", "logRecipient", "logStatus", "backupFile"].includes(el.id) &&
         !(pages[app.page].transientInputs || []).includes(el.id);
     function start() {
         document.addEventListener("click", (e) => {

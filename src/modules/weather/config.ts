@@ -4,16 +4,9 @@ import { BODY_BYTES } from "../../shared/types.js";
 import { fields, str } from "../../shared/validation.js";
 import { validateTemplate } from "../../shared/templates.js";
 export function defaults(): WeatherConfig {
-    return { schemaVersion: 1, host: "", apiKey: "", copy: structuredClone(WEATHER_COPY) };
+    return { schemaVersion: 2, host: "", apiKey: "", copy: structuredClone(WEATHER_COPY) };
 }
-export function validate(value: unknown): WeatherConfig {
-    const c = value as WeatherConfig;
-
-    if (!c || typeof c !== "object" || Array.isArray(c) || c.schemaVersion !== 1) {
-        throw new Error("天气配置格式错误");
-    }
-
-    fields(c, ["schemaVersion", "host", "apiKey", "copy"]);
+function validateConnection(c: Pick<WeatherConfig, "host" | "apiKey">) {
     str(c.host, 200, "API Host", true);
     str(c.apiKey, 256, "API Key", true);
 
@@ -24,6 +17,27 @@ export function validate(value: unknown): WeatherConfig {
     if (c.apiKey && !/^[A-Za-z0-9_-]+$/.test(c.apiKey)) {
         throw new Error("API Key 格式错误");
     }
+
+}
+export function parseConfig(raw: string): WeatherConfig {
+    const c = JSON.parse(raw) as WeatherConfig;
+
+    if (c?.schemaVersion !== 2 || !c.copy || Array.isArray(c.copy) || Object.keys(WEATHER_COPY).some((key) => typeof c.copy[key as keyof typeof WEATHER_COPY] !== "string")) {
+        throw new Error("天气配置格式错误");
+    }
+
+    validateConnection(c);
+    return c;
+}
+export function validate(value: unknown): WeatherConfig {
+    const c = value as WeatherConfig;
+
+    if (!c || typeof c !== "object" || Array.isArray(c) || c.schemaVersion !== 2) {
+        throw new Error("天气配置格式错误");
+    }
+
+    fields(c, ["schemaVersion", "host", "apiKey", "copy"]);
+    validateConnection(c);
 
     if (!c.copy || typeof c.copy !== "object" || Array.isArray(c.copy)) {
         throw new Error("天气文案格式错误");

@@ -1,22 +1,33 @@
-import type { CalendarConfig, CalendarEvent, Source } from "./types.js";
-import { activeEvents, completeCalendar } from "./calendar.js";
+import type { CalendarConfig, CalendarEvent, SourceSummary } from "./types.js";
+import { activeEvents } from "./calendar.js";
 import { dateAt, validDate } from "../../shared/date.js";
 export type Query<T> = {
     status: "known" | "none" | "unknown";
     data: T;
+    complete: boolean;
     freshness: "current" | "stale" | "unknown";
 };
-export function calendarService(config: CalendarConfig, sources: Source[] = [], now = Date.now()) {
-    const active = activeEvents(config, +dateAt(now).slice(0, 4)).sort(
+export function calendarService(config: CalendarConfig, sources: SourceSummary[] = [], now = Date.now()) {
+    const all = activeEvents(config, +dateAt(now).slice(0, 4)).sort(
         (a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id),
     );
-    const published = new Set(sources.filter((s) => completeCalendar(s.data)).map((s) => s.year));
+    const holidays = all.filter((h) => h.kind === "holiday"), makeup = all.filter((h) => h.kind === "makeup");
+    const conflictIds = new Set<string>();
+
+    for (const holiday of holidays) {
+        for (const work of makeup) {
+            if (work.start >= holiday.start && work.start <= holiday.end) { conflictIds.add(holiday.id); conflictIds.add(work.id); }
+        }
+    }
+
+    const conflicts = all.filter((h) => conflictIds.has(h.id)), active = all.filter((h) => !conflictIds.has(h.id));
+    const published = new Set(sources.filter((s) => s.is_complete === 1).map((s) => s.year));
     function result<T>(from: string, to: string, data: T, hasData: boolean): Query<T> {
         if (!validDate(from) || !validDate(to)) {
             throw new Error("日期错误");
         }
 
-        let complete = true;
+        let complete = !conflicts.some((h) => h.start <= to && h.end >= from);
 
         for (let y = +from.slice(0, 4); y <= +to.slice(0, 4); y++) {
             if (!published.has(y)) {
@@ -27,8 +38,8 @@ export function calendarService(config: CalendarConfig, sources: Source[] = [], 
         const relevant = sources.filter((s) => s.year >= +from.slice(0, 4) && s.year <= +to.slice(0, 4));
         return {
             status: hasData ? "known" : complete ? "none" : "unknown",
-            data,
-            freshness: relevant.some((s) => s.data && s.error) ? "stale" : hasData || complete ? "current" : "unknown",
+            data, complete,
+            freshness: relevant.some((s) => s.hash && s.error) ? "stale" : hasData || complete ? "current" : "unknown",
         };
     }
     function eventResult(from: string, nearest: boolean): Query<CalendarEvent | null> {
@@ -55,27 +66,29 @@ export function calendarService(config: CalendarConfig, sources: Source[] = [], 
         return result(from, h ? (h.start < from ? from : h.start) : end, h, !!h);
     }
     return {
-        events: active,
-        async getNearestEvent(from = dateAt(now)): Promise<Query<CalendarEvent | null>> {
+        events: active, conflicts,
+        confirmedYears: [...published].filter((year) => !conflicts.some((h) => +h.start.slice(0, 4) <= year && +h.end.slice(0, 4) >= year) && !config.events.some((h) => !h.enabled && h.kind === "makeup" && +h.start.slice(0, 4) === year)),
+        getNearestEvent(from = dateAt(now)): Query<CalendarEvent | null> {
             return eventResult(from, true);
         },
-        async getNextEvent(from = dateAt(now)): Promise<Query<CalendarEvent | null>> {
+        getNextEvent(from = dateAt(now)): Query<CalendarEvent | null> {
             return eventResult(from, false);
         },
-        async getRemainingEvents(year: number, from = dateAt(now)): Promise<Query<CalendarEvent[]>> {
+        getRemainingEvents(year: number, from = dateAt(now)): Query<CalendarEvent[]> {
             const start = from > `${year}-01-01` ? from : `${year}-01-01`,
                 end = `${year}-12-31`;
             const rows = active.filter((h) => h.kind !== "makeup" && h.end >= start && h.start <= end);
             return result(start, end, rows, rows.length > 0);
         },
-        async getDayStatus(date = dateAt(now)) {
+        getDayStatus(date = dateAt(now)) {
             const rows = active.filter(
                 (h) => (h.kind === "holiday" || h.kind === "makeup") && h.start <= date && h.end >= date,
             );
-            const conflict = new Set(rows.map((h) => h.kind)).size > 1;
+            const conflict = conflicts.some((h) => h.start <= date && h.end >= date);
             const data = {
                 kind: conflict ? "unknown" : (rows[0]?.kind ?? "ordinary"),
                 names: rows.map((h) => h.name),
+                rows, conflict,
                 events: active.filter((h) => (h.kind === "event" || h.kind === "reference") && h.start === date),
             };
             const q = result(date, date, data, rows.length > 0);

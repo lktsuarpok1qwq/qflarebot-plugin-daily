@@ -1,5 +1,6 @@
+import { deliverReply } from "@qqbot/sdk";
 import type { CommandExecutor, CommandFeedback, Ctx, Rendered } from "../shared/types.js";
-import { snapshot } from "../data/repository.js";
+import { readConfig } from "../data/repository.js";
 import { COPY } from "../copy.js";
 import { dateAt } from "../shared/date.js";
 import { expand } from "../shared/interpolation.js";
@@ -12,7 +13,7 @@ async function feedback(ctx: Ctx, key: keyof CommandFeedback) {
     let copy = COPY.commandFeedback;
 
     try {
-        copy = (await snapshot(ctx.db)).config.commandFeedback;
+        copy = (await readConfig(ctx.db)).commandFeedback;
     } catch {
         // Database failures still need a usable command response.
     }
@@ -26,6 +27,8 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
         result = await render();
 
         if (!result.text.trim()) {
+            if (result.empty === "skip") { return; }
+
             throw new Error("命令文案为空");
         }
     } catch (error) {
@@ -34,9 +37,9 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
     }
 
     try {
-        const sent = await input.session.reply(message(result.text));
+        const [sent] = await deliverReply(input.session, message(result.text));
 
-        if (!sent.ok) {
+        if (sent && !sent.ok) {
             input.ctx.logger.warn("命令回复失败", { command: name, code: sent.code, error: sent.error });
 
             if (sent.code === 40054007) {

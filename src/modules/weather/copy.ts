@@ -1,19 +1,19 @@
 import { commandLink } from "../../shared/interpolation.js";
+const source = "\n\n天气数据：[和风天气](https://www.qweather.com)\n[数据来源声明](https://developer.qweather.com/attribution.html)";
 export const WEATHER_COPY = {
-    help: "🌤️ 天气查询\n" + commandLink("✏️ 输入城市", "/天气 ", false) + "\n\n示例：" + commandLink("/天气 北京", "/天气 北京") + " · " + commandLink("/天气 悉尼 明天", "/天气 悉尼 明天") + "\n支持城市名称或候选地点编号\n\n" + commandLink("📋 每日帮助", "/每日"),
+    help: "🌤️ **天气查询**\n\n📍 想了解哪里的天气？\n" + commandLink("✏️ 输入城市", "/天气 ", false) + "\n\n💡 试试看：" + commandLink("/天气 北京", "/天气 北京") + " · " + commandLink("/天气 悉尼 明天", "/天气 悉尼 明天") + "\n输入城市名称或地点编号，就能查询\n\n" + commandLink("🏠 每日助手", "/每日"),
     current:
-        "## 🌤️ {{city}}\n当前 {{condition}} · {{temp}}℃ · 体感 {{feels}}℃\n湿度 {{humidity}}% · 风速 {{wind}} m/s\n今天 {{low}}～{{high}}℃\n白天 {{day}} · 夜间 {{night}}\n获取时间 {{updated}}\n\n[📅 查看明天]({{tomorrow_url}}) · " + commandLink("✏️ 换个城市", "/天气 ", false),
-    tomorrow: "## 🌤️ {{city}} · 明天\n{{date}}\n{{low}}～{{high}}℃\n白天 {{day}} · 夜间 {{night}}\n\n[🌤️ 查看当前]({{current_url}}) · " + commandLink("✏️ 换个城市", "/天气 ", false),
-    notConfigured: "天气查询尚未配置，请联系管理员\n" + commandLink("📋 每日帮助", "/每日"),
-    notFound: "没有找到这个地点，请尝试完整城市名\n" + commandLink("✏️ 重新输入城市", "/天气 ", false),
-    choose: "找到多个地点，请点击对应命令查询",
-    candidate: "{{city}} · {{area}}\n{{command_link}}",
-    unavailable: "这个地点暂无所选日期的天气数据，请稍后查询\n" + commandLink("✏️ 换个城市", "/天气 ", false),
+        "## 📍 {{city}}\n🌤️ 当前 {{condition}}\n🌡️ {{temp}}℃ · 体感 {{feels}}℃\n💧 湿度 {{humidity}}% · 🍃 风速 {{wind}} m/s\n📊 今天 {{low}}～{{high}}℃\n☀️ 白天 {{day}} · 🌙 夜间 {{night}}\n🕒 获取时间 {{updated}}\n\n[📅 查看明天]({{tomorrow_url}}) · " + commandLink("✏️ 换个城市", "/天气 ", false) + source,
+    tomorrow: "## 📍 {{city}} · 明天\n📅 {{date}}\n🌡️ {{low}}～{{high}}℃\n☀️ 白天 {{day}} · 🌙 夜间 {{night}}\n\n[🌤️ 查看当前]({{current_url}}) · " + commandLink("✏️ 换个城市", "/天气 ", false) + source,
+    notFound: "🔎 没找到这个地点，试试完整城市名吧\n" + commandLink("✏️ 重新输入城市", "/天气 ", false),
+    choose: "📍 找到几个同名地点，点选你想查询的那一个\n天气数据：[和风天气](https://www.qweather.com)\n\n",
+    candidate: "📌 **{{city}}** · {{area}}\n{{command_link}}\n\n",
+    unavailable: "☁️ 暂时没有这个地点的天气信息，稍后再来看看吧\n" + commandLink("✏️ 换个城市", "/天气 ", false),
 };
 export const WEATHER_FIELDS = {
-    help: { label: "/天气", variables: {} },
+    help: { label: "帮助", variables: {} },
     current: {
-        label: "/天气 城市",
+        label: "当前天气",
         variables: {
             city: "地点名称",
             date: "当地预报日期",
@@ -31,7 +31,7 @@ export const WEATHER_FIELDS = {
         },
     },
     tomorrow: {
-        label: "/天气 城市 明天",
+        label: "明天天气",
         variables: {
             city: "地点名称",
             date: "当地预报日期",
@@ -42,10 +42,8 @@ export const WEATHER_FIELDS = {
             current_url: "同一地点当前天气的命令链接地址，用于 [文字]({{current_url}})",
         },
     },
-    notConfigured: { label: "未配置", variables: {} },
     notFound: { label: "未找到地点", variables: {} },
     choose: { label: "选择地点", variables: {} },
-    candidate: { label: "地点候选", variables: { city: "地点名称", area: "所属区域", command: "查询命令文本", command_link: "点击发送的完整命令链接" } },
+    candidate: { label: "地点候选", variables: { city: "地点名称", area: "所属区域", command: "查询命令文本", command_link: "以查询命令为文字的完整链接", command_url: "查询命令链接地址，用于 [文字]({{command_url}})" } },
     unavailable: { label: "暂无天气数据", variables: {} },
 };
-export const ATTRIBUTION = "天气数据：[和风天气](https://www.qweather.com)";

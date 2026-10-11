@@ -1,18 +1,18 @@
-import type { Ctx, Rendered } from "../shared/types.js";
+import type { Ctx, Rendered } from "../../../shared/types.js";
 import type { DeliveryStatus, Due } from "../types.js";
 import { LIMITS } from "../types.js";
 import { snapshot } from "../data/repository.js";
 import { claimMany, deliveryKey, due, finishMany, type Claim, type Outcome } from "../data/deliveries.js";
-import { message } from "../shared/message.js";
+import { message } from "../../../shared/message.js";
 import { renderMessage } from "../content/renderer.js";
-import { createRenderContext } from "../modules/index.js";
+import type { VariableAPI } from "../../../shared/variables.js";
 import { nextPlan } from "./planner.js";
 import { resultStatus } from "./result.js";
 
-export async function dispatch(ctx: Ctx, clock = Date.now): Promise<void> {
-    await dispatchPass(ctx, clock, true);
+export async function dispatch(ctx: Ctx, variables: VariableAPI, clock = Date.now): Promise<void> {
+    await dispatchPass(ctx, variables, clock, true);
 }
-async function dispatchPass(ctx: Ctx, clock: () => number, catchUp: boolean): Promise<void> {
+async function dispatchPass(ctx: Ctx, variables: VariableAPI, clock: () => number, catchUp: boolean): Promise<void> {
     const rows = await due(ctx.db, clock());
 
     if (!rows.length) {
@@ -23,7 +23,7 @@ async function dispatchPass(ctx: Ctx, clock: () => number, catchUp: boolean): Pr
     const tasks = new Map(s.config.tasks.map((t) => [t.id, t]));
     const recipients = new Map(s.config.recipients.map((r) => [r.id, r]));
     const bindings = new Map(s.config.bindings.map((b) => [`${b.taskId}:${b.recipientId}`, b]));
-    const resolve = createRenderContext(ctx);
+    const resolve = variables.resolve(ctx);
     const rendered = new Map<string, Promise<Rendered>>();
     const claims: Claim[] = [],
         texts = new Map<string, Rendered>(),
@@ -60,10 +60,6 @@ async function dispatchPass(ctx: Ctx, clock: () => number, catchUp: boolean): Pr
             continue;
         }
 
-        if (d.revision !== s.revision) {
-            continue;
-        }
-
         const t = tasks.get(d.task_id),
             r = recipients.get(d.recipient_id),
             b = bindings.get(d.id);
@@ -93,7 +89,7 @@ async function dispatchPass(ctx: Ctx, clock: () => number, catchUp: boolean): Pr
                 let value = rendered.get(key);
 
                 if (!value) {
-                    value = renderMessage(t, s.config, d.due_at, resolve);
+                    value = renderMessage(t, s.config, d.due_at, resolve, variables.keys);
                     rendered.set(key, value);
                 }
 
@@ -122,7 +118,7 @@ async function dispatchPass(ctx: Ctx, clock: () => number, catchUp: boolean): Pr
         });
     }
 
-    const owned = await claimMany(ctx.db, claims);
+    const owned = await claimMany(ctx.db, claims, s.revision);
     const pending = claims.filter((c) => owned.has(deliveryKey(c.d)));
     const fresh = pending.some((item) => item.status === "sending")
         ? await ctx.db.first<{ revision: number }>("SELECT revision FROM {state} WHERE id=1")
@@ -133,7 +129,7 @@ async function dispatchPass(ctx: Ctx, clock: () => number, catchUp: boolean): Pr
 
             try {
                 if (outcome.status === "sending") {
-                    if (fresh?.revision !== d.revision) {
+                    if (fresh?.revision !== s.revision) {
                         outcome.status = "skipped_disabled";
                     } else if (clock() >= d.due_at + 60_000 - LIMITS.reserveMs) {
                         outcome.status = "skipped_budget";
@@ -175,6 +171,6 @@ async function dispatchPass(ctx: Ctx, clock: () => number, catchUp: boolean): Pr
         catchUp &&
         outcomes.some((o) => o.next && o.next.due <= clock() && clock() < o.next.due + 60_000 - LIMITS.reserveMs)
     ) {
-        await dispatchPass(ctx, clock, false);
+        await dispatchPass(ctx, variables, clock, false);
     }
 }

@@ -1,5 +1,3 @@
-import { readData, saveConfig } from "./repository.js";
-import type { Source } from "./types.js";
 import type { Ctx } from "../../shared/types.js";
 
 export type SyncResult = {
@@ -12,52 +10,12 @@ export async function hash(text: string) {
         x.toString(16).padStart(2, "0"),
     ).join("");
 }
-export async function limitedJson(res: Response, maxBytes = 256_000) {
-    if (!res.body) {
-        throw new Error("假期源为空");
-    }
-
-    const reader = res.body.getReader();
-    let size = 0,
-        text = "";
-    const decoder = new TextDecoder();
-
-    try {
-        for (; ;) {
-            const { done, value } = await reader.read();
-
-            if (done) {
-                break;
-            }
-
-            size += value.byteLength;
-
-            if (size > maxBytes) {
-                throw new Error("假期源过大");
-            }
-
-            text += decoder.decode(value, { stream: true });
-        }
-
-        text += decoder.decode();
-        return JSON.parse(text);
-    } finally {
-        await reader.cancel().catch(() => { });
-        reader.releaseLock();
-    }
-}
 export async function recordCheck(ctx: Ctx, year: number, error: string | null, now: number, success: boolean) {
-    const { snapshot, sources } = await readData(ctx.db);
-    const previous = sources.find((s) => s.year === year);
-    const source: Source = previous
-        ? { ...previous, error }
-        : { year, hash: "", data: "", error, updated_at: now, checked_at: 0 };
-
-    if (success) {
-        source.checked_at = now;
-    }
-
-    if (JSON.stringify(source) !== JSON.stringify(previous)) {
-        await saveConfig(ctx, snapshot, snapshot.config, now, source);
-    }
+    // Check metadata is independent of editable configuration and cannot roll back a newer result.
+    await ctx.db.run(
+        `INSERT INTO {calendar_sources}(year,hash,data,error,updated_at,checked_at) VALUES(?,'','',?,?,?)
+        ON CONFLICT(year) DO UPDATE SET error=excluded.error,checked_at=CASE WHEN ? THEN excluded.checked_at ELSE checked_at END
+        WHERE updated_at<=? AND checked_at<=? AND (error IS NOT excluded.error OR (? AND checked_at<>excluded.checked_at))`,
+        year, error, now, success ? now : 0, success ? 1 : 0, now, now, success ? 1 : 0,
+    );
 }

@@ -1,6 +1,6 @@
 export function fields(value: object, allowed: readonly string[]) {
     if (Object.keys(value).some((key) => !allowed.includes(key))) {
-        throw new Error("配置包含不支持的字段，请使用新版格式");
+        throw new Error("配置包含不支持的字段");
     }
 }
 export function list(value: unknown, max: number, label: string): asserts value is Record<string, unknown>[] {

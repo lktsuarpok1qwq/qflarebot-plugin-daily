@@ -3,22 +3,22 @@ function createSections(app, ui, title, entries) {
     let selected = Object.keys(entries)[0];
     function render() {
         return (
-            '<nav class="subnav" aria-label="' +
-            ui.esc(title) +
-            '">' +
-            Object.entries(entries)
-                .map(
-                    ([id, entry]) =>
-                        '<button data-action="section" data-id="' +
-                        ui.esc(id) +
-                        '"' +
-                        (id === selected ? ' aria-current="true" class="active"' : "") +
-                        ">" +
-                        ui.esc(entry.label) +
-                        "</button>",
-                )
-                .join("") +
-            "</nav>" +
+            (Object.keys(entries).length > 1 ? '<nav class="subnav" aria-label="' +
+                ui.esc(title) +
+                '">' +
+                Object.entries(entries)
+                    .map(
+                        ([id, entry]) =>
+                            '<button data-action="section" data-id="' +
+                            ui.esc(id) +
+                            '"' +
+                            (id === selected ? ' aria-current="true" class="active"' : "") +
+                            ">" +
+                            ui.esc(entry.label) +
+                            "</button>",
+                    )
+                    .join("") +
+                "</nav>" : "") +
             entries[selected].page.render()
         );
     }
@@ -39,9 +39,10 @@ function createSections(app, ui, title, entries) {
         }
     }
     return {
-        discardActions: Object.values(entries).flatMap((entry) => entry.page.discardActions || []),
-        transientInputs: Object.values(entries).flatMap((entry) => entry.page.transientInputs || []),
+        get discardActions() { return Object.values(entries).flatMap((entry) => entry.page.discardActions || []); },
+        get transientInputs() { return Object.values(entries).flatMap((entry) => entry.page.transientInputs || []); },
         render,
+        refresh: () => entries[selected].page.refresh?.(),
         action,
         reset,
         input: (el) => entries[selected].page.input?.(el),

@@ -1,11 +1,10 @@
 import { definePlugin } from "@qqbot/sdk";
-import { install } from "./data/repository.js";
-import { dispatch } from "./scheduler/dispatcher.js";
-import { maintenance } from "./data/maintenance.js";
-import { command, moduleCommands } from "./commands.js";
+import { defaults } from "./data/repository.js";
+import { installState } from "./shared/state.js";
+import { coreCommands, moduleCommands } from "./commands.js";
 import { modules } from "./modules/index.js";
 import { api } from "./admin.js";
-import { HTML } from "./ui.js";
+import { HTML } from "./ui/index.js";
 export default definePlugin({
     name: "daily",
     displayName: "每日助手",
@@ -14,7 +13,7 @@ export default definePlugin({
     permissions: ["db", "net", "proactive", "admin"],
     hooks: {
         onInstall: async (ctx) => {
-            await install(ctx);
+            await installState(ctx, Object.assign(defaults(), ...modules.map((m) => m.initialConfig?.() ?? {})));
 
             for (const module of modules) {
                 await module.install(ctx);
@@ -22,26 +21,15 @@ export default definePlugin({
         },
     },
     commands: {
-        每日: {
-            description: "每日助手帮助",
-            scenes: ["group", "c2c"],
-            handler: (input) => command(input, "每日"),
-        },
+        ...coreCommands,
         ...moduleCommands,
     },
-    cron: {
-        send: { cron: "* * * * *", handler: ({ ctx }) => dispatch(ctx) },
-        ...Object.fromEntries(modules.flatMap((m) => Object.entries(m.cron ?? {}))),
-        cleanup: {
-            cron: "10 16 * * *",
-            handler: async ({ ctx, scheduledAt }) => {
-                await maintenance(ctx, scheduledAt);
-            },
-        },
-    },
+    cron: Object.fromEntries(modules.flatMap((m) => Object.entries(m.cron ?? {}))),
     ui: { path: "/ui/", title: "每日助手", icon: "CalendarDays" },
     routes: [
-        ...modules.flatMap((m) => m.routes),
+        ...modules.flatMap((m) => (["GET", "POST"] as const).map((method) => ({
+            method, path: `/api/${m.id}/:action`, auth: "admin" as const, handler: m.admin,
+        }))),
         {
             method: "GET",
             path: "/ui/*",

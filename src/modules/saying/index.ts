@@ -1,28 +1,21 @@
+import { commands, sayingSample } from "./definition.js";
+import { registerCommands } from "../../shared/declarations.js";
 import type { ModuleAPI } from "../contract.js";
-import { install, snapshot, backup } from "./repository.js";
+import { install, snapshot } from "./repository.js";
 import { createResolver, render } from "./service.js";
 import { randomSaying } from "./provider.js";
-import { SAYING_VARIABLES, SAYING_DESCRIPTIONS } from "./copy.js";
+import { sayingVariables, SAYING_COPY } from "./copy.js";
 import { api } from "./admin.js";
-import { sayingPage } from "./ui.js";
 export const saying: ModuleAPI = {
     id: "saying",
     install,
-    variables: SAYING_VARIABLES,
-    variableDescriptions: SAYING_DESCRIPTIONS,
-    variableGroups: [{ label: "完整文案", variables: SAYING_VARIABLES }],
+    ...sayingVariables,
+    sampleVariables: () => ({ "一言.今日": render({ schemaVersion: 1, copy: SAYING_COPY }, "today", sayingSample.values.text) }),
     createResolver,
-    commands: (execute) => ({
-        一言: {
-            description: "随机一句话",
-            scenes: ["group", "c2c"],
-            handler: (input) => execute(input, "一言", async () => {
-                const state = await snapshot(input.ctx.db);
-                return { text: render(state.config, await randomSaying()) };
-            }),
-        },
+    commands: (execute) => registerCommands(commands, execute, async (input) => {
+        const state = await snapshot(input.ctx.db);
+        return { text: state.config.copy.body.includes("{{text}}") ? render(state.config, "body", await randomSaying()) : state.config.copy.body };
     }),
-    routes: (["GET", "POST"] as const).map((method) => ({ method, path: "/api/saying/:action", auth: "admin" as const, handler: api })),
-    ui: { title: "一言", source: sayingPage, factory: "createSayingPage" },
-    backup,
+    admin: api,
+    ui: { title: "一言", source: "", factory: "createCopyEditor" },
 };

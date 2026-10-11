@@ -1,3 +1,4 @@
+import { readJson } from "../../shared/json.js";
 import type { City, Current, Forecast, WeatherConfig } from "./types.js";
 export class NoWeatherData extends Error { }
 function object(value: unknown): Record<string, unknown> {
@@ -30,15 +31,6 @@ function measurement(value: unknown, unit: string) {
 
     return String(Math.round(number(v.value) * 10) / 10);
 }
-function attributions(value: unknown): string[] {
-    const values = object(value).attributions;
-
-    if (!Array.isArray(values) || !values.length || values.some((v) => typeof v !== "string" || !v.trim())) {
-        throw new Error("和风天气来源信息缺失");
-    }
-
-    return values as string[];
-}
 export async function request(config: WeatherConfig, path: string, fetcher: typeof fetch): Promise<unknown> {
     let response: Response;
 
@@ -66,41 +58,13 @@ export async function request(config: WeatherConfig, path: string, fetcher: type
         throw new Error("和风天气 HTTP " + response.status);
     }
 
-    const reader = response.body?.getReader();
-
-    if (!reader) {
-        throw new Error("和风天气响应为空");
-    }
-
-    let size = 0,
-        raw = "";
-    const decoder = new TextDecoder();
-
     try {
-        for (; ;) {
-            const { value, done } = await reader.read();
-
-            if (done) {
-                break;
-            }
-
-            size += value.byteLength;
-
-            if (size > 256_000) {
-                throw new Error();
-            }
-
-            raw += decoder.decode(value, { stream: true });
-        }
-
-        return JSON.parse(raw + decoder.decode()) as unknown;
+        return await readJson(response);
     } catch {
         throw new Error("和风天气响应无效或读取超时");
-    } finally {
-        await reader.cancel().catch(() => { });
-        reader.releaseLock();
     }
 }
+
 export async function lookup(config: WeatherConfig, query: string, fetcher: typeof fetch): Promise<City[]> {
     let raw: unknown;
 
@@ -178,7 +142,6 @@ export function parseCurrent(raw: unknown): Current {
         feels: measurement(data.feelsLike, "°C"),
         humidity: String(Math.round(humidity * 100)),
         wind: measurement(object(data.wind).speed, "m/s"),
-        attributions: attributions(data.metadata),
     };
 }
 export function parseForecast(raw: unknown): Forecast {
@@ -204,5 +167,5 @@ export function parseForecast(raw: unknown): Forecast {
             night: text(object(object(day.nighttime).condition).text),
         };
     });
-    return { days, attributions: attributions(data.metadata) };
+    return { days };
 }

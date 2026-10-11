@@ -126,6 +126,9 @@ function createRecipientsPage(app, ui) {
         editingRecipient = null;
     }
 
-    return { render, action, reset };
+    return {
+        discardActions: ["new-recipient", "edit-recipient", "toggle-recipient", "delete-recipient"],
+        transientInputs: ["testRecipient"], render, action, reset
+    };
 }
 `;

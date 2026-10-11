@@ -58,7 +58,7 @@ export function validateCalendar(value: unknown): CalendarConfig {
         }
 
         if (h.batchId !== undefined) {
-            str(h.batchId, 80, "导入批次");
+            str(h.batchId, 80, "批次标识");
         }
     }
 
@@ -70,7 +70,8 @@ export function validateCalendar(value: unknown): CalendarConfig {
 
     for (const [key, variables] of Object.entries(calendarCopyVariables)) {
         const value = c.calendarCopy[key as keyof typeof c.calendarCopy];
-        str(value, Infinity, "日历模块文案", !["help", "unknown", "none", "noneRemaining"].includes(key));
+
+        str(value, Infinity, "日历模块文案", true);
         validateTemplate(value, variables);
     }
 

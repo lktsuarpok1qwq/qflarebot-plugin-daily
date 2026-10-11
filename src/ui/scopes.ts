@@ -1,6 +1,6 @@
 export const scopes = String.raw`
 function createScope(app, id) {
-    const scope = { state: null, config: null, synchronized: false };
+    const scope = { id, state: null, config: null, synchronized: false };
 
     for (const key of ["dirty", "page"]) {
         Object.defineProperty(scope, key, {

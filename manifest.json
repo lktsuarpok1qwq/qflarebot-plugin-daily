@@ -69,19 +69,29 @@
       "cron": "* * * * *"
     },
     {
+      "name": "cleanup",
+      "cron": "10 16 * * *"
+    },
+    {
       "name": "calendar_sync",
       "cron": "0,1 16 * * *"
     },
     {
       "name": "calendar_cleanup",
       "cron": "10 16 * * *"
-    },
-    {
-      "name": "cleanup",
-      "cron": "10 16 * * *"
     }
   ],
   "routes": [
+    {
+      "method": "GET",
+      "path": "/api/notification/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notification/:action",
+      "auth": "admin"
+    },
     {
       "method": "GET",
       "path": "/api/calendar/:action",

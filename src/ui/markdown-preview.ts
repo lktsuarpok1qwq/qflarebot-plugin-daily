@@ -41,6 +41,9 @@ function createMarkdownPreview(ui) {
                 .map((node) => node.textContent)
                 .join("")
                 .trim() || "当前文案";
+
+        if (box.closest("[hidden]")) { return; }
+
         box.innerHTML = el.value ? markdown(el.value) : '<span class="muted">暂无内容</span>';
     }
     function refresh() {
@@ -55,6 +58,9 @@ function createMarkdownPreview(ui) {
 
         activeId = el.id;
         clearTimeout(timer);
+
+        if ($("markdownPreview")?.closest("[hidden]")) { return; }
+
         timer = setTimeout(() => {
             if (el.isConnected && eligible(el)) {
                 paint(el);

@@ -2,7 +2,7 @@
 export const jsonRows = `WITH RECURSIVE input(data) AS (SELECT ?), idx(i) AS (SELECT 0 FROM input WHERE json_array_length(data)>0 UNION ALL SELECT i+1 FROM idx CROSS JOIN input WHERE i+1<json_array_length(data))`;
 export const jx = (key: string) => `json_extract(data, '$[' || i || '].${key}')`;
 
-/** Bound each D1 value independently; the entire restore remains one batch transaction. */
+/** Bound each D1 value independently; all chunks remain in one batch transaction. */
 export function jsonChunks(rows: readonly unknown[], maxBytes = 500_000): string[] {
     const chunks: string[] = [];
     let items: string[] = [],

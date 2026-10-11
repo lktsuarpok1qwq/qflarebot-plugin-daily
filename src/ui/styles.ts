@@ -1,4 +1,12 @@
 export const styles = String.raw`
+.sample-highlight {
+    background: color-mix(in srgb, var(--qb-accent) 18%, transparent);
+    color: inherit;
+    box-shadow: inset 2px 0 var(--qb-accent);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
 * {
     box-sizing: border-box;
     scrollbar-width: thin;
@@ -59,6 +67,24 @@ textarea {
     border-radius: 6px;
     padding: 6px 10px;
 }
+.select-picker-slot {
+    display: block;
+    min-width: 0;
+}
+.select-picker-slot > select {
+    width: 100%;
+}
+.select-picker-slot.picker-open {
+    height: var(--picker-height);
+}
+.picker-open > select {
+    position: fixed;
+    top: var(--picker-top);
+    left: var(--picker-left);
+    width: var(--picker-width);
+    margin: 0;
+    z-index: 20;
+}
 button {
     cursor: pointer;
     background: var(--qb-surface);
@@ -92,7 +118,26 @@ body.busy button:disabled {
 }
 :where(button, input, select, textarea, summary, a):focus-visible {
     outline: 2px solid var(--qb-accent);
-    outline-offset: 3px;
+    outline-offset: -3px;
+}
+button.primary:focus-visible,
+nav button.active:focus-visible {
+    outline-color: var(--qb-on-accent);
+}
+.variable-composition {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    margin-top: 4px;
+}
+.variable-composition summary {
+    cursor: pointer;
+}
+.variable-composition dl {
+    margin: 8px 0;
+}
+.variable-composition dd {
+    margin: 0 0 8px;
+    overflow-wrap: anywhere;
 }
 input[readonly] {
     background: var(--qb-surface-muted);
@@ -156,9 +201,6 @@ p {
 #weeklyFields {
     grid-column: 1 / -1;
     order: 1;
-}
-.copy-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .grid > * {
     min-width: 0;
@@ -302,21 +344,29 @@ summary {
     color: var(--qb-fg-muted);
     padding: 4px 0;
 }
-select[multiple] {
-    min-height: 110px;
-}
 #busy {
     display: none;
 }
 body.busy #busy {
     display: inline;
 }
+.viewport-probe {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+}
 dialog {
+    position: fixed;
+    inset: auto;
+    top: var(--decision-top);
+    left: var(--decision-left);
+    transform: translate(-50%, -50%);
+    margin: 0;
     border: 1px solid var(--qb-border);
     border-radius: 8px;
     padding: 20px;
-    width: min(520px, 90vw);
-    max-height: 85vh;
+    width: min(520px, calc(var(--decision-width) - 32px));
+    max-height: calc(var(--decision-height) - 32px);
     overflow: auto;
     color: var(--qb-fg);
     background: var(--qb-surface);
@@ -345,9 +395,6 @@ dialog::backdrop {
     }
     section {
         padding: 12px;
-    }
-    .copy-grid {
-        grid-template-columns: minmax(0, 1fr);
     }
     .page-status {
         flex-wrap: wrap;
@@ -410,9 +457,6 @@ dialog::backdrop {
 .markdown-editor {
     min-width: 0;
 }
-.markdown-editor :focus-visible {
-    outline-offset: -2px;
-}
 .local-preview {
     margin: 12px 0;
     min-width: 0;
@@ -432,11 +476,10 @@ dialog::backdrop {
     .markdown-editor textarea {
         min-height: 160px;
     }
-    .markdown-editor > label:only-of-type textarea {
-        min-height: 340px;
-    }
     .markdown-workspace > .local-preview {
         margin: 0;
+        min-height: 0;
+        overflow: auto;
         display: flex;
         flex-direction: column;
     }
@@ -444,6 +487,16 @@ dialog::backdrop {
         flex: 1;
         min-height: 0;
     }
+}
+.local-preview .copy-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+}
+.local-preview [aria-pressed="true"] {
+    background: var(--qb-surface-muted);
+    font-weight: 600;
 }
 .local-preview h3 {
     font-size: 14px;
@@ -453,6 +506,14 @@ dialog::backdrop {
     margin-top: 8px;
     height: 160px;
     overflow: auto;
+}
+@media (min-width: 601px) {
+    .variable-reference table {
+        table-layout: fixed;
+    }
+    .variable-reference th:first-child {
+        width: 34%;
+    }
 }
 .variable-reference h4 {
     margin: 12px 0 0;
