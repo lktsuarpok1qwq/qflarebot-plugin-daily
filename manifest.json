@@ -45,7 +45,7 @@
     },
     {
       "name": "假期 下一个",
-      "description": "下个尚未结束的假期",
+      "description": "下个尚未结束的节日",
       "scenes": [
         "group",
         "c2c"
@@ -53,7 +53,7 @@
     },
     {
       "name": "假期 剩余",
-      "description": "今年尚未结束的假期",
+      "description": "今天起今年所有剩余节日",
       "scenes": [
         "group",
         "c2c"
@@ -98,7 +98,7 @@
   "services": [],
   "durableObjects": [],
   "displayName": "每日助手",
-  "description": "占位符公告、定时提醒与放假调休查询",
+  "description": "占位符通知、日历查询与自定义节日",
   "ui": {
     "path": "/ui/",
     "title": "每日助手",

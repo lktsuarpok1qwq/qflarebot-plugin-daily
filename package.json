@@ -1,28 +1,10 @@
 {
-  "name": "qflarebot-plugin-daily",
-  "version": "2.0.0",
-  "description": "每日助手：占位符公告、定时提醒与放假调休",
-  "license": "MIT",
-  "type": "module",
-  "keywords": [
-    "qflarebot-plugin"
-  ],
-  "scripts": {
-    "build": "qqbot-plugin build",
-    "sync": "qqbot-plugin build && node -e \"require('node:fs').copyFileSync('dist/manifest.json','manifest.json')\"",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm test && npm run sync && qqbot-plugin validate",
-    "test:browser": "node scripts/test-browser.mjs"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250917.0",
-    "@qqbot/plugin-cli": "file:../QFlareBot/packages/plugin-cli",
-    "@qqbot/sdk": "file:../QFlareBot/packages/sdk",
-    "@types/node": "^24.19.2",
-    "playwright-core": "^1.61.1",
-    "prettier": "^3.9.10",
-    "typescript": "^5.9.0",
-    "vitest": "^5.0.3"
-  }
+    "name": "qflarebot-plugin-daily",
+    "version": "2.0.0",
+    "description": "每日助手：占位符公告、定时提醒与放假调休",
+    "license": "MIT",
+    "type": "module",
+    "keywords": [
+        "qflarebot-plugin"
+    ]
 }

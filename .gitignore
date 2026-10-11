@@ -5,6 +5,27 @@ coverage/
 playwright-report/
 test-results/
 *.tsbuildinfo
+*.tgz
+
+# QFlareBot requires the root manifest when installing from GitHub
+!/manifest.json
+
+# Local development and verification (not required by host builds)
+/scripts/
+/test/
+/vitest.config.ts
+/tsconfig.json
+/package-lock.json
+/package.local.json
+
+# Personal development preferences
+/AGENTS.md
+/.prettierrc.json
+/.prettierignore
+/.editorconfig
+/.vscode/
+/.idea/
+*.code-workspace
 
 # Local implementation documents and verification reports
 /qflarebot-plugin-daily_V*.md
@@ -14,6 +35,7 @@ test-results/
 .wrangler/
 .vite/
 .cache/
+.prettiercache
 *.log
 
 # Local environment and credentials (keep shareable examples)
