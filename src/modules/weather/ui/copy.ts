@@ -5,35 +5,8 @@ function createWeatherCopyPage(app, ui) {
         drafts = {},
         query = "";
     function variables() {
-        const all = new Map();
-
-        for (const field of Object.values(app.state.fields)) {
-            for (const [key, description] of Object.entries(field.variables)) {
-                const entry = all.get(key) || { descriptions: new Set(), uses: [] };
-                entry.descriptions.add(description);
-                entry.uses.push(field.label);
-                all.set(key, entry);
-            }
-        }
-
-        return (
-            '<h3>全部文案参数</h3><p class="muted">仅限对应文案使用，当前分类可用项已标注</p>' +
-            ui.table(
-                ["参数", "说明", "适用文案"],
-                [...all].map(
-                    ([key, entry]) =>
-                        "<tr><td><code>{{" +
-                        esc(key) +
-                        "}}</code>" +
-                        (Object.hasOwn(app.state.fields[selected].variables, key) ? "<small>当前可用</small>" : "") +
-                        "</td><td>" +
-                        [...entry.descriptions].map(esc).join(" / ") +
-                        "</td><td>" +
-                        entry.uses.map((label) => "<strong>" + esc(label) + "</strong>").join("<br>") +
-                        "</td></tr>",
-                ),
-            )
-        );
+        const field = app.state.fields[selected];
+        return ui.variableReference([{ label: field.label, variables: Object.keys(field.variables) }], field.variables);
     }
 
     function render() {

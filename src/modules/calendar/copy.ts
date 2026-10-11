@@ -1,3 +1,4 @@
+import { commandLink } from "../../shared/interpolation.js";
 import type { CalendarCopy } from "./types.js";
 // 日历模块所有可配置默认文案；已有用户配置优先
 export const CALENDAR_COPY = {
@@ -12,11 +13,11 @@ export const CALENDAR_COPY = {
         ordinary: "",
         unknown: "📅 暂未获取完整安排，可稍后查询",
         none: "📅 已知记录中没有尚未开始的节日",
-        noneRemaining: "📅 今年已没有剩余节日\n可用 **/假期 下个** 查询后续节日",
+        noneRemaining: "📅 今年已没有剩余节日\n" + commandLink("🏖️ 查看下个假期", "/假期 下个"),
         ongoing: "（进行中）",
         makeupEmpty: "无",
         stale: "🕒 暂时使用缓存数据",
-        help: "📅 日历助手 · 使用帮助\n\n**/假期 下个**  查询尚未开始的节日（含跨年）\n**/假期 剩余**  查询今年剩余节日（含进行中）\n**/假期**  查看帮助",
+        help: "📅 日历助手 · 使用帮助\n\n" + commandLink("🏖️ 下个假期", "/假期 下个") + " · 含跨年\n" + commandLink("📋 今年剩余", "/假期 剩余") + " · 含进行中",
     } satisfies CalendarCopy,
     draft: { name: "" },
 };

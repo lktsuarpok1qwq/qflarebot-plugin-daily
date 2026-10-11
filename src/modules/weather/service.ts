@@ -1,7 +1,7 @@
 import type { WeatherState } from "./types.js";
 import { ATTRIBUTION } from "./copy.js";
 import { lookup, request, parseCurrent, parseForecast, NoWeatherData } from "./provider.js";
-import { expand } from "../../shared/interpolation.js";
+import { expand, commandLink } from "../../shared/interpolation.js";
 export function localDay(now: number, tz: string, offset = 0) {
     const parts = new Intl.DateTimeFormat("en", {
         timeZone: tz,
@@ -69,13 +69,12 @@ export async function queryWeather(
                 copy.choose +
                 "\n\n" +
                 cities
-                    .map((c) =>
-                        expand(copy.candidate, {
-                            city: c.name,
-                            area: c.area,
-                            command: "/天气 " + c.id + (tomorrow ? " 明天" : ""),
-                        }),
-                    )
+                    .map((c) => {
+                        const command = "/天气 " + c.id + (tomorrow ? " 明天" : "");
+                        return expand(copy.candidate, { city: c.name, area: c.area, command }, {
+                            command_link: commandLink(command, command),
+                        });
+                    })
                     .join("\n\n") +
                 "\n\n" +
                 ATTRIBUTION,
