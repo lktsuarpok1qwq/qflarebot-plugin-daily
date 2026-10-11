@@ -50,6 +50,14 @@
         "group",
         "c2c"
       ]
+    },
+    {
+      "name": "一言",
+      "description": "随机一句话",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
     }
   ],
   "regex": [],
@@ -96,6 +104,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/saying/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/saying/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
       "path": "/ui/*",
       "auth": "admin"
     },
@@ -114,7 +132,7 @@
   "services": [],
   "durableObjects": [],
   "displayName": "每日助手",
-  "description": "定时通知、日历与天气查询",
+  "description": "定时通知、日历、天气与一言",
   "ui": {
     "path": "/ui/",
     "title": "每日助手",

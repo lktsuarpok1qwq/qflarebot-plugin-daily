@@ -1,9 +1,10 @@
 import type { Ctx } from "../shared/types.js";
+import { saying } from "./saying/index.js";
 import { weather } from "./weather/index.js";
 import { calendar } from "./calendar/index.js";
 import type { ModuleAPI } from "./contract.js";
 // The composition root is the only place that names concrete modules.
-export const modules: readonly ModuleAPI[] = [calendar, weather];
+export const modules: readonly ModuleAPI[] = [calendar, weather, saying];
 export const moduleVariableGroups = modules.flatMap((m) =>
     (m.variableGroups ?? []).map((group) => ({ ...group, label: m.ui.title + " · " + group.label })),
 );
