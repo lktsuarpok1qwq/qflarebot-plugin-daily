@@ -1,28 +1,44 @@
-import type { Config, Source } from "../types.js";
-import { calendarVariables, calendarValues } from "./calendar/placeholders.js";
-// Modules supply already rendered Markdown fragments. Register future modules here.
-export const modules = [{ variables: calendarVariables, resolve: calendarValues }];
-export const moduleVariables = modules.flatMap((m) => [...m.variables]);
-export function createRenderContext(config: Config, sources: Source[], due: number) {
-    const cache = new Map<object, Promise<Record<string, string>>>();
-    return async (keys: string[]) => {
+import type { Ctx } from "../shared/types.js";
+import { weather } from "./weather/index.js";
+import { calendar } from "./calendar/index.js";
+import type { ModuleAPI } from "./contract.js";
+// The composition root is the only place that names concrete modules.
+export const modules: readonly ModuleAPI[] = [calendar, weather];
+export const moduleVariableGroups = modules.flatMap((m) =>
+    (m.variableGroups ?? []).map((group) => ({ ...group, label: m.ui.title + " · " + group.label })),
+);
+export const moduleVariables = modules.flatMap((m) => [...(m.variables ?? [])]);
+export const moduleVariableDescriptions = Object.fromEntries(
+    modules.flatMap((m) => Object.entries(m.variableDescriptions ?? {})),
+);
+/** One read per requested module per round; one rendering per scheduled time. */
+export function createRenderContext(ctx: Ctx) {
+    const resolvers = new Map<string, ReturnType<NonNullable<ModuleAPI["createResolver"]>>>();
+    const cache = new Map<string, Map<number, Promise<Record<string, string>>>>();
+    return async (keys: string[], at: number) => {
         const values: Record<string, string> = {};
 
         for (const module of modules) {
-            if (keys.some((k) => (module.variables as readonly string[]).includes(k))) {
-                let data = cache.get(module);
+            if (!module.createResolver || !keys.some((key) => module.variables?.includes(key))) {
+                continue;
+            }
 
-                if (!data) {
-                    data = module.resolve(config, sources, due);
-                    cache.set(module, data);
-                }
+            if (!resolvers.has(module.id)) {
+                resolvers.set(module.id, module.createResolver(ctx));
+                cache.set(module.id, new Map());
+            }
 
-                const resolved = await data;
+            const dates = cache.get(module.id)!;
 
-                for (const key of keys) {
-                    if (Object.hasOwn(resolved, key)) {
-                        values[key] = resolved[key]!;
-                    }
+            if (!dates.has(at)) {
+                dates.set(at, resolvers.get(module.id)!(at));
+            }
+
+            const resolved = await dates.get(at)!;
+
+            for (const key of keys) {
+                if (Object.hasOwn(resolved, key)) {
+                    values[key] = resolved[key]!;
                 }
             }
         }

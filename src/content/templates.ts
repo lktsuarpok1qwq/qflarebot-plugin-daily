@@ -1,25 +1,16 @@
 import { SCHEMA_VERSION, type Config } from "../types.js";
 import { COPY } from "../copy.js";
+import { validateTemplate as validateSyntax } from "../shared/templates.js";
 import { defaultReplies } from "./command-templates.js";
-import { moduleVariables } from "../modules/index.js";
+import { moduleVariables, moduleVariableDescriptions, moduleVariableGroups } from "../modules/index.js";
+export const VARIABLE_GROUPS = [{ label: "通用", variables: ["日期", "星期"] }, ...moduleVariableGroups];
 export const VARIABLES = ["日期", "星期", ...moduleVariables] as const;
-export function validateTemplate(body: string, keys: readonly string[] = VARIABLES) {
-    if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body)) {
-        throw new Error("文字包含不支持的控制字符");
-    }
-
-    const rest = body.replace(/\{\{([^{}]+)\}\}/g, (_, key: string) => {
-        if (!keys.includes(key)) {
-            throw new Error(`未知变量：${key}`);
-        }
-
-        return "";
-    });
-
-    if (rest.includes("{{") || rest.includes("}}")) {
-        throw new Error("变量格式错误");
-    }
-}
+export const VARIABLE_DESCRIPTIONS = {
+    日期: "发送日期",
+    星期: "发送日期对应的星期",
+    ...moduleVariableDescriptions,
+};
+export const validateTemplate = (body: string, keys: readonly string[] = VARIABLES) => validateSyntax(body, keys);
 export function defaults(): Config {
     return {
         schemaVersion: SCHEMA_VERSION,
@@ -28,16 +19,17 @@ export function defaults(): Config {
         tasks: [
             {
                 id: "daily-announcement",
-                ...COPY.announcement,
+                name: COPY.announcement.name,
+                templateId: "daily-announcement",
                 enabled: false,
                 origin: "system",
                 schedule: { kind: "daily", time: "09:00" },
             },
         ],
+        templates: [{ id: "daily-announcement", ...COPY.announcement }],
         recipients: [],
         bindings: [],
-        events: [],
-        calendarCopy: structuredClone(COPY.calendar),
         replies: defaultReplies(),
+        commandFeedback: structuredClone(COPY.commandFeedback),
     };
 }

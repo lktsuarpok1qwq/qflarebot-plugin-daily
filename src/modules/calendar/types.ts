@@ -1,5 +1,6 @@
 export type CalendarEvent = {
     id: string;
+    enabled: boolean;
     name: string;
     start: string;
     end: string;
@@ -13,14 +14,16 @@ export type CalendarCopy = Record<
     | "reference"
     | "event"
     | "eventToday"
-    | "remaining"
     | "today"
     | "makeupToday"
     | "ordinary"
     | "unknown"
     | "none"
     | "ongoing"
-    | "stale",
+    | "stale"
+    | "makeupEmpty"
+    | "noneRemaining"
+    | "help",
     string
 >;
 export type Source = {
@@ -29,5 +32,15 @@ export type Source = {
     data: string;
     error: string | null;
     updated_at: number;
-    checked_at?: number | null;
+    checked_at: number;
 };
+
+export type CalendarCommand = "假期" | "假期 下个" | "假期 剩余";
+export const CALENDAR_VERSION = 3;
+export const EVENT_LIMIT = 600;
+export type CalendarConfig = {
+    schemaVersion: typeof CALENDAR_VERSION;
+    events: CalendarEvent[];
+    calendarCopy: CalendarCopy;
+};
+export type CalendarSnapshot = { revision: number; config: CalendarConfig };

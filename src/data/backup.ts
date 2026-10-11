@@ -1,31 +1,57 @@
-import type { Config, Ctx, Source } from "../types.js";
+import type { Config } from "../types.js";
+import type { Ctx } from "../shared/types.js";
 import { snapshot, saveConfig } from "./repository.js";
 import { LIMITS, SCHEMA_VERSION } from "../types.js";
 import { validateConfig } from "./validation.js";
-import { validateYear, refreshEvents } from "../modules/calendar/calendar.js";
-import { hash } from "../modules/calendar/source.js";
+import { fields } from "../shared/validation.js";
+import { modules } from "../modules/index.js";
 export type Backup = {
     schemaVersion: typeof SCHEMA_VERSION;
     exportedAt: string;
     botId: string;
     config: Config;
-    sources: Source[];
+    modules: Record<string, unknown>;
 };
+async function readModules(ctx: Ctx) {
+    const rows = await ctx.db.batch(modules.flatMap((m) => m.backup.read));
+    let offset = 0;
+    return Object.fromEntries(
+        modules.map((m) => {
+            const value = m.backup.decode(rows.slice(offset, offset + m.backup.read.length));
+            offset += m.backup.read.length;
+            return [m.id, value];
+        }),
+    );
+}
+export async function moduleRevisions(ctx: Ctx) {
+    return Object.fromEntries(Object.entries(await readModules(ctx)).map(([id, value]) => [id, value.revision]));
+}
 export async function exportBackup(ctx: Ctx): Promise<Backup> {
     const rows = await ctx.db.batch([
         { sql: "SELECT bot_id,config FROM {state} WHERE id=1" },
-        { sql: "SELECT * FROM {sources}" },
+        ...modules.flatMap((m) => m.backup.read),
     ]);
-    const s = rows[0]!.results[0] as { bot_id: string; config: string };
-    const backup: Backup = {
-        schemaVersion: SCHEMA_VERSION,
-        exportedAt: new Date().toISOString(),
-        botId: s.bot_id,
-        config: JSON.parse(s.config) as Config,
-        sources: rows[1]!.results as Source[],
-    };
-    // Never offer a download which our own importer rejects.
-    return verifyBackup(parseBackup(backup, s.bot_id));
+    const state = rows[0]!.results[0] as { bot_id: string; config: string };
+    let offset = 1;
+    const data = Object.fromEntries(
+        modules.map((m) => {
+            const value = m.backup.decode(rows.slice(offset, offset + m.backup.read.length));
+            offset += m.backup.read.length;
+            return [m.id, value.data];
+        }),
+    );
+    return verifyBackup(
+        parseBackup(
+            {
+                schemaVersion: SCHEMA_VERSION,
+                exportedAt: new Date().toISOString(),
+                botId: state.bot_id,
+                config: JSON.parse(state.config),
+                modules: data,
+            },
+            ctx.botId,
+        ),
+    );
 }
 export function parseBackup(value: unknown, currentBot: string): Backup {
     const b = value as Backup;
@@ -34,7 +60,9 @@ export function parseBackup(value: unknown, currentBot: string): Backup {
         !b ||
         b.schemaVersion !== SCHEMA_VERSION ||
         typeof b.botId !== "string" ||
-        !Array.isArray(b.sources) ||
+        !b.modules ||
+        typeof b.modules !== "object" ||
+        Array.isArray(b.modules) ||
         typeof b.exportedAt !== "string" ||
         !Number.isFinite(Date.parse(b.exportedAt)) ||
         new TextEncoder().encode(JSON.stringify(b)).length > LIMITS.backupBytes
@@ -54,46 +82,37 @@ export function parseBackup(value: unknown, currentBot: string): Backup {
         }
     }
 
-    const years = new Set<string>();
-
-    for (const s of b.sources) {
-        if (
-            !s ||
-            !Number.isInteger(s.year) ||
-            s.year < 2000 ||
-            s.year > 2199 ||
-            years.has(String(s.year)) ||
-            typeof s.data !== "string" ||
-            new TextEncoder().encode(s.data).length > 128000 ||
-            typeof s.hash !== "string" ||
-            (s.data ? !/^[a-f0-9]{64}$/.test(s.hash) : s.hash !== "") ||
-            (s.error !== null && typeof s.error !== "string") ||
-            !Number.isFinite(s.updated_at)
-        ) {
-            throw new Error("假期源备份非法");
-        }
-
-        years.add(String(s.year));
-
-        if (s.data) {
-            validateYear(JSON.parse(s.data), s.year);
-        }
-    }
-
     return b;
 }
+
 export async function verifyBackup(b: Backup): Promise<Backup> {
-    for (const source of b.sources) {
-        if (source.data && (await hash(source.data)) !== source.hash) {
-            throw new Error("备份假期源指纹不匹配");
-        }
+    fields(b, ["schemaVersion", "exportedAt", "botId", "config", "modules"]);
+    fields(
+        b.modules,
+        modules.map((m) => m.id),
+    );
+
+    for (const module of modules) {
+        await module.backup.validate(b.modules[module.id]);
     }
 
     return b;
 }
-export async function restoreBackup(ctx: Ctx, b: Backup, expectedRevision: number) {
+export async function restoreBackup(ctx: Ctx, b: Backup, expectedRevision: number, expectedModules: unknown) {
     const s = await snapshot(ctx.db);
     await verifyBackup(parseBackup(b, ctx.botId));
+
+    if (!expectedModules || typeof expectedModules !== "object" || Array.isArray(expectedModules)) {
+        throw new Error("请重新预览模块备份");
+    }
+
+    const revisions = expectedModules as Record<string, number>;
+
+    for (const module of modules) {
+        if (!Number.isSafeInteger(revisions[module.id]) || revisions[module.id]! < 1) {
+            throw new Error("模块版本错误，请重新预览备份");
+        }
+    }
 
     for (const recipient of b.config.recipients) {
         const old = s.config.recipients.find((r) => r.id === recipient.id);
@@ -116,9 +135,13 @@ export async function restoreBackup(ctx: Ctx, b: Backup, expectedRevision: numbe
         throw new Error("存在发送中或待判定的请求，等待调度器收敛后重试恢复");
     }
 
-    const now = Date.now(),
-        config = structuredClone(b.config);
-    refreshEvents(config, b.sources, now);
-    validateConfig(config);
-    return saveConfig(ctx, s, config, now, true, { sources: b.sources });
+    const now = Date.now();
+    return saveConfig(
+        ctx,
+        s,
+        structuredClone(b.config),
+        now,
+        true,
+        modules.map((m) => m.backup.restore(b.modules[m.id], revisions[m.id]!, now)),
+    );
 }

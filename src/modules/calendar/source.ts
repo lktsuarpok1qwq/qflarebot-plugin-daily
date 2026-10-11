@@ -1,4 +1,7 @@
-import type { Ctx } from "../../types.js";
+import { readData, saveConfig } from "./repository.js";
+import type { Source } from "./types.js";
+import type { Ctx } from "../../shared/types.js";
+
 export type SyncResult = {
     year: number;
     status: "updated" | "cached" | "not_published" | "error" | "skipped";
@@ -20,7 +23,7 @@ export async function limitedJson(res: Response, maxBytes = 256_000) {
     const decoder = new TextDecoder();
 
     try {
-        for (;;) {
+        for (; ;) {
             const { done, value } = await reader.read();
 
             if (done) {
@@ -39,30 +42,22 @@ export async function limitedJson(res: Response, maxBytes = 256_000) {
         text += decoder.decode();
         return JSON.parse(text);
     } finally {
-        await reader.cancel();
+        await reader.cancel().catch(() => { });
+        reader.releaseLock();
     }
 }
-export async function setError(ctx: Ctx, year: number, error: string, now: number) {
-    await ctx.db.run(
-        "INSERT INTO {sources}(year,hash,data,error,updated_at) VALUES (?,'','',?,?) ON CONFLICT(year) DO UPDATE SET error=excluded.error WHERE error IS NOT excluded.error",
-        year,
-        error,
-        now,
-    );
-}
+export async function recordCheck(ctx: Ctx, year: number, error: string | null, now: number, success: boolean) {
+    const { snapshot, sources } = await readData(ctx.db);
+    const previous = sources.find((s) => s.year === year);
+    const source: Source = previous
+        ? { ...previous, error }
+        : { year, hash: "", data: "", error, updated_at: now, checked_at: 0 };
 
-// Store check timestamps in the maintenance table.
-export const SOURCE_QUERY =
-    "SELECT s.*, CAST(m.day AS INTEGER) AS checked_at FROM {sources} s LEFT JOIN {maintenance} m ON m.job='calendar:' || s.year";
-export async function checked(ctx: Ctx, year: number, now: number, error: string | null = null) {
-    await ctx.db.batch([
-        {
-            sql: "INSERT INTO {maintenance}(job,day,error) VALUES (?,?,NULL) ON CONFLICT(job) DO UPDATE SET day=excluded.day WHERE day<>excluded.day",
-            params: [`calendar:${year}`, String(now)],
-        },
-        {
-            sql: "UPDATE {sources} SET error=? WHERE year=? AND error IS NOT ?",
-            params: [error, year, error],
-        },
-    ]);
+    if (success) {
+        source.checked_at = now;
+    }
+
+    if (JSON.stringify(source) !== JSON.stringify(previous)) {
+        await saveConfig(ctx, snapshot, snapshot.config, now, source);
+    }
 }

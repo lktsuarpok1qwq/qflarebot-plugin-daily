@@ -1,9 +1,22 @@
 export const statusPage = String.raw`
 function createStatusPage(app, ui) {
     const { $, esc, time, options, btn, table } = ui;
+    const statusLabels = {
+        sending: "发送中",
+        success: "发送成功",
+        failed_api: "平台拒绝",
+        failed_validation: "内容无效",
+        uncertain: "结果不确定",
+        skipped_empty: "空内容跳过",
+        skipped_expired: "已过期",
+        skipped_budget: "超出发送预算",
+        skipped_disabled: "已停用",
+    };
     let backup,
         restoreRevision,
-        logsOffset = 0;
+        restoreModules,
+        logsOffset = 0,
+        logFilter = "";
 
     function render() {
         let html = "";
@@ -12,45 +25,32 @@ function createStatusPage(app, ui) {
             '<section><h2>运行控制</h2><div class="actions">' +
             btn(app.config.paused ? "解除全局暂停" : "全局紧急暂停", "pause", "", "danger") +
             btn("立即清理过期日志", "cleanup") +
-            '</div><p>维护任务不追加插件运行日志；框架自身可能输出 Cron 完成信息。发送采用 SDK 预算预留，临近窗口结束会跳过。</p><div class="grid"><label>日志保留<select id="retention">' +
+            '</div><p>暂停只停止发送，查询和维护照常运行；过期计划跳过</p><div class="grid"><label>日志保留<select id="retention">' +
             [7, 30, 90]
                 .map((v) => "<option " + (v === app.config.retentionDays ? "selected" : "") + ">" + v + "</option>")
                 .join("") +
             "</select></label>" +
             "</div>" +
             btn("保存设置", "save-settings") +
-            "<pre>" +
+            '<details id="maintenanceDetails"><summary>维护任务详情</summary><pre>' +
             esc(JSON.stringify(app.state.jobs, null, 2)) +
-            '</pre><p class="muted">单轮最多 ' +
-            app.state.limits.batch +
-            " 个目标，并发 " +
-            app.state.limits.concurrency +
-            "；请尽量错开发送时间，超出容量或发送窗口的计划会跳过。</p></section>";
+            '</pre></details><p class="muted">同一时间发送过多，可能无法全部完成，建议错开时间</p></section>';
         html +=
             '<section><h2>执行日志</h2><div class="grid"><label>任务<select id="logTask"><option value="">全部</option>' +
             options(app.config.tasks) +
             '</select></label><label>目标<select id="logRecipient"><option value="">全部</option>' +
             options(app.config.recipients) +
             '</select></label><label>状态<select id="logStatus"><option value="">全部</option>' +
-            [
-                "success",
-                "failed_api",
-                "failed_validation",
-                "uncertain",
-                "skipped_empty",
-                "skipped_expired",
-                "skipped_budget",
-                "skipped_disabled",
-            ]
-                .map((v) => "<option>" + v + "</option>")
+            Object.entries(statusLabels)
+                .map(([value, label]) => '<option value="' + value + '">' + label + "</option>")
                 .join("") +
             "</select></label></div>" +
             btn("查询", "load-logs") +
             btn("上一页", "logs-prev") +
             btn("下一页", "logs-next") +
-            '<div id="logs"></div></section>';
+            '<div id="logs"><p class="muted">选择条件后查询发送记录</p></div></section>';
         html +=
-            "<section><h2>备份与恢复</h2><p>恢复保留原启用状态，并从恢复完成后的未来时间重新排程。</p>" +
+            "<section><h2>备份与恢复</h2><p>恢复后保留启用状态，只执行未来计划</p>" +
             btn("导出 JSON", "export-backup") +
             '<label>选择备份<input id="backupFile" type="file" accept=".json"></label><div class="actions">' +
             btn("预览恢复", "preview-restore") +
@@ -59,7 +59,7 @@ function createStatusPage(app, ui) {
 
         return html;
     }
-    async function action(a, id) {
+    async function action(a) {
         if (a === "pause") {
             app.config.paused = !app.config.paused;
             await app.save(app.config.paused ? "已暂停主动发送" : "已恢复，只执行未来计划");
@@ -73,14 +73,14 @@ function createStatusPage(app, ui) {
         }
 
         if (["load-logs", "logs-prev", "logs-next"].includes(a)) {
-            logsOffset = a === "load-logs" ? 0 : Math.max(0, logsOffset + (a === "logs-next" ? 50 : -50));
-            const qs = new URLSearchParams({
-                    task: $("logTask").value,
-                    recipient: $("logRecipient").value,
-                    status: $("logStatus").value,
-                    offset: String(logsOffset),
-                }),
-                logs = await app.api("logs?" + qs);
+            const filters = { task: $("logTask").value, recipient: $("logRecipient").value, status: $("logStatus").value };
+            const key = JSON.stringify(filters);
+            const offset = a === "load-logs" || key !== logFilter
+                ? 0 : Math.max(0, logsOffset + (a === "logs-next" ? 50 : -50));
+            const qs = new URLSearchParams({ ...filters, offset: String(offset) });
+            const logs = await app.api("logs?" + qs);
+            logsOffset = offset;
+            logFilter = key;
             $("logs").innerHTML = table(
                 ["计划时间", "任务 / 目标", "状态", "详情"],
                 logs.map(
@@ -92,7 +92,7 @@ function createStatusPage(app, ui) {
                         " / " +
                         esc(app.config.recipients.find((r) => r.id === l.recipient_id)?.name || l.recipient_id) +
                         "</td><td>" +
-                        esc(l.status) +
+                        esc(statusLabels[l.status] || l.status) +
                         "</td><td><details><summary>展开</summary><pre>" +
                         esc(JSON.stringify(l, null, 2)) +
                         "</pre></details></td></tr>",
@@ -127,6 +127,7 @@ function createStatusPage(app, ui) {
 
             const p = await app.api("restore-preview", { backup });
             restoreRevision = p.revision;
+            restoreModules = p.moduleRevisions;
             $("backupPreview").hidden = false;
             $("backupPreview").textContent = JSON.stringify(p, null, 2);
             return;
@@ -143,6 +144,7 @@ function createStatusPage(app, ui) {
             await app.api("restore", {
                 backup,
                 revision: restoreRevision,
+                moduleRevisions: restoreModules,
                 confirm: true,
             });
             restoreRevision = undefined;
@@ -158,6 +160,8 @@ function createStatusPage(app, ui) {
             await app.run(async () => {
                 backup = undefined;
                 restoreRevision = undefined;
+                $("backupPreview").hidden = true;
+                $("backupPreview").textContent = "";
                 const file = el.files?.[0];
 
                 if (!file) {
@@ -174,6 +178,13 @@ function createStatusPage(app, ui) {
         }
     }
 
-    return { render, action, change };
+    function reset() {
+        backup = undefined;
+        restoreRevision = undefined;
+        restoreModules = undefined;
+        logsOffset = 0;
+        logFilter = "";
+    }
+    return { render, action, change, reset };
 }
 `;

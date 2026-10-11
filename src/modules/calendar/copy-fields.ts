@@ -1,0 +1,16 @@
+export const calendarCopyVariables: Record<string, readonly string[]> = {
+    summary: ["name", "start", "end", "days_until", "days_off", "ongoing", "makeup", "source"],
+    reference: ["name", "date", "days_until", "source"],
+    event: ["name", "date", "days_until", "source"],
+    eventToday: ["name"],
+    today: ["name"],
+    makeupToday: ["name"],
+    ordinary: [],
+    unknown: ["year", "today"],
+    none: ["year", "today"],
+    noneRemaining: ["year", "today"],
+    help: ["year", "today"],
+    ongoing: [],
+    stale: ["year", "today"],
+    makeupEmpty: [],
+};

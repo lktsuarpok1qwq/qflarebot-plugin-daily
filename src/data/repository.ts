@@ -1,10 +1,9 @@
-import { SOURCE_QUERY } from "../modules/calendar/source.js";
+import type { Ctx, RestorePart } from "../shared/types.js";
 import type { DBStatement, PluginDB } from "@qqbot/sdk";
-import { SCHEMA_VERSION, type Config, type Ctx, type Snapshot, type Source } from "../types.js";
+import { SCHEMA_VERSION, type Config, type Snapshot } from "../types.js";
 import { defaults } from "../content/templates.js";
-import { refreshEvents } from "../modules/calendar/calendar.js";
-import { nextPlan, dateAt } from "../scheduler/planner.js";
-import { jsonRows, jx, jsonChunks } from "./sql.js";
+import { nextPlan } from "../scheduler/planner.js";
+import { jsonRows, jx, jsonChunks } from "../shared/sql.js";
 export const bindingId = (task: string, recipient: string) => `${task}:${recipient}`;
 export async function install(ctx: Ctx) {
     await ctx.db.exec(`
@@ -16,7 +15,6 @@ export async function install(ctx: Ctx) {
     CREATE INDEX IF NOT EXISTS {logs_time} ON {deliveries}(updated_at);
     CREATE INDEX IF NOT EXISTS {logs_task} ON {deliveries}(task_id,due_at);
     CREATE INDEX IF NOT EXISTS {logs_target} ON {deliveries}(recipient_id,due_at);
-    CREATE TABLE IF NOT EXISTS {sources}(year INTEGER PRIMARY KEY, hash TEXT NOT NULL, data TEXT NOT NULL, error TEXT, updated_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS {maintenance}(job TEXT PRIMARY KEY, day TEXT NOT NULL, error TEXT);
   `);
     await ctx.db.run(
@@ -25,33 +23,6 @@ export async function install(ctx: Ctx) {
         JSON.stringify(defaults()),
         "initial",
     );
-}
-/** Refresh cached calendar views and remove completed past years. */
-export async function refreshCalendar(ctx: Ctx, now = Date.now()) {
-    const { snapshot: s, sources: current } = await readData(ctx.db);
-    const config = structuredClone(s.config);
-    refreshEvents(config, current, now);
-
-    if (JSON.stringify(config) !== JSON.stringify(s.config)) {
-        await saveConfig(ctx, s, config, now);
-    }
-
-    const year = +dateAt(now).slice(0, 4);
-
-    if (current.some((source) => source.year < year || source.year > year + 1)) {
-        await ctx.db.batch([
-            {
-                sql: "DELETE FROM {maintenance} WHERE job IN (SELECT 'calendar:' || year FROM {sources} WHERE year<? OR year>?)",
-                params: [year, year + 1],
-            },
-            {
-                sql: "DELETE FROM {sources} WHERE year<? OR year>?",
-                params: [year, year + 1],
-            },
-        ]);
-    }
-
-    return config;
 }
 function parseConfig(raw: string): Config {
     const config = JSON.parse(raw) as Config | null;
@@ -79,40 +50,14 @@ export async function snapshot(db: PluginDB): Promise<Snapshot> {
         config: parseConfig(s.config),
     };
 }
-/** Configuration and raw sources must be from the same publication transaction. */
-export async function readData(db: PluginDB): Promise<{ snapshot: Snapshot; sources: Source[] }> {
-    const rows = await db.batch([
-        { sql: "SELECT revision,bot_id,config FROM {state} WHERE id=1" },
-        { sql: SOURCE_QUERY },
-    ]);
-    const state = rows[0]!.results[0] as { revision: number; bot_id: string; config: string } | undefined;
-
-    if (!state) {
-        throw new Error("插件尚未初始化");
-    }
-
-    return {
-        snapshot: {
-            revision: state.revision,
-            botId: state.bot_id,
-            config: parseConfig(state.config),
-        },
-        sources: rows[1]!.results as Source[],
-    };
-}
 export async function saveConfig(
     ctx: Ctx,
     old: Snapshot,
     config: Config,
     now: number,
     restore = false,
-    restored?: {
-        sources: Source[];
-    },
-    publishedSource?: Source,
+    parts: RestorePart[] = [],
 ) {
-    const year = +dateAt(now).slice(0, 4);
-    config.events = config.events.filter((h) => h.repeat === "yearly" || h.end >= `${year}-01-01`);
     const cursors = await ctx.db.all<{
         id: string;
         enabled: number;
@@ -157,10 +102,21 @@ export async function saveConfig(
 
     const token = crypto.randomUUID(),
         rev = old.revision + 1;
+    const guard = parts.map((p) => ` AND (${p.guard.sql})`).join("");
     const statements: DBStatement[] = [
         {
-            sql: "UPDATE {state} SET revision=?,bot_id=?,config=?,token=? WHERE id=1 AND revision=? AND (?=0 OR NOT EXISTS(SELECT 1 FROM {deliveries} WHERE status='sending'))",
-            params: [rev, ctx.botId, JSON.stringify(config), token, old.revision, restore ? 1 : 0],
+            sql:
+                "UPDATE {state} SET revision=?,bot_id=?,config=?,token=? WHERE id=1 AND revision=? AND (?=0 OR NOT EXISTS(SELECT 1 FROM {deliveries} WHERE status='sending'))" +
+                guard,
+            params: [
+                rev,
+                ctx.botId,
+                JSON.stringify(config),
+                token,
+                old.revision,
+                restore ? 1 : 0,
+                ...parts.flatMap((p) => [...(p.guard.params ?? [])]),
+            ],
         },
         {
             sql: `${jsonRows} UPDATE {bindings} SET enabled=0,due_at=NULL,revision=? WHERE enabled=1 AND id NOT IN (SELECT ${jx("id")} FROM idx CROSS JOIN input) AND EXISTS(SELECT 1 FROM {state} WHERE token=?)`,
@@ -178,38 +134,8 @@ export async function saveConfig(
         });
     }
 
-    if (restored) {
-        statements.push({
-            sql: "DELETE FROM {maintenance} WHERE job LIKE 'calendar:%' AND EXISTS(SELECT 1 FROM {state} WHERE token=?)",
-            params: [token],
-        });
-        statements.push({
-            sql: "DELETE FROM {sources} WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?)",
-            params: [token],
-        });
-
-        for (const chunk of jsonChunks(
-            restored.sources.filter((source) => source.year >= year && source.year <= year + 1),
-        )) {
-            statements.push({
-                sql: `${jsonRows} INSERT INTO {sources}(year,hash,data,error,updated_at) SELECT ${["year", "hash", "data", "error", "updated_at"].map(jx).join(",")} FROM idx CROSS JOIN input WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?)`,
-                params: [chunk, token],
-            });
-        }
-    }
-
-    if (publishedSource) {
-        statements.push({
-            sql: "INSERT INTO {sources}(year,hash,data,error,updated_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM {state} WHERE token=?) ON CONFLICT(year) DO UPDATE SET hash=excluded.hash,data=excluded.data,error=excluded.error,updated_at=excluded.updated_at",
-            params: [
-                publishedSource.year,
-                publishedSource.hash,
-                publishedSource.data,
-                publishedSource.error,
-                publishedSource.updated_at,
-                token,
-            ],
-        });
+    for (const part of parts) {
+        statements.push(...part.statements({ sql: "EXISTS(SELECT 1 FROM {state} WHERE token=?)", params: [token] }));
     }
 
     const result = await ctx.db.batch(statements);

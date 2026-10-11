@@ -10,12 +10,12 @@ export const HTML = `<!doctype html>
     <header>
         <h1>每日助手</h1>
         <p>
-            北京时间 · 每个目标独立发送 · 过期不补发 <span id="busy">正在处理…</span>
+            定时通知与模块查询 <span id="busy">正在处理…</span>
         </p>
     </header>
-    <nav id="nav"></nav>
-    <div id="status" role="status" aria-live="polite"></div>
-    <main id="app"></main>
+    <nav id="nav" aria-label="功能导航"></nav>
+    <div class="page-status"><div id="status" role="status" aria-live="polite">正在加载配置…</div><span id="dirty" role="status" hidden>有未保存的修改</span><button data-action="reload">刷新配置</button></div>
+    <main id="app" tabindex="-1"></main>
     <dialog id="decision" aria-labelledby="decisionTitle">
         <h2 id="decisionTitle">确认操作</h2><p id="decisionText"></p>
         <div class="actions"><button id="decisionCancel">取消</button><button id="decisionAccept" class="primary">确定</button></div>

@@ -1,5 +1,5 @@
-import type { Config, CalendarEvent, Source } from "../../types.js";
-import { dateAt, DAY, validDate, addDays } from "../../scheduler/planner.js";
+import type { CalendarConfig, CalendarEvent, Source } from "./types.js";
+import { dateAt, DAY, validDate, addDays } from "../../shared/date.js";
 export const FESTIVALS = ["元旦", "春节", "清明节", "劳动节", "端午节", "中秋节", "国庆节"] as const;
 const aliases: Record<string, string> = {
     清明: "清明节",
@@ -187,6 +187,7 @@ export function automaticEvents(sources: Source[]): CalendarEvent[] {
                 previous.end = d.date;
             } else {
                 rows.push({
+                    enabled: true,
                     id: `uapi-${kind}-${d.date}`,
                     name: d.name,
                     start: d.date,
@@ -200,6 +201,7 @@ export function automaticEvents(sources: Source[]): CalendarEvent[] {
 
         for (const d of calendar.dates ?? []) {
             references.push({
+                enabled: true,
                 id: `uapi-reference-${d.date}-${FESTIVALS.indexOf(d.name as (typeof FESTIVALS)[number])}`,
                 name: d.name,
                 start: d.date,
@@ -214,8 +216,24 @@ export function automaticEvents(sources: Source[]): CalendarEvent[] {
     // References never participate in grouping legal rows.
     return [...rows, ...references];
 }
+// Match a festival across reference/formal replacement and corrected start dates.
+function sameFestival(a: CalendarEvent, b: CalendarEvent): boolean {
+    const identity = (h: CalendarEvent) => {
+        const reference = /^uapi-reference-\d{4}-\d{2}-\d{2}-(\d+)$/.exec(h.id);
+        return reference
+            ? [FESTIVALS[Number(reference[1])]].filter(Boolean)
+            : FESTIVALS.filter((f) => matches(h.name, f));
+    };
+    const year = (h: CalendarEvent) => /^uapi-(?:holiday|reference)-(\d{4})-/.exec(h.id)?.[1] ?? h.start.slice(0, 4);
+    return (
+        a.kind !== "makeup" &&
+        b.kind !== "makeup" &&
+        year(a) === year(b) &&
+        (a.name === b.name || identity(a).some((f) => identity(b).includes(f)))
+    );
+}
 /** Expand yearly definitions only for the queried years; never persist occurrences. */
-export function activeEvents(config: Config, year = +dateAt(Date.now()).slice(0, 4)): CalendarEvent[] {
+export function activeEvents(config: CalendarConfig, year = +dateAt(Date.now()).slice(0, 4)): CalendarEvent[] {
     const events = config.events.flatMap((h) => {
         if (h.repeat !== "yearly") {
             return [h];
@@ -239,57 +257,60 @@ export function activeEvents(config: Config, year = +dateAt(Date.now()).slice(0,
     const manual = events.filter((h) => h.source === "manual");
     const formal = events.filter((h) => h.kind === "holiday");
     // A manual date overrides that date, without removing the rest of a holiday.
-    return events.flatMap((h) => {
-        if (h.kind === "reference") {
-            if (
-                formal.some(
-                    (f) =>
-                        (f.start <= h.start && f.end >= h.start) ||
-                        (f.start.slice(0, 4) === h.start.slice(0, 4) && matches(f.name, h.name)),
-                )
-            ) {
-                return [];
-            }
-
-            if (
-                !manual.includes(h) &&
-                manual.some(
-                    (m) => m.kind === "reference" && m.start.slice(0, 4) === h.start.slice(0, 4) && m.name === h.name,
-                )
-            ) {
-                return [];
-            }
-
-            return [h];
-        }
-
-        if (h.kind === "event" || manual.includes(h)) {
-            return [h];
-        }
-
-        if (manual.some((m) => m.id === h.id)) {
-            return [];
-        }
-
-        let parts = [h];
-
-        for (const m of manual.filter((m) => m.kind === "holiday" || m.kind === "makeup")) {
-            parts = parts.flatMap((part) => {
-                if (m.start > part.end || m.end < part.start) {
-                    return [part];
+    return events
+        .flatMap((h) => {
+            if (h.kind === "reference") {
+                if (
+                    formal.some(
+                        (f) =>
+                            (f.start <= h.start && f.end >= h.start) ||
+                            (f.start.slice(0, 4) === h.start.slice(0, 4) && matches(f.name, h.name)),
+                    )
+                ) {
+                    return [];
                 }
 
-                return [
-                    ...(part.start < m.start ? [{ ...part, end: addDays(m.start, -1) }] : []),
-                    ...(part.end > m.end ? [{ ...part, start: addDays(m.end, 1) }] : []),
-                ];
-            });
-        }
+                if (
+                    !manual.includes(h) &&
+                    manual.some(
+                        (m) =>
+                            m.kind === "reference" && m.start.slice(0, 4) === h.start.slice(0, 4) && m.name === h.name,
+                    )
+                ) {
+                    return [];
+                }
 
-        return parts;
-    });
+                return [h];
+            }
+
+            if (h.kind === "event" || manual.includes(h)) {
+                return [h];
+            }
+
+            if (manual.some((m) => m.id === h.id)) {
+                return [];
+            }
+
+            let parts = [h];
+
+            for (const m of manual.filter((m) => m.kind === "holiday" || m.kind === "makeup")) {
+                parts = parts.flatMap((part) => {
+                    if (m.start > part.end || m.end < part.start) {
+                        return [part];
+                    }
+
+                    return [
+                        ...(part.start < m.start ? [{ ...part, end: addDays(m.start, -1) }] : []),
+                        ...(part.end > m.end ? [{ ...part, start: addDays(m.end, 1) }] : []),
+                    ];
+                });
+            }
+
+            return parts;
+        })
+        .filter((h) => h.enabled);
 }
-export function refreshEvents(config: Config, sources: Source[], now: number) {
+export function refreshEvents(config: CalendarConfig, sources: Source[], now: number) {
     const year = +dateAt(now).slice(0, 4);
     const manual = config.events.filter((h) => h.source === "manual");
     const ids = new Set(manual.map((h) => h.id));
@@ -310,13 +331,19 @@ export function refreshEvents(config: Config, sources: Source[], now: number) {
         }
     }
 
+    for (const h of automatic) {
+        const prior = config.events.find((old) => old.id === h.id);
+        const related = config.events.filter((old) => old.source === "uapi" && sameFestival(old, h));
+        h.enabled = prior ? prior.enabled : related.every((old) => old.enabled);
+    }
+
     config.events = [...manual, ...automatic.filter((h) => !ids.has(h.id))]
         .filter((h) => h.repeat === "yearly" || h.end >= lower)
         .sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
 }
 
 /** Drop one manual override and rebuild from the latest cached interface data. */
-export function restoreEvent(config: Config, sources: Source[], id: string, now: number) {
+export function restoreEvent(config: CalendarConfig, sources: Source[], id: string, now: number) {
     const holiday = config.events.find((h) => h.id === id);
     const year = /^uapi-(?:holiday|makeup|reference)-(\d{4})-/.exec(id)?.[1];
 
@@ -337,11 +364,22 @@ export function restoreEvent(config: Config, sources: Source[], id: string, now:
 
     // New IDs/formal replacements already entered config during synchronization.
     // Restore this ID (or its surviving cross-year part), leaving other rows alone.
-    const original = defaults.find((h) => h.id === id) ?? crossYear;
+    const originals = defaults.filter((h) => h.id === id || sameFestival(h, holiday));
+
+    if (!originals.length && crossYear) {
+        originals.push(crossYear);
+    }
+
     config.events = config.events.filter((h) => h.id !== id);
 
-    if (original && !config.events.some((h) => h.id === original.id)) {
-        config.events.push(original);
+    for (const original of originals) {
+        const restored = config.events.find((h) => h.id === original.id);
+
+        if (restored) {
+            restored.enabled = holiday.enabled;
+        } else {
+            config.events.push({ ...original, enabled: holiday.enabled });
+        }
     }
 
     config.events.sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));

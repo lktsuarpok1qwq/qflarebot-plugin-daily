@@ -1,5 +1,5 @@
-import type { CalendarEvent } from "../../types.js";
-import { validDate } from "../../scheduler/planner.js";
+import type { CalendarEvent } from "./types.js";
+import { validDate } from "../../shared/date.js";
 function csv(text: string): string[][] {
     const rows: string[][] = [];
     let row: string[] = [],
@@ -158,6 +158,7 @@ export function importEvents(
         }
 
         const item: CalendarEvent = {
+            enabled: true,
             id: crypto.randomUUID(),
             name: x.name,
             start,

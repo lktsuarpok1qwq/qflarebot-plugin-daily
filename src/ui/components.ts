@@ -18,9 +18,9 @@ function createUI() {
     const time = (n) =>
         n
             ? new Date(n).toLocaleString("zh-CN", {
-                  timeZone: "Asia/Shanghai",
-                  hour12: false,
-              })
+                timeZone: "Asia/Shanghai",
+                hour12: false,
+            })
             : "无未来计划";
     function options(items, selected) {
         return items
@@ -66,11 +66,28 @@ function createUI() {
         );
     }
     function table(head, rows) {
+        const content = rows
+            .map((row) => {
+                let column = 0;
+                return row.replace(/<td>([\s\S]*?)<\/td>/g, (_, value) => {
+                    const label = head[column++];
+                    return (
+                        '<td data-label="' +
+                        esc(label) +
+                        '"><div' +
+                        (label === "操作" ? ' class="row-actions"' : "") +
+                        ">" +
+                        value +
+                        "</div></td>"
+                    );
+                });
+            })
+            .join("");
         return (
             '<div class="table"><table><thead><tr>' +
-            head.map((h) => "<th>" + h + "</th>").join("") +
+            head.map((h) => '<th scope="col">' + esc(h) + "</th>").join("") +
             "</tr></thead><tbody>" +
-            rows.join("") +
+            (content || '<tr><td class="empty" colspan="' + head.length + '">暂无记录</td></tr>') +
             "</tbody></table></div>"
         );
     }
@@ -123,7 +140,9 @@ function createUI() {
         el.innerHTML = markdown(result.text);
     }
     const toolbar = (id) =>
-        '<div class="actions">' +
+        '<div class="actions" data-markdown-for="' +
+        esc(id) +
+        '" role="group" aria-label="Markdown 格式"><span class="muted">Markdown</span>' +
         [
             ["标题", "# ", ""],
             ["加粗", "**", "**"],
@@ -136,6 +155,68 @@ function createUI() {
             .map(([label, before, after]) => btn(label, "markup", JSON.stringify({ id, before, after })))
             .join("") +
         "</div>";
+    const previewPanel = () =>
+        '<div class="local-preview"><h3>排版预览 · <span id="markdownPreviewLabel">当前文案</span></h3><p class="muted">变量保持原样</p><div id="markdownPreview" class="message-preview"></div></div>';
+    function variableReference(groups, descriptions, sections) {
+        const names = [...new Set(groups.flatMap((group) => group.variables))];
+        const rows = (variables) =>
+            variables
+                .filter((name) => names.includes(name))
+                .map(
+                    (name) =>
+                        "<tr><td><code>" +
+                        esc("{{" + name + "}}") +
+                        "</code></td><td>" +
+                        esc(descriptions[name]) +
+                        "</td><td>" +
+                        esc(
+                            groups
+                                .filter((group) => group.variables.includes(name))
+                                .map((group) => group.label)
+                                .join("、"),
+                        ) +
+                        "</td></tr>",
+                );
+        return (
+            '<div class="variable-reference"><h3>当前位置可用变量</h3>' +
+            (names.length
+                ? (sections || [{ label: "", variables: names }])
+                    .map((section) => {
+                        const content = rows(section.variables);
+                        return content.length
+                            ? (section.label ? "<h4>" + esc(section.label) + "</h4>" : "") +
+                            table(["变量", "说明", "适用文案"], content)
+                            : "";
+                    })
+                    .join("")
+                : '<p class="muted">当前文案不支持变量</p>') +
+            "</div>"
+        );
+    }
+
+    function mergeDraft(current, original, draft) {
+        if (!original) {
+            return structuredClone(draft);
+        }
+
+        if (!current) {
+            throw Error("条目已被删除，请刷新后重新编辑");
+        }
+
+        const merged = structuredClone(current);
+
+        for (const [key, value] of Object.entries(draft)) {
+            if (JSON.stringify(value) === JSON.stringify(original[key])) {
+                continue;
+            }
+
+            merged[key] = value && typeof value === "object" && !Array.isArray(value) && value.kind === original[key]?.kind
+                ? mergeDraft(current[key], original[key], value)
+                : structuredClone(value);
+        }
+
+        return merged;
+    }
     const put = (list, item) => {
         const i = list.findIndex((x) => x.id === item.id);
 
@@ -145,6 +226,23 @@ function createUI() {
             list[i] = item;
         }
     };
-    return { $, esc, uid, time, options, field, check, btn, table, markdown, showMessage, toolbar, put };
+    return {
+        $,
+        esc,
+        uid,
+        time,
+        options,
+        field,
+        check,
+        btn,
+        table,
+        markdown,
+        showMessage,
+        toolbar,
+        previewPanel,
+        variableReference,
+        put,
+        mergeDraft,
+    };
 }
 `;

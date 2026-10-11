@@ -1,21 +1,27 @@
-import type { Config, Rendered, Source, Task } from "../types.js";
-import { dateAt } from "../scheduler/planner.js";
+import type { Rendered } from "../shared/types.js";
+import type { Config, Task } from "../types.js";
+import { dateAt } from "../shared/date.js";
 import { validateTemplate } from "./templates.js";
 import { createRenderContext } from "../modules/index.js";
 export async function renderMessage(
-    task: Task,
+    task: Pick<Task, "templateId">,
     config: Config,
     due: number,
-    sources: Source[] = [],
-    resolve = createRenderContext(config, sources, due),
+    resolve: ReturnType<typeof createRenderContext>,
 ): Promise<Rendered> {
-    const body = task.body;
+    const template = config.templates.find((t) => t.id === task.templateId);
+
+    if (!template) {
+        throw new Error("任务引用的文案模板不存在");
+    }
+
+    const body = template.body;
     validateTemplate(body);
     const keys = [...body.matchAll(/\{\{([^{}]+)\}\}/g)].map((m) => m[1]!);
     const day = dateAt(due),
         weekday = `星期${"日一二三四五六"[new Date(day).getUTCDay()]}`;
     const values: Record<string, string> = {
-        ...(await resolve(keys)),
+        ...(await resolve(keys, due)),
         日期: day,
         星期: weekday,
     };

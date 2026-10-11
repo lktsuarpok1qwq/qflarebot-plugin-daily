@@ -1,9 +1,10 @@
-import type { Ctx, Source } from "../../types.js";
-import { dateAt, DAY } from "../../scheduler/planner.js";
-import { validateConfig } from "../../data/validation.js";
-import { readData, saveConfig } from "../../data/repository.js";
+import type { Ctx } from "../../shared/types.js";
+import type { Source } from "./types.js";
+import { dateAt, DAY } from "../../shared/date.js";
+import { validateCalendar } from "./validation.js";
+import { readData, saveConfig, SOURCE_QUERY } from "./repository.js";
 import { parseResponse, refreshEvents, validateYear, refreshDays, mergeYear, type CalendarYear } from "./calendar.js";
-import { hash, limitedJson, setError, checked, SOURCE_QUERY, type SyncResult } from "./source.js";
+import { hash, limitedJson, recordCheck, type SyncResult } from "./source.js";
 export async function syncYear(
     ctx: Ctx,
     year: number,
@@ -19,12 +20,12 @@ export async function syncYear(
 
     try {
         if (!force) {
-            const source = await ctx.db.first<Source>(`${SOURCE_QUERY} WHERE s.year=?`, year);
+            const source = await ctx.db.first<Source>(`${SOURCE_QUERY} WHERE year=?`, year);
             let interval = 0;
 
             try {
                 interval = refreshDays(source?.data ?? "", year > currentYear);
-            } catch {}
+            } catch { }
 
             if (
                 interval &&
@@ -41,6 +42,7 @@ export async function syncYear(
         });
 
         if (!res.ok) {
+            await res.body?.cancel().catch(() => { });
             throw new Error(`HTTP_${res.status}`);
         }
 
@@ -61,8 +63,7 @@ export async function syncYear(
         const error = incomplete ? "年度安排不完整，保留此前已知记录" : null;
 
         if (!value.holidays.length && !value.dates?.length) {
-            await setError(ctx, year, "not_published", now);
-            await checked(ctx, year, now, "not_published");
+            await recordCheck(ctx, year, "not_published", now, true);
             return { year, status: "not_published" };
         }
 
@@ -70,7 +71,7 @@ export async function syncYear(
             digest = await hash(data);
 
         if (previous?.hash === digest) {
-            await checked(ctx, year, now, error);
+            await recordCheck(ctx, year, error, now, true);
             return error ? { year, status: "error", error } : { year, status: "cached" };
         }
 
@@ -80,16 +81,16 @@ export async function syncYear(
             data,
             error,
             updated_at: now,
+            checked_at: now,
         };
         const config = structuredClone(current.snapshot.config);
         refreshEvents(config, [...current.sources.filter((s) => s.year !== year), published], now);
-        validateConfig(config);
-        await saveConfig(ctx, current.snapshot, config, now, false, undefined, published);
-        await checked(ctx, year, now, error);
+        validateCalendar(config);
+        await saveConfig(ctx, current.snapshot, config, now, published);
         return error ? { year, status: "error", error } : { year, status: "updated" };
     } catch (e) {
         const error = e instanceof Error ? e.message.slice(0, 200) : "sync_failed";
-        await setError(ctx, year, error, now);
+        await recordCheck(ctx, year, error, now, false);
         return { year, status: "error", error };
     }
 }

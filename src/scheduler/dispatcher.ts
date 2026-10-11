@@ -1,28 +1,29 @@
-import type { Ctx, DeliveryStatus, Due, Rendered } from "../types.js";
+import type { Ctx, Rendered } from "../shared/types.js";
+import type { DeliveryStatus, Due } from "../types.js";
 import { LIMITS } from "../types.js";
-import { readData } from "../data/repository.js";
+import { snapshot } from "../data/repository.js";
 import { claimMany, deliveryKey, due, finishMany, type Claim, type Outcome } from "../data/deliveries.js";
-import { message } from "../content/message.js";
+import { message } from "../shared/message.js";
 import { renderMessage } from "../content/renderer.js";
 import { createRenderContext } from "../modules/index.js";
 import { nextPlan } from "./planner.js";
 import { resultStatus } from "./result.js";
 
 export async function dispatch(ctx: Ctx, clock = Date.now): Promise<void> {
-    await dispatchPass(ctx, clock, LIMITS.batch, true);
+    await dispatchPass(ctx, clock, true);
 }
-async function dispatchPass(ctx: Ctx, clock: () => number, remaining: number, catchUp: boolean): Promise<void> {
+async function dispatchPass(ctx: Ctx, clock: () => number, catchUp: boolean): Promise<void> {
     const rows = await due(ctx.db, clock());
 
     if (!rows.length) {
         return;
     }
 
-    const { snapshot: s, sources: raw } = await readData(ctx.db);
+    const s = await snapshot(ctx.db);
     const tasks = new Map(s.config.tasks.map((t) => [t.id, t]));
     const recipients = new Map(s.config.recipients.map((r) => [r.id, r]));
     const bindings = new Map(s.config.bindings.map((b) => [`${b.taskId}:${b.recipientId}`, b]));
-    const contexts = new Map<number, ReturnType<typeof createRenderContext>>();
+    const resolve = createRenderContext(ctx);
     const rendered = new Map<string, Promise<Rendered>>();
     const claims: Claim[] = [],
         texts = new Map<string, Rendered>(),
@@ -31,16 +32,14 @@ async function dispatchPass(ctx: Ctx, clock: () => number, remaining: number, ca
         const task = tasks.get(d.task_id);
         return task
             ? nextPlan(
-                  task.schedule,
-                  Math.max(
-                      d.due_at,
-                      clock() >= d.due_at + 60_000 ? Math.floor(clock() / 60_000) * 60_000 - 1 : clock(),
-                  ),
-              )
+                task.schedule,
+                Math.max(
+                    d.due_at,
+                    clock() >= d.due_at + 60_000 ? Math.floor(clock() / 60_000) * 60_000 - 1 : clock(),
+                ),
+            )
             : null;
     };
-    let admitted = 0,
-        started = 0;
 
     for (const d of rows) {
         if (d.status) {
@@ -88,21 +87,13 @@ async function dispatchPass(ctx: Ctx, clock: () => number, remaining: number, ca
         } else if (clock() >= d.due_at + 60_000 - LIMITS.reserveMs) {
             status = "skipped_budget";
             error = "sdk_budget_reserve";
-        } else if (admitted >= remaining) {
-            // Once this round is full, do not render or persist unused message bodies.
-            status = "skipped_budget";
-            error = "minute_capacity_exceeded";
         } else {
             try {
-                const key = JSON.stringify([t.id, d.due_at]);
+                const key = JSON.stringify([t.templateId, d.due_at]);
                 let value = rendered.get(key);
 
                 if (!value) {
-                    if (!contexts.has(d.due_at)) {
-                        contexts.set(d.due_at, createRenderContext(s.config, raw, d.due_at));
-                    }
-
-                    value = renderMessage(t, s.config, d.due_at, raw, contexts.get(d.due_at));
+                    value = renderMessage(t, s.config, d.due_at, resolve);
                     rendered.set(key, value);
                 }
 
@@ -119,10 +110,6 @@ async function dispatchPass(ctx: Ctx, clock: () => number, remaining: number, ca
             }
         }
 
-        if (status === "sending") {
-            admitted++;
-        }
-
         claims.push({
             d,
             status,
@@ -137,28 +124,15 @@ async function dispatchPass(ctx: Ctx, clock: () => number, remaining: number, ca
 
     const owned = await claimMany(ctx.db, claims);
     const pending = claims.filter((c) => owned.has(deliveryKey(c.d)));
-    let index = 0;
-    async function worker() {
-        for (;;) {
-            const item = pending[index++];
-
-            if (!item) {
-                return;
-            }
-
-            const { d } = item;
-            const outcome: Outcome = {
-                d,
-                status: item.status,
-                now: clock(),
-                next: null,
-                error: item.error,
-            };
+    const fresh = pending.some((item) => item.status === "sending")
+        ? await ctx.db.first<{ revision: number }>("SELECT revision FROM {state} WHERE id=1")
+        : null;
+    await Promise.all(
+        pending.map(async ({ d, status, error }) => {
+            const outcome: Outcome = { d, status, error, now: clock(), next: null };
 
             try {
                 if (outcome.status === "sending") {
-                    const fresh = await ctx.db.first<{ revision: number }>("SELECT revision FROM {state} WHERE id=1");
-
                     if (fresh?.revision !== d.revision) {
                         outcome.status = "skipped_disabled";
                     } else if (clock() >= d.due_at + 60_000 - LIMITS.reserveMs) {
@@ -166,7 +140,6 @@ async function dispatchPass(ctx: Ctx, clock: () => number, remaining: number, ca
                         outcome.error = "sdk_budget_reserve";
                     } else {
                         const r = recipients.get(d.recipient_id)!;
-                        started++;
                         Object.assign(
                             outcome,
                             resultStatus(
@@ -186,9 +159,8 @@ async function dispatchPass(ctx: Ctx, clock: () => number, remaining: number, ca
             outcome.now = clock();
             outcome.next = next(d);
             outcomes.push(outcome);
-        }
-    }
-    await Promise.all(Array.from({ length: LIMITS.concurrency }, () => worker()));
+        }),
+    );
 
     try {
         await finishMany(ctx.db, outcomes);
@@ -198,13 +170,11 @@ async function dispatchPass(ctx: Ctx, clock: () => number, remaining: number, ca
         return;
     }
 
-    // At most one second pass, sharing the original send cap. Only today's still
-    // valid window is eligible after an outage; expired windows are not replayed.
+    // One catch-up pass can reach today's live window after advancing expired cursors.
     if (
         catchUp &&
-        remaining > started &&
         outcomes.some((o) => o.next && o.next.due <= clock() && clock() < o.next.due + 60_000 - LIMITS.reserveMs)
     ) {
-        await dispatchPass(ctx, clock, remaining - started, false);
+        await dispatchPass(ctx, clock, false);
     }
 }

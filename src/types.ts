@@ -1,21 +1,5 @@
-import type { CalendarEvent, CalendarCopy } from "./modules/calendar/types.js";
-export type { CalendarEvent, CalendarCopy, Source } from "./modules/calendar/types.js";
-import type { PluginContext } from "@qqbot/sdk";
-export type CommandName = "每日" | "每日 帮助" | "假期" | "假期 帮助" | "假期 下一个" | "假期 剩余";
-export type CommandReply = {
-    body: string;
-    item: string;
-    reference: string;
-    event: string;
-    empty: string;
-    unknown: string;
-    stale: string;
-    ongoing: string;
-    makeupEmpty: string;
-    error: string;
-    tooLong: string;
-};
-export type Ctx = PluginContext;
+import { BODY_BYTES, type CommandReply, type CommandFeedback } from "./shared/types.js";
+export type CommandName = "每日";
 export type Scene = "group" | "c2c";
 export type Schedule =
     | { kind: "daily"; time: string }
@@ -27,7 +11,7 @@ export type Task = {
     enabled: boolean;
     origin: "system" | "manual";
     schedule: Schedule;
-    body: string;
+    templateId: string;
 };
 export type Recipient = {
     id: string;
@@ -41,17 +25,18 @@ export type Binding = {
     taskId: string;
     recipientId: string;
 };
-export const SCHEMA_VERSION = 4;
+export type MessageTemplate = { id: string; name: string; body: string };
+export const SCHEMA_VERSION = 10;
 export type Config = {
     schemaVersion: typeof SCHEMA_VERSION;
     paused: boolean;
     retentionDays: number;
     tasks: Task[];
+    templates: MessageTemplate[];
     recipients: Recipient[];
     bindings: Binding[];
-    events: CalendarEvent[];
-    calendarCopy: CalendarCopy;
-    replies: Record<CommandName, CommandReply>;
+    commandFeedback: CommandFeedback;
+    replies: Record<"每日", CommandReply>;
 };
 export type Snapshot = { revision: number; botId: string; config: Config };
 export type Plan = { due: number };
@@ -75,18 +60,13 @@ export type DeliveryStatus =
     | "skipped_expired"
     | "skipped_disabled"
     | "skipped_budget";
-export type Rendered = {
-    text: string;
-};
 export const LIMITS = {
     tasks: 20,
+    templates: 50,
     recipients: 50,
     bindings: 100,
-    events: 600,
-    bodyBytes: 256_000,
+    bodyBytes: BODY_BYTES,
     backupBytes: 8_000_000,
-    batch: 5,
-    concurrency: 2,
     reserveMs: 21_000,
     requestBudgetMs: 20_000,
 };

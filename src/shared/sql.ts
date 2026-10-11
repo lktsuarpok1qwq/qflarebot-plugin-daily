@@ -13,7 +13,7 @@ export function jsonChunks(rows: readonly unknown[], maxBytes = 500_000): string
             bytes = new TextEncoder().encode(item).length + 1;
 
         if (bytes > maxBytes) {
-            throw new Error("单条备份记录过大");
+            throw new Error("单条数据记录过大");
         }
 
         if (size + bytes > maxBytes) {

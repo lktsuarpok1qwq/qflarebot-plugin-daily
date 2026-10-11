@@ -1,13 +1,15 @@
-import type { Config, CalendarEvent, Source } from "../../types.js";
+import type { CalendarConfig, CalendarEvent, Source } from "./types.js";
 import { activeEvents, completeCalendar } from "./calendar.js";
-import { dateAt, validDate } from "../../scheduler/planner.js";
+import { dateAt, validDate } from "../../shared/date.js";
 export type Query<T> = {
     status: "known" | "none" | "unknown";
     data: T;
     freshness: "current" | "stale" | "unknown";
 };
-export function calendarService(config: Config, sources: Source[] = [], now = Date.now()) {
-    const active = activeEvents(config, +dateAt(now).slice(0, 4)).sort((a, b) => a.start.localeCompare(b.start));
+export function calendarService(config: CalendarConfig, sources: Source[] = [], now = Date.now()) {
+    const active = activeEvents(config, +dateAt(now).slice(0, 4)).sort(
+        (a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id),
+    );
     const published = new Set(sources.filter((s) => completeCalendar(s.data)).map((s) => s.year));
     function result<T>(from: string, to: string, data: T, hasData: boolean): Query<T> {
         if (!validDate(from) || !validDate(to)) {
@@ -29,11 +31,36 @@ export function calendarService(config: Config, sources: Source[] = [], now = Da
             freshness: relevant.some((s) => s.data && s.error) ? "stale" : hasData || complete ? "current" : "unknown",
         };
     }
+    function eventResult(from: string, nearest: boolean): Query<CalendarEvent | null> {
+        const end = `${Math.min(2199, +from.slice(0, 4) + 1)}-12-31`;
+        let future: CalendarEvent | null = null,
+            ongoing: CalendarEvent | null = null;
+
+        for (const event of active) {
+            if (event.kind === "makeup") {
+                continue;
+            }
+
+            if (event.start > from) {
+                future = event;
+                break;
+            }
+
+            if (nearest && event.end >= from && (!ongoing || event.start > ongoing.start)) {
+                ongoing = event;
+            }
+        }
+
+        const h = ongoing ?? future;
+        return result(from, h ? (h.start < from ? from : h.start) : end, h, !!h);
+    }
     return {
+        events: active,
+        async getNearestEvent(from = dateAt(now)): Promise<Query<CalendarEvent | null>> {
+            return eventResult(from, true);
+        },
         async getNextEvent(from = dateAt(now)): Promise<Query<CalendarEvent | null>> {
-            const end = `${Math.min(2199, +from.slice(0, 4) + 1)}-12-31`;
-            const h = active.find((h) => h.kind !== "makeup" && h.end >= from) ?? null;
-            return result(from, h ? (h.start < from ? from : h.start) : end, h, !!h);
+            return eventResult(from, false);
         },
         async getRemainingEvents(year: number, from = dateAt(now)): Promise<Query<CalendarEvent[]>> {
             const start = from > `${year}-01-01` ? from : `${year}-01-01`,

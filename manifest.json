@@ -20,14 +20,6 @@
       ]
     },
     {
-      "name": "每日 帮助",
-      "description": "查看每日帮助",
-      "scenes": [
-        "group",
-        "c2c"
-      ]
-    },
-    {
       "name": "假期",
       "description": "假期查询帮助",
       "scenes": [
@@ -36,16 +28,8 @@
       ]
     },
     {
-      "name": "假期 帮助",
-      "description": "查看假期帮助",
-      "scenes": [
-        "group",
-        "c2c"
-      ]
-    },
-    {
-      "name": "假期 下一个",
-      "description": "下个尚未结束的节日",
+      "name": "假期 下个",
+      "description": "下个尚未开始的节日",
       "scenes": [
         "group",
         "c2c"
@@ -54,6 +38,14 @@
     {
       "name": "假期 剩余",
       "description": "今天起今年所有剩余节日",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "天气",
+      "description": "查询城市天气",
       "scenes": [
         "group",
         "c2c"
@@ -69,8 +61,12 @@
       "cron": "* * * * *"
     },
     {
-      "name": "sync",
+      "name": "calendar_sync",
       "cron": "0,1 16 * * *"
+    },
+    {
+      "name": "calendar_cleanup",
+      "cron": "10 16 * * *"
     },
     {
       "name": "cleanup",
@@ -78,6 +74,26 @@
     }
   ],
   "routes": [
+    {
+      "method": "GET",
+      "path": "/api/calendar/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/weather/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/weather/:action",
+      "auth": "admin"
+    },
     {
       "method": "GET",
       "path": "/ui/*",
@@ -98,7 +114,7 @@
   "services": [],
   "durableObjects": [],
   "displayName": "每日助手",
-  "description": "占位符通知、日历查询与自定义节日",
+  "description": "定时通知、日历与天气查询",
   "ui": {
     "path": "/ui/",
     "title": "每日助手",

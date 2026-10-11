@@ -6,11 +6,11 @@ export function resultStatus(result: SendResult): Pick<Outcome, "status" | "erro
         error: result.ok
             ? null
             : JSON.stringify({
-                  code: result.code,
-                  status: result.status,
-                  traceId: result.traceId,
-                  error: result.error?.slice(0, 300),
-              }),
+                code: result.code,
+                status: result.status,
+                traceId: result.traceId,
+                error: result.error?.slice(0, 300),
+            }),
         messageId: result.messageId ?? null,
     };
 }

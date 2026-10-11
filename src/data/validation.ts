@@ -1,7 +1,8 @@
+import { fields, list, str, bool } from "../shared/validation.js";
 import type { Config } from "../types.js";
 import { LIMITS, SCHEMA_VERSION } from "../types.js";
-import { validDate } from "../scheduler/planner.js";
-import { COMMAND_NAMES, replyVariables, REPLY_FIELDS } from "../content/command-templates.js";
+import { validDate } from "../shared/date.js";
+import { COMMAND_NAMES, replyVariables } from "../content/command-templates.js";
 import { validateTemplate } from "../content/templates.js";
 // Current persisted fields; unsupported fields are not accepted back through imports.
 const FIELDS = {
@@ -10,47 +11,17 @@ const FIELDS = {
         "paused",
         "retentionDays",
         "tasks",
+        "templates",
         "recipients",
         "bindings",
-        "events",
-        "calendarCopy",
         "replies",
+        "commandFeedback",
     ],
     recipients: ["id", "scene", "openid", "name", "enabled", "botId"],
-    events: ["id", "name", "start", "end", "kind", "source", "repeat", "batchId"],
-    tasks: ["id", "name", "enabled", "origin", "schedule", "body"],
+    templates: ["id", "name", "body"],
+    tasks: ["id", "name", "enabled", "origin", "schedule", "templateId"],
     bindings: ["taskId", "recipientId"],
-    replies: REPLY_FIELDS,
 } as const;
-function fields(value: object, allowed: readonly string[]) {
-    if (Object.keys(value).some((key) => !allowed.includes(key))) {
-        throw new Error("配置包含不支持的字段，请使用新版格式");
-    }
-}
-function list(value: unknown, max: number, label: string): asserts value is Record<string, unknown>[] {
-    if (
-        !Array.isArray(value) ||
-        value.length > max ||
-        value.some((v) => !v || typeof v !== "object" || Array.isArray(v))
-    ) {
-        throw new Error(`${label}格式错误或超过 ${max} 条`);
-    }
-}
-function str(value: unknown, max: number, label: string, empty = false): asserts value is string {
-    if (
-        typeof value !== "string" ||
-        (!empty && !value.trim()) ||
-        (max !== Infinity && [...value].length > max) ||
-        /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)
-    ) {
-        throw new Error(`${label}格式或长度错误`);
-    }
-}
-function bool(value: unknown) {
-    if (typeof value !== "boolean") {
-        throw new Error("启用状态必须为布尔值");
-    }
-}
 function ids(items: { id: string }[]) {
     const set = new Set<string>();
 
@@ -85,12 +56,20 @@ export function validateConfig(value: unknown): Config {
     }
 
     list(c.tasks, LIMITS.tasks, "任务");
+    list(c.templates, LIMITS.templates, "文案模板");
+    const templateIds = ids(c.templates);
+
+    for (const template of c.templates) {
+        fields(template, FIELDS.templates);
+        str(template.name, 80, "模板名称");
+        str(template.body, Infinity, "模板内容", true);
+        validateTemplate(template.body);
+    }
+
     list(c.recipients, LIMITS.recipients, "目标");
     list(c.bindings, LIMITS.bindings, "绑定");
-    list(c.events, LIMITS.events, "日历事件");
     const taskIds = ids(c.tasks),
         recipientIds = ids(c.recipients);
-    ids(c.events);
     const platformIds = new Set<string>();
 
     for (const r of c.recipients) {
@@ -117,13 +96,15 @@ export function validateConfig(value: unknown): Config {
         fields(t, FIELDS.tasks);
         bool(t.enabled);
         str(t.name, 80, "任务名称");
-        str(t.body, Infinity, "消息内容", true);
+
+        if (!templateIds.has(t.templateId)) {
+            throw new Error("任务引用的文案模板不存在，请先选择有效模板");
+        }
 
         if (!["system", "manual"].includes(t.origin)) {
             throw new Error("任务来源错误");
         }
 
-        validateTemplate(t.body);
         const s = t.schedule;
 
         if (!s || !["daily", "weekly", "once"].includes(s.kind) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.time)) {
@@ -161,80 +142,8 @@ export function validateConfig(value: unknown): Config {
         pairs.add(key);
     }
 
-    for (const h of c.events) {
-        fields(h, FIELDS.events);
-        str(h.name, 80, "事件名称");
-
-        if (!["uapi", "manual"].includes(h.source)) {
-            throw new Error("事件来源错误");
-        }
-
-        if (
-            !validDate(h.start) ||
-            !validDate(h.end) ||
-            h.end < h.start ||
-            !["holiday", "makeup", "reference", "event"].includes(h.kind) ||
-            (h.kind !== "holiday" && h.start !== h.end)
-        ) {
-            throw new Error("事件日期错误");
-        }
-
-        if (
-            !["once", "yearly"].includes(h.repeat) ||
-            (h.repeat === "yearly" && (h.kind !== "event" || h.source !== "manual"))
-        ) {
-            throw new Error("只有人工节日支持每年重复");
-        }
-
-        if (h.kind === "event" && h.source !== "manual") {
-            throw new Error("自定义节日须为人工来源");
-        }
-
-        if (h.batchId !== undefined) {
-            str(h.batchId, 80, "导入批次");
-        }
-    }
-
-    const calendarFields = [
-        "summary",
-        "event",
-        "eventToday",
-        "remaining",
-        "reference",
-        "today",
-        "makeupToday",
-        "ordinary",
-        "unknown",
-        "none",
-        "ongoing",
-        "stale",
-    ];
-
-    if (!c.calendarCopy || typeof c.calendarCopy !== "object") {
-        throw new Error("缺少日历模块文案");
-    }
-
-    fields(c.calendarCopy, calendarFields);
-
-    for (const key of calendarFields) {
-        const value = c.calendarCopy[key as keyof typeof c.calendarCopy];
-        str(value, Infinity, "日历模块文案", true);
-        validateTemplate(
-            value,
-            key === "summary"
-                ? ["name", "start", "end", "days_until", "days_off", "ongoing"]
-                : ["reference", "event"].includes(key)
-                  ? ["name", "date", "days_until"]
-                  : ["today", "makeupToday", "eventToday"].includes(key)
-                    ? ["name"]
-                    : key === "remaining"
-                      ? ["items", "stale", "count", "year", "today"]
-                      : [],
-        );
-    }
-
     if (!c.replies || typeof c.replies !== "object" || Array.isArray(c.replies)) {
-        throw new Error("缺少新版命令回复配置");
+        throw new Error("缺少命令回复配置");
     }
 
     fields(c.replies, COMMAND_NAMES);
@@ -246,12 +155,26 @@ export function validateConfig(value: unknown): Config {
             throw new Error("命令回复格式错误");
         }
 
-        fields(reply, FIELDS.replies);
+        const variables = replyVariables(name);
+        fields(reply, Object.keys(variables));
+        const values = reply as unknown as Record<string, string>;
 
-        for (const field of REPLY_FIELDS) {
-            str(reply[field], Infinity, "命令回复", ["stale", "ongoing"].includes(field));
-            validateTemplate(reply[field], replyVariables(name, field));
+        for (const [field, keys] of Object.entries(variables)) {
+            str(values[field], Infinity, "命令回复");
+            validateTemplate(values[field]!, keys);
         }
+    }
+
+    if (!c.commandFeedback || typeof c.commandFeedback !== "object" || Array.isArray(c.commandFeedback)) {
+        throw new Error("缺少通用提示配置");
+    }
+
+    fields(c.commandFeedback, ["error", "tooLong"]);
+
+    for (const key of ["error", "tooLong"] as const) {
+        const value = c.commandFeedback[key];
+        str(value, Infinity, "通用提示");
+        validateTemplate(value, ["year", "today"]);
     }
 
     if (new TextEncoder().encode(JSON.stringify(c)).length > LIMITS.bodyBytes) {

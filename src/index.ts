@@ -3,77 +3,57 @@ import { install } from "./data/repository.js";
 import { dispatch } from "./scheduler/dispatcher.js";
 import { maintenance } from "./data/maintenance.js";
 import { command } from "./commands.js";
+import { executeCommand } from "./content/execute-command.js";
+import { modules } from "./modules/index.js";
 import { api } from "./admin.js";
 import { HTML } from "./ui.js";
 export default definePlugin({
     name: "daily",
     displayName: "每日助手",
-    description: "占位符通知、日历查询与自定义节日",
+    description: "定时通知、日历与天气查询",
     apiVersion: 2,
     permissions: ["db", "net", "proactive", "admin"],
-    hooks: { onInstall: install },
+    hooks: {
+        onInstall: async (ctx) => {
+            await install(ctx);
+
+            for (const module of modules) {
+                await module.install(ctx);
+            }
+        },
+    },
     commands: {
         每日: {
             description: "每日助手帮助",
             scenes: ["group", "c2c"],
             handler: (input) => command(input, "每日"),
         },
-        "每日 帮助": {
-            description: "查看每日帮助",
-            scenes: ["group", "c2c"],
-            handler: (input) => command(input, "每日 帮助"),
-        },
-        假期: {
-            description: "假期查询帮助",
-            scenes: ["group", "c2c"],
-            handler: (input) => command(input, "假期"),
-        },
-        "假期 帮助": {
-            description: "查看假期帮助",
-            scenes: ["group", "c2c"],
-            handler: (input) => command(input, "假期 帮助"),
-        },
-        "假期 下一个": {
-            description: "下个尚未结束的节日",
-            scenes: ["group", "c2c"],
-            handler: (input) => command(input, "假期 下一个"),
-        },
-        "假期 剩余": {
-            description: "今天起今年所有剩余节日",
-            scenes: ["group", "c2c"],
-            handler: (input) => command(input, "假期 剩余"),
-        },
+        ...Object.fromEntries(modules.flatMap((m) => Object.entries(m.commands(executeCommand)))),
     },
     cron: {
         send: { cron: "* * * * *", handler: ({ ctx }) => dispatch(ctx) },
-        sync: {
-            cron: "0,1 16 * * *",
-            handler: async ({ ctx, scheduledAt }) => {
-                await maintenance(ctx, "sync", scheduledAt, false, new Date(scheduledAt).getUTCMinutes() as 0 | 1);
-            },
-        },
+        ...Object.fromEntries(modules.flatMap((m) => Object.entries(m.cron ?? {}))),
         cleanup: {
             cron: "10 16 * * *",
             handler: async ({ ctx, scheduledAt }) => {
-                await maintenance(ctx, "cleanup", scheduledAt);
+                await maintenance(ctx, scheduledAt);
             },
         },
     },
     ui: { path: "/ui/", title: "每日助手", icon: "CalendarDays" },
     routes: [
+        ...modules.flatMap((m) => m.routes),
         {
             method: "GET",
             path: "/ui/*",
             auth: "admin",
-            handler: ({ authenticated }) =>
-                authenticated
-                    ? new Response(HTML, {
-                          headers: {
-                              "content-type": "text/html; charset=utf-8",
-                              "cache-control": "no-store",
-                          },
-                      })
-                    : new Response("需要登录", { status: 401 }),
+            handler: () =>
+                new Response(HTML, {
+                    headers: {
+                        "content-type": "text/html; charset=utf-8",
+                        "cache-control": "no-store",
+                    },
+                }),
         },
         ...(["GET", "POST"] as const).map((method) => ({
             method,
