@@ -1,3 +1,5 @@
+import { commandUrl, expand } from "../shared/interpolation.js";
+import { commandLinkPage } from "./pages/command-link.js";
 import { modules } from "../modules/index.js";
 import { scopes } from "./scopes.js";
 import { components } from "./components.js";
@@ -15,6 +17,8 @@ export const client = [
     String.raw`
 import { createBridge } from "/bridge.js";
 `,
+    `const inlineCommandTools = { url: ${commandUrl.toString()}, expand: ${expand.toString()} };`,
+    commandLinkPage,
     components,
     markdownPreview,
     tasksPage,
@@ -31,7 +35,7 @@ import { createBridge } from "/bridge.js";
 const bridge = await createBridge();
 await createApp(bridge, createUI(), {
     tasks: { title: "通知任务", create: createTasksPage },
-    recipients: { title: "发送对象", create: createRecipientsPage },
+    recipients: { title: "通知对象", create: createRecipientsPage },
     templates: { title: "通知模板", create: createCopyTemplates },
     ${modules.map((m) => `${JSON.stringify(m.id)}: { title: ${JSON.stringify(m.ui.title)}, create: ${m.ui.factory}, module: true }`).join(",\n")},
     settings: { title: "系统设置", create: createSettingsPage },

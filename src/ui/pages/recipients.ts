@@ -7,11 +7,11 @@ function createRecipientsPage(app, ui) {
         let html = "";
 
         html +=
-            '<section><h2>发送对象</h2><p class="muted">在目标会话发送 <strong>/sid</strong>，将会话 ID 填入 OpenID；不能填写 QQ 号码</p>' +
+            '<section><h2>通知对象</h2><p class="muted">在目标会话发送 <strong>/sid</strong>，将会话 ID 填入 OpenID；不能填写 QQ 号码</p><p class="muted">命令使用范围在 QFlareBot 插件设置中配置</p>' +
             btn("新增对象", "new-recipient", "", "primary");
         html +=
             table(
-                ["名称", "场景 / ID", "状态", "操作"],
+                ["名称", "场景 / ID", "定时通知", "操作"],
                 app.config.recipients.map(
                     (r) =>
                         "<tr><td>" +
@@ -21,10 +21,10 @@ function createRecipientsPage(app, ui) {
                         " · " +
                         esc(r.openid) +
                         "</td><td>" +
-                        (r.enabled ? "启用" : "禁用") +
+                        (r.enabled ? "接收" : "不接收") +
                         "</td><td>" +
                         btn("编辑", "edit-recipient", r.id) +
-                        btn(r.enabled ? "禁用" : "启用", "toggle-recipient", r.id) +
+                        btn(r.enabled ? "停止接收" : "接收定时通知", "toggle-recipient", r.id) +
                         btn("删除", "delete-recipient", r.id, "danger") +
                         "</td></tr>",
                 ),
@@ -42,7 +42,7 @@ function createRecipientsPage(app, ui) {
                 (r.scene === "c2c" ? "selected" : "") +
                 ">私聊</option></select></label>" +
                 field("OpenID", "openid", r.openid, "text", existing) +
-                check("启用", "recipientEnabled", r.enabled) +
+                check("接收定时通知", "recipientEnabled", r.enabled) +
                 "</div>" +
                 btn("保存对象", "save-recipient", "", "primary") +
                 btn("取消", "cancel-recipient") +

@@ -6,5 +6,5 @@ export function defaultReplies(): Config["replies"] {
     return structuredClone(COMMAND_DEFAULTS);
 }
 export function replyVariables(_name: CommandName): Record<string, readonly string[]> {
-    return { body: ["year", "today"] };
+    return { body: ["year", "today", "commands"] };
 }

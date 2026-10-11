@@ -1,6 +1,6 @@
 import type { CommandReply } from "./shared/types.js";
 
-const help = "📅 每日助手 · 使用帮助\n\n**/每日**  查看帮助\n\n自动发送由机器人所有者在管理后台设置";
+const help = "📅 每日助手 · 使用帮助\n\n{{commands}}\n\n自动发送由机器人所有者在管理后台设置";
 const reply: CommandReply = {
     body: help,
 };

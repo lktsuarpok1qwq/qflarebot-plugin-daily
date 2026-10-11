@@ -67,7 +67,7 @@ function createTasksPage(app, ui) {
         let html = "";
 
         html +=
-            '<section><h2>发送计划</h2><p class="muted">创建任务、选择模板，保存后配置发送对象</p>' +
+            '<section><h2>发送计划</h2><p class="muted">创建任务、选择模板，保存后配置通知对象</p>' +
             btn("新建任务", "new-task", "", "primary");
         html +=
             table(
@@ -120,7 +120,7 @@ function createTasksPage(app, ui) {
                 html +=
                     '<section id="eventTest"><h2>事件测试：' +
                     esc(task.name) +
-                    '</h2><p class="muted">向选中的对象发送已保存的文案，不改变定时计划</p>' +
+                    '</h2><p class="muted">发送已保存的文案，不改变定时计划；未接收定时通知的对象也可测试</p>' +
                     '<label>测试对象<select id="testRecipient">' +
                     options(targets) +
                     "</select></label>" +
@@ -184,9 +184,9 @@ function createTasksPage(app, ui) {
                     app.state.variableDescriptions,
                     app.state.variableGroups,
                 ) +
-                '<p class="muted">改写内容仅用于当前任务，所有发送对象共用</p>' +
+                '<p class="muted">改写内容仅用于当前任务，所有通知对象共用</p>' +
                 (app.state.config.tasks.some((task) => task.id === t.id)
-                    ? '<fieldset><legend>发送对象</legend><div class="grid">' +
+                    ? '<fieldset><legend>通知对象</legend><div class="grid">' +
                     app.config.recipients
                         .map(
                             (r) =>
@@ -200,13 +200,13 @@ function createTasksPage(app, ui) {
                                     : "") +
                                 ">" +
                                 esc(r.name || r.openid) +
-                                (r.enabled ? "" : "（已停用）") +
+                                (r.enabled ? "" : "（不接收定时通知）") +
                                 "</label>",
                         )
                         .join("") +
-                    (app.config.recipients.length ? "" : "<p>请先添加发送对象</p>") +
+                    (app.config.recipients.length ? "" : "<p>请先添加通知对象</p>") +
                     "</div></fieldset>"
-                    : '<p class="muted">保存后可选择发送对象</p>') +
+                    : '<p class="muted">保存后可选择通知对象</p>') +
                 '<div class="actions">' +
                 btn("保存任务", "save-task", "", "primary") +
                 btn("取消", "cancel-task") +
@@ -258,7 +258,7 @@ function createTasksPage(app, ui) {
             }
 
             if (!app.config.bindings.some((b) => b.taskId === id)) {
-                throw Error("请先为该任务绑定发送对象");
+                throw Error("请先为该任务绑定通知对象");
             }
 
             testingTask = id;

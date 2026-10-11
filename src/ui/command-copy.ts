@@ -64,7 +64,7 @@ function createCommandCopy(app, ui, description, feedback = false) {
                         label,
                         variables: feedback ? ["year", "today"] : app.state.replyVariables[selectedCommand][key],
                     })),
-                { year: "当前年份", today: "今天日期" },
+                { year: "当前年份", today: "今天日期", commands: "模块一级命令链接，点击发送" },
             ) +
             '<p class="muted">实际预览会替换变量，不发送消息</p>' +
             btn("保存全部修改", "save-copy", "", "primary") +

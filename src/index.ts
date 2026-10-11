@@ -2,8 +2,7 @@ import { definePlugin } from "@qqbot/sdk";
 import { install } from "./data/repository.js";
 import { dispatch } from "./scheduler/dispatcher.js";
 import { maintenance } from "./data/maintenance.js";
-import { command } from "./commands.js";
-import { executeCommand } from "./content/execute-command.js";
+import { command, moduleCommands } from "./commands.js";
 import { modules } from "./modules/index.js";
 import { api } from "./admin.js";
 import { HTML } from "./ui.js";
@@ -28,7 +27,7 @@ export default definePlugin({
             scenes: ["group", "c2c"],
             handler: (input) => command(input, "每日"),
         },
-        ...Object.fromEntries(modules.flatMap((m) => Object.entries(m.commands(executeCommand)))),
+        ...moduleCommands,
     },
     cron: {
         send: { cron: "* * * * *", handler: ({ ctx }) => dispatch(ctx) },

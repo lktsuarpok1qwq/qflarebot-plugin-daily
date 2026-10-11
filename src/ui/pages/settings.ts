@@ -10,6 +10,7 @@ function createSettingsPage(app, ui) {
             label: "通用命令",
             page: createCommandCopy(app, ui, '<p class="muted">用于 <strong>/每日</strong></p>'),
         },
+        links: { label: "命令链接", page: createCommandLinkPage(app, ui) },
     });
 }
 `;
