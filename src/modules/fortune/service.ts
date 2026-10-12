@@ -1,18 +1,25 @@
 import { validDate } from "../../shared/date.js";
 import { choose, random } from "./random.js";
 import { LEVELS, RARITIES, type DrawSettings, type FortuneCorpus, type FortuneResult } from "./types.js";
-import { validateSettings } from "./validation.js";
+import { validateThemeCoverage } from "./validation.js";
 function matching<T extends { tags: string[]; weight: number }>(pool: readonly T[], tags: Set<string>): T[][] {
-    const specific = pool.filter((entry) => entry.weight > 0 && entry.tags.some((tag) => tag !== "general" && tags.has(tag)));
-    const selected = new Set(specific);
-    return [specific, pool.filter((entry) => entry.weight > 0 && !selected.has(entry) && entry.tags.includes("general"))];
+    const specific: T[] = [], general: T[] = [];
+
+    for (const entry of pool) {
+        if (!(entry.weight > 0)) { continue; }
+
+        if (entry.tags.some((tag) => tag !== "general" && tags.has(tag))) { specific.push(entry); } else if (entry.tags.includes("general")) { general.push(entry); }
+    }
+
+    return [specific, general];
 }
 export function generateFortune(input: { userId: string; date: string; config: DrawSettings; corpus: FortuneCorpus; parts?: ReadonlySet<string> }): FortuneResult | undefined {
     const { userId, date, config, corpus, parts } = input;
 
     if (!userId.trim() || !validDate(date)) { throw new Error("用户标识或日期无效"); }
 
-    validateSettings(config, corpus);
+    // Settings are validated when read or saved; corpus coverage depends on the supplied data.
+    validateThemeCoverage(config, corpus);
 
     if (!corpus.fortunes.length) { return undefined; }
 
@@ -32,11 +39,16 @@ export function generateFortune(input: { userId: string; date: string; config: D
         const rng = random(seed + ":" + kind + "-actions");
 
         for (const pool of matching(corpus.actions.filter((action) => action.kind === kind), tags)) {
+            if (result[kind].length === 2) { break; }
+
             let remaining = pool.filter((action) => !texts.has(action.text.trim()));
 
             while (remaining.length && result[kind].length < 2) {
                 const action = choose(remaining, (item) => item.weight, rng)!;
                 result[kind].push(action); texts.add(action.text.trim());
+
+                if (result[kind].length === 2) { break; }
+
                 remaining = remaining.filter((item) => !texts.has(item.text.trim()));
             }
         }

@@ -31,9 +31,17 @@ export function calendarAdminState(raw: Source[], now: number) {
     };
 }
 
-export const api = adminHandler({ GET: ["state"], POST: ["config", "event-reset", "maintenance"] }, async ({ ctx, request, params }: RouteInput): Promise<Response> => {
+export const api = adminHandler({ GET: ["state", "overview"], POST: ["config", "event-reset", "maintenance"] }, async ({ ctx, request, params }: RouteInput): Promise<Response> => {
     const action = params.action ?? "";
     const data = request.method === "POST" ? await body(request) : {};
+
+    if (request.method === "GET" && action === "overview") {
+        const [sources, jobs] = await Promise.all([
+            ctx.db.all<Source>("SELECT * FROM {calendar_sources}"),
+            ctx.db.all("SELECT * FROM {calendar_jobs}"),
+        ]);
+        return Response.json({ ...calendarAdminState(sources, Date.now()), jobs });
+    }
 
     if (request.method === "POST" && action === "maintenance") {
         if (data.job !== "sync") {
@@ -44,16 +52,15 @@ export const api = adminHandler({ GET: ["state"], POST: ["config", "event-reset"
     }
 
     const { snapshot: s, sources } =
-        action === "config"
-            ? { snapshot: await snapshot(ctx.db), sources: [] }
-            : await readData(ctx.db);
+        action === "event-reset"
+            ? await readData(ctx.db)
+            : { snapshot: await snapshot(ctx.db), sources: [] };
 
     if (request.method === "GET" && action === "state") {
         return stateResponse(request, {
             ...s,
-            conflicts: calendarService(s.config, sources).conflicts,
-            ...calendarAdminState(sources, Date.now()),
-            jobs: await ctx.db.all("SELECT * FROM {calendar_jobs}"),
+            conflicts: calendarService(s.config).conflicts,
+            overview: null,
         }, () => ({ copyEditor, calendarDraft: CALENDAR_COPY.draft, variables: calendarVariables.variables }));
     }
 

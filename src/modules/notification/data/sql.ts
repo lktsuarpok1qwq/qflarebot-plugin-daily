@@ -3,7 +3,7 @@ export const jsonRows = `WITH RECURSIVE input(data) AS (SELECT ?), idx(i) AS (SE
 export const jx = (key: string) => `json_extract(data, '$[' || i || '].${key}')`;
 
 /** Bound each D1 value independently; all chunks remain in one batch transaction. */
-export function jsonChunks(rows: readonly unknown[], maxBytes = 500_000): string[] {
+export function jsonChunks(rows: readonly unknown[], maxBytes = 500_000, maxRows = Infinity): string[] {
     const chunks: string[] = [];
     let items: string[] = [],
         size = 2;
@@ -16,7 +16,7 @@ export function jsonChunks(rows: readonly unknown[], maxBytes = 500_000): string
             throw new Error("单条数据记录过大");
         }
 
-        if (size + bytes > maxBytes) {
+        if (items.length >= maxRows || size + bytes > maxBytes) {
             chunks.push(`[${items.join(",")}]`);
             items = [];
             size = 2;

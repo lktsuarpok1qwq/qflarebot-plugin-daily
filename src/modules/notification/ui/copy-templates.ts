@@ -106,7 +106,6 @@ function createCopyTemplates(app, ui) {
         render,
         refresh: preview.refresh,
         action,
-        capture,
         reset,
         change: preview.change,
         get transientInputs() { return preview.transientInputs; },

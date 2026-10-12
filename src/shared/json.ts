@@ -1,4 +1,4 @@
-export async function readJson(input: Request | Response, maxBytes = 256_000, label = "响应"): Promise<unknown> {
+export async function readText(input: Request | Response, maxBytes = 256_000, label = "响应"): Promise<string> {
     if (Number(input.headers.get("content-length") ?? 0) > maxBytes) {
         await input.body?.cancel().catch(() => { });
         throw new Error(label + "过大");
@@ -24,9 +24,13 @@ export async function readJson(input: Request | Response, maxBytes = 256_000, la
             text += decoder.decode(value, { stream: true });
         }
 
-        return JSON.parse(text + decoder.decode()) as unknown;
+        return text + decoder.decode();
     } finally {
         await reader.cancel().catch(() => { });
         reader.releaseLock();
     }
+}
+
+export async function readJson(input: Request | Response, maxBytes = 256_000, label = "响应"): Promise<unknown> {
+    return JSON.parse(await readText(input, maxBytes, label)) as unknown;
 }

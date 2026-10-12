@@ -84,6 +84,8 @@ export async function finishMany(db: PluginDB, outcomes: Outcome[]) {
             error: o.error ?? null,
             messageId: o.messageId ?? null,
         })),
+        500_000,
+        25,
     );
     // Materialize parsed outcomes once per statement; correlated lookups reuse the rows.
     const records = `${jsonRows}, records AS MATERIALIZED (SELECT ${["key", "id", "due", "revision", "status", "now", "next", "error", "messageId"].map((k) => `${jx(k)} AS ${k}`).join(",")} FROM idx CROSS JOIN input)`;

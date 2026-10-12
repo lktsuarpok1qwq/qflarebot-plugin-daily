@@ -2,6 +2,9 @@ export const recordsPage = String.raw`
 function createNotificationRecords(app, ui) {
     const { $, esc, time, options, btn, table } = ui;
     const settings = createSettingsEditor(app, ui);
+    const jobs = createLazySection(app, ui, "jobs", "维护详情", {
+        render: () => '<details id="maintenanceDetails"><summary>维护任务详情</summary><pre>' + esc(JSON.stringify(app.state.jobs, null, 2)) + '</pre></details>',
+    });
     const statusLabels = {
         sending: "发送中",
         success: "发送成功",
@@ -14,6 +17,7 @@ function createNotificationRecords(app, ui) {
         skipped_disabled: "已停用",
     };
     let logCursors = [null], logPage = 0, logNext = null, logFilter = "";
+    const details = new Map();
 
     function render() {
         let html = "";
@@ -22,10 +26,8 @@ function createNotificationRecords(app, ui) {
             '<section><h2>运行控制</h2><div class="actions">' +
             btn(app.config.paused ? "恢复通知" : "暂停通知", "pause", "", "danger") +
             btn("立即清理过期日志", "cleanup") +
-            '</div><p>暂停只停止发送，查询和维护照常运行；过期计划跳过</p>' +
-            '<details id="maintenanceDetails"><summary>维护任务详情</summary><pre>' +
-            esc(JSON.stringify(app.state.jobs, null, 2)) +
-            '</pre></details><p class="muted">同一时间发送过多，可能无法全部完成，建议错开时间</p></section>';
+            '</div><p>暂停只停止发送，查询和维护照常运行；过期计划跳过</p>' + jobs.render() +
+            '<p class="muted">同一时间发送过多，可能无法全部完成，建议错开时间</p></section>';
         html += settings.render();
         html +=
             '<section><h2>执行日志</h2><div class="grid"><label>任务<select id="logTask"><option value="">全部</option>' +
@@ -44,7 +46,39 @@ function createNotificationRecords(app, ui) {
 
         return html;
     }
-    async function action(a) {
+    async function action(a, id) {
+        await jobs.action(a, id);
+
+        if (a === "log-detail") {
+            const key = id;
+            const button = [...document.querySelectorAll('[data-action="log-detail"]')].find((el) => el.dataset.id === key);
+            const output = button?.parentElement.querySelector('pre');
+
+            if (!output) { return; }
+
+            if (!output.hidden && details.has(key)) {
+                output.hidden = true;
+                button.textContent = '展开';
+                return;
+            }
+
+            output.hidden = false;
+            output.textContent = '正在加载…';
+
+            try {
+                if (!details.has(key)) { details.set(key, (await app.api('log?key=' + encodeURIComponent(key))).record); }
+
+                const record = details.get(key);
+                output.textContent = record ? JSON.stringify(record, null, 2) : '记录已清理';
+                button.textContent = '收起';
+            } catch (error) {
+                output.textContent = error.message;
+                button.textContent = '重试';
+            }
+
+            return;
+        }
+
         if (a === "cleanup") {
             const result = await app.api("maintenance", { job: "cleanup" });
             await app.load();
@@ -78,6 +112,7 @@ function createNotificationRecords(app, ui) {
             if (cursors[index]) { qs.set("before", cursors[index]); }
 
             const result = await app.api("logs?" + qs), logs = result.items;
+            details.clear();
             logCursors = cursors;
             logPage = index;
             logNext = result.next;
@@ -94,9 +129,7 @@ function createNotificationRecords(app, ui) {
                         esc(app.config.recipients.find((r) => r.id === l.recipient_id)?.name || l.recipient_id) +
                         "</td><td>" +
                         esc(statusLabels[l.status] || l.status) +
-                        "</td><td><details><summary>展开</summary><pre>" +
-                        esc(JSON.stringify(l, null, 2)) +
-                        "</pre></details></td></tr>",
+                        "</td><td>" + btn("展开", "log-detail", l.key) + "<pre hidden></pre></td></tr>",
                 ),
             );
             return;
@@ -105,7 +138,7 @@ function createNotificationRecords(app, ui) {
         await settings.action(a);
 
     }
-    function reset() { logCursors = [null]; logPage = 0; logNext = null; logFilter = ""; settings.reset(); }
-    return { render, action, reset, input: settings.input, change: settings.change, transientInputs: ["logTask", "logRecipient", "logStatus"], get discardActions() { return ["pause", "cleanup", ...settings.discardActions]; } };
+    function reset() { logCursors = [null]; logPage = 0; logNext = null; logFilter = ""; details.clear(); settings.reset(); }
+    return { render, action, reset, refresh: jobs.refresh, input: settings.input, change: settings.change, transientInputs: ["logTask", "logRecipient", "logStatus"], get discardActions() { return ["pause", "cleanup", ...settings.discardActions]; } };
 }
 `;

@@ -48,9 +48,17 @@ function createCopyEditor(app, ui, id = app.id, extensions = {}) {
         const current = view(), declaration = settings(), fields = declaration.fields;
         const label = (item) => outputNames(item).join(" ｜ ");
         const choices = ui.options(views().map((v) => ({ id: v.id, name: label(v) })), current.id);
+        const available = categories();
+        const categoryName = (name) => {
+            let depth = 0, parent = declaration.categoryParents?.[name];
+
+            while (parent && available.includes(parent)) { depth++; parent = declaration.categoryParents?.[parent]; }
+
+            return "\u3000".repeat(depth) + name;
+        };
         return '<section><h2>' + esc(declaration.title) + '</h2>' +
             '<label>编辑命令或变量<select id="' + id + 'CopyCategory">' + choices + '</select></label>' +
-            (categories().length > 1 ? '<label>文案分类<select id="' + id + 'CopyGroup">' + ui.options(categories().map((name) => ({ id: name, name: (categories().includes(declaration.categoryParents?.[name]) ? "\u3000" : "") + name })), category()) + '</select></label>' : '') +
+            (available.length > 1 ? '<label>文案分类<select id="' + id + 'CopyGroup">' + ui.options(available.map((name) => ({ id: name, name: categoryName(name) })), category()) + '</select></label>' : '') +
             (branches().length > 1 ? '<label>编辑分支<select id="' + id + 'CopyBranch">' + ui.options(branches().map((key) => ({ id: key, name: fields[key].label })), branch()) + '</select></label>' : '') +
             (declaration.description ? '<p class="muted">' + esc(declaration.description) + '</p>' : '') +
             preview.render([branch()].map((key) => ({

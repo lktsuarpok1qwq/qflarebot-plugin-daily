@@ -69,7 +69,7 @@ function createTasksPage(app, ui) {
             throw error;
         }
     }
-    function render() {
+    function renderPlans() {
         let html = "";
 
         html +=
@@ -114,6 +114,12 @@ function createTasksPage(app, ui) {
                         "</td></tr>",
                 ),
             ) + "</section>";
+
+        return html;
+    }
+    const plans = createLazySection(app, ui, "cursors", "发送计划", { render: renderPlans });
+    function render() {
+        let html = plans.render();
 
         if (testingTask) {
             const task = app.config.tasks.find((t) => t.id === testingTask);
@@ -210,6 +216,8 @@ function createTasksPage(app, ui) {
         return html;
     }
     async function action(a, id) {
+        await plans.action(a, id);
+
         if (await preview.action(a)) { return; }
 
         if (a === "new-task") {
@@ -392,7 +400,7 @@ function createTasksPage(app, ui) {
         discardActions: ["new-task", "edit-task", "copy-task", "toggle-task", "delete-task"],
         get transientInputs() { return ["testRecipient", ...preview.transientInputs]; },
         render,
-        refresh: preview.refresh,
+        refresh() { plans.refresh(); preview.refresh(); },
         action,
         reset,
         change(el) { if (!preview.change(el)) { change(el); } },

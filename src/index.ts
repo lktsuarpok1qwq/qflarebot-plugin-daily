@@ -7,7 +7,7 @@ import { HTML } from "./ui/index.js";
 export default definePlugin({
     name: "daily",
     displayName: "每日助手",
-    description: "定时通知、日历、天气、一言与运势",
+    description: "定时通知、日历、天气、一言、运势与新闻搜索与游戏资讯",
     apiVersion: 2,
     permissions: [...new Set(["db", "admin", ...registry.permissions] as const)],
     hooks: {

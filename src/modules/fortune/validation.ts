@@ -61,7 +61,10 @@ export function validateSettings(config: DrawSettings, corpus?: FortuneCorpus) {
 
     if (!THEMES.some((theme) => config[`theme_${theme}`])) { throw new Error("至少启用一个主题"); }
 
+    if (corpus) { validateThemeCoverage(config, corpus); }
+}
+export function validateThemeCoverage(config: DrawSettings, corpus: FortuneCorpus) {
     for (const level of Object.keys(LEVELS) as (keyof typeof LEVELS)[]) {
-        if (corpus?.fortunes.length && config[`level_${level}`] > 0 && !corpus.fortunes.some((entry) => entry.level === level && entry.weight > 0 && config[`theme_${entry.theme}`])) { throw new Error("启用主题未覆盖等级：" + level); }
+        if (corpus.fortunes.length && config[`level_${level}`] > 0 && !corpus.fortunes.some((entry) => entry.level === level && entry.weight > 0 && config[`theme_${entry.theme}`])) { throw new Error("启用主题未覆盖等级：" + level); }
     }
 }

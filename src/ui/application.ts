@@ -242,6 +242,8 @@ function createApp(bridge, ui, factories) {
     async function action(a, id) {
         if (a === "page" && id === app.page) { return; }
 
+        if (a === "section" && id === pages[app.page].activeSection) { return; }
+
         const discardsDraft = [
             "reload",
             "page",

@@ -6,7 +6,7 @@ import { defaults } from "../content/templates.js";
 import { SCHEMA_VERSION } from "../types.js";
 import { nextPlan } from "../scheduler/planner.js";
 import { jsonRows, jx, jsonChunks } from "./sql.js";
-const schedules = new WeakMap<Snapshot, string>();
+const schedules = new WeakMap<Snapshot, { key: string; tasks: Map<string, string> }>();
 function scheduleKey(config: Config) {
     return JSON.stringify({
         paused: config.paused,
@@ -40,13 +40,13 @@ export async function snapshot(db: PluginDB): Promise<Snapshot> {
     if (config.schemaVersion !== SCHEMA_VERSION) { throw new Error("配置格式不受支持"); }
 
     const state = { revision: row.revision, botId: row.bot_id, config };
-    schedules.set(state, scheduleKey(config));
+    schedules.set(state, { key: scheduleKey(config), tasks: new Map(config.tasks.map((task) => [task.id, JSON.stringify(task.schedule)])) });
     return state;
 }
 export async function saveConfig(ctx: Ctx, old: Snapshot, config: Config, now: number) {
-    const rev = old.revision + 1, token = crypto.randomUUID();
+    const rev = old.revision + 1, token = crypto.randomUUID(), original = schedules.get(old);
 
-    if (old.botId === ctx.botId && schedules.get(old) === scheduleKey(config)) {
+    if (old.botId === ctx.botId && original?.key === scheduleKey(config)) {
         const result = await ctx.db.run("UPDATE {notification_state} SET revision=?,config=?,token=? WHERE id=1 AND revision=?", rev, JSON.stringify(config), token, old.revision);
 
         if (!result.changes) { throw new AdminError("conflict", "配置已变化，请刷新后重试"); }
@@ -59,14 +59,9 @@ export async function saveConfig(ctx: Ctx, old: Snapshot, config: Config, now: n
         enabled: number;
         due_at: number | null;
         last_due: number | null;
-        schedule: string;
+        task_id: string;
     }>(
-        `${jsonRows}, task_idx(i,n) AS (
-                SELECT 0,json_array_length(config,'$.tasks') FROM {notification_state} WHERE id=1
-                UNION ALL SELECT i+1,n FROM task_idx WHERE i+1<n
-            ) SELECT b.id,b.enabled,b.due_at,b.last_due,
-            (SELECT json_extract(s.config,'$.tasks['||i||'].schedule') FROM task_idx WHERE i<n AND json_extract(s.config,'$.tasks['||i||'].id')=b.task_id) AS schedule
-            FROM {bindings} b CROSS JOIN {notification_state} s WHERE s.id=1 AND b.id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`,
+        `${jsonRows} SELECT id,task_id,enabled,due_at,last_due FROM {bindings} WHERE id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`,
         JSON.stringify(config.bindings.map((b) => ({ id: bindingId(b.taskId, b.recipientId) }))),
     ) : [];
     const byId = new Map(cursors.map((x) => [x.id, x])),
@@ -78,7 +73,7 @@ export async function saveConfig(ctx: Ctx, old: Snapshot, config: Config, now: n
             r = config.recipients.find((r) => r.id === b.recipientId)!,
             previous = byId.get(id);
         const enabled = !config.paused && task.enabled && r.enabled && r.botId === ctx.botId;
-        const sameSchedule = previous?.schedule === JSON.stringify(task.schedule);
+        const sameSchedule = previous !== undefined && original?.tasks.get(previous.task_id) === JSON.stringify(task.schedule);
         const preserve =
             enabled &&
             previous?.enabled &&
@@ -110,14 +105,16 @@ export async function saveConfig(ctx: Ctx, old: Snapshot, config: Config, now: n
         params: [JSON.stringify(rows.map(({ id }) => ({ id }))), rev, ...gate.params],
     }];
 
+    const records = `${jsonRows}, records AS MATERIALIZED (SELECT ${["id", "task_id", "recipient_id", "enabled", "due_at", "preserve", "changed"].map((key) => `${jx(key)} AS ${key}`).join(",")} FROM idx CROSS JOIN input)`;
+
     for (const chunk of jsonChunks(rows)) {
         statements.push({
-            sql: `${jsonRows} INSERT INTO {bindings}(id,task_id,recipient_id,enabled,due_at,revision)
-                SELECT ${["id", "task_id", "recipient_id", "enabled", "due_at"].map(jx).join(",")},? FROM idx CROSS JOIN input WHERE (${gate.sql})
-                ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,due_at=CASE WHEN (SELECT ${jx("preserve")} FROM idx CROSS JOIN input WHERE ${jx("id")}=excluded.id)=1 THEN due_at ELSE excluded.due_at END,revision=excluded.revision
+            sql: `${records} INSERT INTO {bindings}(id,task_id,recipient_id,enabled,due_at,revision)
+                SELECT id,task_id,recipient_id,enabled,due_at,? FROM records WHERE (${gate.sql})
+                ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,due_at=CASE WHEN (SELECT preserve FROM records WHERE id=excluded.id)=1 THEN due_at ELSE excluded.due_at END,revision=excluded.revision
                 WHERE enabled<>excluded.enabled
-                    OR (due_at IS NOT excluded.due_at AND (SELECT ${jx("preserve")} FROM idx CROSS JOIN input WHERE ${jx("id")}=excluded.id)=0)
-                    OR (SELECT ${jx("changed")} FROM idx CROSS JOIN input WHERE ${jx("id")}=excluded.id)=1`,
+                    OR (due_at IS NOT excluded.due_at AND (SELECT preserve FROM records WHERE id=excluded.id)=0)
+                    OR (SELECT changed FROM records WHERE id=excluded.id)=1`,
             params: [chunk, rev, ...gate.params],
         });
     }

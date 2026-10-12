@@ -55,6 +55,21 @@ export function createCopyContract<Copy extends object>(editor: CopyDeclaration)
     }
 
     const usedFields = new Set<string>(), usedOutputs = new Set<string>();
+    const categories = new Set(compiled.map(({ field }) => field.category));
+
+    for (const [category, parent] of Object.entries(editor.categoryParents ?? {})) {
+        if (!categories.has(category) || !categories.has(parent)) { fail("分类层级引用无效：" + category); }
+
+        const ancestors = new Set([category]);
+        let current: string | undefined = parent;
+
+        while (current) {
+            if (ancestors.has(current)) { fail("分类层级存在循环：" + category); }
+
+            ancestors.add(current);
+            current = editor.categoryParents?.[current];
+        }
+    }
 
     for (const view of editor.views) {
         unique(views, view.id);

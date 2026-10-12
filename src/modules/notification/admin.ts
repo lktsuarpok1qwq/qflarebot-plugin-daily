@@ -38,25 +38,36 @@ async function testResult(db: PluginDB, key: string, taskId: string, recipientId
     });
 }
 // All callers enter through the host's auth: "admin" routes.
-export const api = adminHandler({ GET: ["state", "logs"], POST: ["config", "maintenance", "test"] }, async ({ ctx, request, params }: RouteInput, variables: VariableAPI): Promise<Response> => {
+export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log"], POST: ["config", "maintenance", "test"] }, async ({ ctx, request, params }: RouteInput, variables: VariableAPI): Promise<Response> => {
     const action = params.action ?? "",
         url = new URL(request.url);
 
     if (request.method === "GET") {
+        if (action === "jobs") {
+            return Response.json(await ctx.db.all("SELECT * FROM {maintenance}"));
+        }
+
+        if (action === "log") {
+            const key = url.searchParams.get("key");
+
+            if (!key || !/^[\w:-]{1,200}$/.test(key)) { throw new AdminError("validation", "记录参数错误"); }
+
+            const record = await ctx.db.first("SELECT * FROM {deliveries} WHERE key=?", key);
+            return Response.json({ record });
+        }
+
+        if (action === "cursors") {
+            const s = await snapshot(ctx.db);
+            return Response.json(s.config.bindings.length ? await ctx.db.all(
+                `${jsonRows} SELECT task_id,due_at FROM {bindings} WHERE id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`,
+                JSON.stringify(s.config.bindings.map((b) => ({ id: bindingId(b.taskId, b.recipientId) }))),
+            ) : []);
+        }
+
         if (action === "state") {
             const s = await snapshot(ctx.db);
-            const [cursors, jobs] = await Promise.all([
-                s.config.bindings.length ? ctx.db.all(
-                    `${jsonRows} SELECT * FROM {bindings} WHERE id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`,
-                    JSON.stringify(
-                        s.config.bindings.map((b) => ({
-                            id: bindingId(b.taskId, b.recipientId),
-                        })),
-                    ),
-                ) : [],
-                ctx.db.all("SELECT * FROM {maintenance} "),
-            ]);
-            return stateResponse(request, { ...s, currentBotId: ctx.botId, cursors, jobs }, () => ({
+            const needsCursors = s.config.bindings.length && s.config.tasks.some((t) => t.enabled && t.schedule.kind === "once" && at(t.schedule.date!, t.schedule.time) <= Date.now());
+            return stateResponse(request, { ...s, currentBotId: ctx.botId, cursors: needsCursors ? null : [], jobs: null }, () => ({
                 draftDefaults: COPY.drafts,
                 settings,
                 variables: variables.keys,
@@ -104,7 +115,7 @@ export const api = adminHandler({ GET: ["state", "logs"], POST: ["config", "main
             }
 
             const rows = await ctx.db.all<{ key: string; updated_at: number }>(
-                `SELECT * FROM {deliveries}${filter.length ? " WHERE " + filter.join(" AND ") : ""} ORDER BY updated_at DESC,key DESC LIMIT 51`,
+                `SELECT key,task_id,recipient_id,due_at,status,updated_at FROM {deliveries}${filter.length ? " WHERE " + filter.join(" AND ") : ""} ORDER BY updated_at DESC,key DESC LIMIT 51`,
                 ...args,
             );
             const items = rows.slice(0, 50), last = items.at(-1);

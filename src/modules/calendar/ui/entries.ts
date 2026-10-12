@@ -2,8 +2,9 @@ export const calendarEntries = String.raw`
 function createCalendarEntries(app, ui) {
     const { $, esc, uid, time, options, field, btn, table, put, check, mergeDraft } = ui;
     let editingEvent, originalEvent;
+    const overview = createLazySection(app, ui, "overview", "年度数据", { render: renderOverview });
 
-    function render() {
+    function renderOverview() {
         let html = "";
 
         html +=
@@ -11,7 +12,7 @@ function createCalendarEntries(app, ui) {
             btn("立即同步", "sync", "", "primary") +
             table(
                 ["年份", "数据变更时间", "最近检查成功", "获取频率", "状态", "来源"],
-                app.state.sources.map(
+                app.state.overview.sources.map(
                     (s) =>
                         "<tr><td>" +
                         s.year +
@@ -35,9 +36,13 @@ function createCalendarEntries(app, ui) {
                 ),
             ) +
             "<details><summary>日历维护详情</summary><pre>" +
-            esc(JSON.stringify(app.state.jobs, null, 2)) +
+            esc(JSON.stringify(app.state.overview.jobs, null, 2)) +
             "</pre></details>" +
             (app.state.conflicts.length ? '<p class="notice">以下放假与调休记录冲突，已暂停用于查询和通知，请编辑核对</p><ul>' + app.state.conflicts.map((h) => '<li>' + esc(h.name + ' · ' + h.start + (h.end !== h.start ? ' 至 ' + h.end : '') + ' · ' + (h.kind === 'holiday' ? '放假' : '调休')) + '</li>').join('') + '</ul>' : '') + '</section>';
+        return html;
+    }
+    function render() {
+        let html = overview.render();
         html +=
             '<section><h2>日历条目</h2><p class="muted">停用条目不参与查询和通知，数据保留</p>' +
             btn("新增事件", "new-event", "", "primary") +
@@ -125,6 +130,8 @@ function createCalendarEntries(app, ui) {
         return html;
     }
     async function action(a, id) {
+        await overview.action(a, id);
+
         if (a === "sync") {
             const result = await app.api("maintenance", { job: "sync" });
             reset();
@@ -263,6 +270,7 @@ function createCalendarEntries(app, ui) {
         }
     }
     return {
+        refresh: overview.refresh,
         render,
         action,
         reset,
