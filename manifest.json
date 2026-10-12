@@ -58,6 +58,22 @@
         "group",
         "c2c"
       ]
+    },
+    {
+      "name": "运势",
+      "description": "运势帮助",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "运势 抽",
+      "description": "抽取今日个人运势",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
     }
   ],
   "regex": [],
@@ -124,6 +140,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/fortune/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fortune/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
       "path": "/ui/*",
       "auth": "admin"
     },
@@ -142,7 +168,7 @@
   "services": [],
   "durableObjects": [],
   "displayName": "每日助手",
-  "description": "定时通知、日历、天气与一言",
+  "description": "定时通知、日历、天气、一言与运势",
   "ui": {
     "path": "/ui/",
     "title": "每日助手",
