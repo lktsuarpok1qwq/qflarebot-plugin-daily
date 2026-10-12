@@ -1,165 +1,7 @@
-import type { CalendarConfig, CalendarEvent, Source, SourceSummary } from "./types.js";
+import type { CalendarConfig, CalendarEvent, Source } from "./types.js";
 import { dateAt, DAY, validDate, addDays } from "../../shared/date.js";
-export const FESTIVALS = ["元旦", "春节", "清明节", "劳动节", "端午节", "中秋节", "国庆节"] as const;
-const aliases: Record<string, string> = {
-    清明: "清明节",
-    五一劳动节: "劳动节",
-    国际劳动节: "劳动节",
-};
-type FestivalDate = { name: string; date: string };
-const matches = (name: string, festival: string) => name.includes(festival.replace(/节$/, ""));
-export type CalendarYear = {
-    year: number;
-    dates?: FestivalDate[];
-    holidays: {
-        name: string;
-        date: string;
-        type: "legal_rest" | "legal_workday_adjust";
-    }[];
-};
-export function validateYear(value: unknown, year: number): CalendarYear {
-    const x = value as CalendarYear;
-
-    if (!x || x.year !== year || !Array.isArray(x.holidays) || x.holidays.length > 400) {
-        throw new Error("UAPI 年度数据格式错误");
-    }
-
-    const days = new Set<string>();
-    const holidays = x.holidays
-        .map((h) => {
-            if (
-                !h ||
-                typeof h.name !== "string" ||
-                !h.name.trim() ||
-                h.name.length > 80 ||
-                /[\u0000-\u001f]/.test(h.name) ||
-                !validDate(h.date) ||
-                +h.date.slice(0, 4) !== year ||
-                !["legal_rest", "legal_workday_adjust"].includes(h.type) ||
-                days.has(h.date)
-            ) {
-                throw new Error("UAPI 放假或调休记录非法");
-            }
-
-            days.add(h.date);
-            return { name: h.name, date: h.date, type: h.type };
-        })
-        .sort((a, b) => a.date.localeCompare(b.date));
-    const dates = x.dates ?? [];
-
-    if (!Array.isArray(dates) || dates.length > FESTIVALS.length) {
-        throw new Error("UAPI 节日日期格式错误");
-    }
-
-    const names = new Set<string>();
-
-    for (const d of dates) {
-        if (
-            !d ||
-            !FESTIVALS.some((name) => name === d.name) ||
-            names.has(d.name) ||
-            !validDate(d.date) ||
-            +d.date.slice(0, 4) !== year
-        ) {
-            throw new Error("UAPI 节日日期非法");
-        }
-
-        names.add(d.name);
-    }
-
-    const pending = dates
-        .filter((d) => !holidays.some((h) => h.type === "legal_rest" && (matches(h.name, d.name) || h.date === d.date)))
-        .map(({ name, date }) => ({ name, date }))
-        .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
-    return { year, holidays, ...(pending.length ? { dates: pending } : {}) };
-}
-export function parseResponse(value: unknown, year: number): CalendarYear {
-    const x = value as {
-        query?: { year?: string; holiday_type?: string };
-        holidays?: unknown;
-        days?: {
-            date: string;
-            solar_festival?: string;
-            lunar_festival?: string;
-            solar_term?: string;
-        }[];
-    };
-
-    if (x?.query?.year !== String(year) || x.query.holiday_type !== "legal") {
-        throw new Error("UAPI 返回的年度或类别不匹配");
-    }
-
-    if (x.days !== undefined && (!Array.isArray(x.days) || x.days.length > 366)) {
-        throw new Error("UAPI 日历格式错误");
-    }
-
-    const dates = new Map<string, FestivalDate>();
-
-    for (const day of x.days ?? []) {
-        if (!day || !validDate(day.date) || +day.date.slice(0, 4) !== year) {
-            throw new Error("UAPI 日历日期非法");
-        }
-
-        for (const raw of [day.solar_festival, day.lunar_festival, day.solar_term]) {
-            const name = typeof raw === "string" ? (aliases[raw] ?? raw) : "";
-
-            if (!FESTIVALS.some((festival) => festival === name)) {
-                continue;
-            }
-
-            if (dates.has(name) && dates.get(name)!.date !== day.date) {
-                throw new Error("UAPI 节日日期冲突");
-            }
-
-            dates.set(name, { name, date: day.date });
-        }
-    }
-
-    return validateYear({ year, holidays: x.holidays, dates: [...dates.values()] }, year);
-}
-export function summarizeYear(value: CalendarYear) {
-    const rows = value.holidays.filter((h) => h.type === "legal_rest");
-    return {
-        has_schedule: rows.length ? 1 : 0,
-        is_complete: FESTIVALS.every((name) => rows.some((h) => matches(h.name, name))) ? 1 : 0,
-    };
-}
-/** Only a complete next year can reduce its refresh frequency. */
-export function refreshDays(source: Pick<SourceSummary, "has_schedule" | "is_complete"> | undefined, nextYear: boolean): number {
-    return (nextYear ? source?.is_complete : source?.has_schedule) === 1 ? 7 : 1;
-}
-/** Replace returned festivals as a unit; absent festivals retain known data. */
-export function mergeYear(incoming: CalendarYear, previous: CalendarYear | undefined) {
-    const identities = (name: string): string[] => {
-        const festivals = FESTIVALS.filter((f) => matches(name, f));
-        return festivals.length ? festivals : [name];
-    };
-    const returned = new Set(
-        incoming.holidays.filter((h) => h.type === "legal_rest").flatMap((h) => identities(h.name)),
-    );
-    const dates = new Set(incoming.holidays.map((h) => h.date));
-    const retained = (previous?.holidays ?? []).filter(
-        (h) => !identities(h.name).every((name) => returned.has(name)) && !dates.has(h.date),
-    );
-    const references = new Map((previous?.dates ?? []).map((d) => [d.name, d]));
-
-    for (const d of incoming.dates ?? []) {
-        references.set(d.name, d);
-    }
-
-    return {
-        value: validateYear(
-            {
-                ...incoming,
-                holidays: [...incoming.holidays, ...retained],
-                dates: [...references.values()],
-            },
-            incoming.year,
-        ),
-        incomplete: retained.length > 0,
-    };
-}
-export function automaticEvents(sources: Source[]): CalendarEvent[] {
+import { FESTIVALS, matchesFestival, validateYear } from "./year-data.js";
+function automaticEvents(sources: Source[]): CalendarEvent[] {
     const rows: CalendarEvent[] = [],
         references: CalendarEvent[] = [];
 
@@ -218,7 +60,7 @@ function sameFestival(a: CalendarEvent, b: CalendarEvent): boolean {
         const reference = /^uapi-reference-\d{4}-\d{2}-\d{2}-(\d+)$/.exec(h.id);
         return reference
             ? [FESTIVALS[Number(reference[1])]].filter(Boolean)
-            : FESTIVALS.filter((f) => matches(h.name, f));
+            : FESTIVALS.filter((f) => matchesFestival(h.name, f));
     };
     const year = (h: CalendarEvent) => /^uapi-(?:holiday|reference)-(\d{4})-/.exec(h.id)?.[1] ?? h.start.slice(0, 4);
     return (
@@ -260,7 +102,7 @@ export function activeEvents(config: CalendarConfig, year = +dateAt(Date.now()).
                     formal.some(
                         (f) =>
                             (f.start <= h.start && f.end >= h.start) ||
-                            (f.start.slice(0, 4) === h.start.slice(0, 4) && matches(f.name, h.name)),
+                            (f.start.slice(0, 4) === h.start.slice(0, 4) && matchesFestival(f.name, h.name)),
                     )
                 ) {
                     return [];
@@ -351,7 +193,7 @@ export function restoreEvent(config: CalendarConfig, sources: Source[], id: stri
     const lower = `${dateAt(now).slice(0, 4)}-01-01`;
     const crossYear =
         +year + 1 === +lower.slice(0, 4) && id.startsWith(`uapi-holiday-${year}-12-`)
-            ? defaults.find((h) => h.kind === "holiday" && h.start === lower && matches(h.name, "元旦"))
+            ? defaults.find((h) => h.kind === "holiday" && h.start === lower && matchesFestival(h.name, "元旦"))
             : undefined;
 
     if (!sources.some((s) => s.year === +year && s.data) && !crossYear) {

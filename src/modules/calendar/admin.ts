@@ -1,3 +1,5 @@
+import { AdminError, validateInput } from "../../shared/admin-errors.js";
+import { adminHandler, stateResponse } from "../../shared/admin.js";
 import { calendarService } from "./service.js";
 import { copyEditor } from "./definition.js";
 import type { RouteInput } from "@qqbot/sdk";
@@ -6,12 +8,12 @@ import { readData, saveConfig, snapshot } from "./repository.js";
 import { validateCalendar, applyCalendarEdits } from "./validation.js";
 import { dateAt } from "../../shared/date.js";
 import { body } from "../../shared/request.js";
-import { refreshDays, restoreEvent, type CalendarYear } from "./calendar.js";
+import { refreshDays, type CalendarYear } from "./year-data.js";
+import { restoreEvent } from "./events.js";
 import { CALENDAR_COPY, calendarVariables } from "./copy.js";
 import { maintenance } from "./maintenance.js";
 export function calendarAdminState(raw: Source[], now: number) {
     return {
-        calendarDraft: CALENDAR_COPY.draft,
         sources: [0, 1].map((offset) => {
             const year = +dateAt(now).slice(0, 4) + offset;
             const source = raw.find((s) => s.year === year);
@@ -29,44 +31,38 @@ export function calendarAdminState(raw: Source[], now: number) {
     };
 }
 
-export async function api({ ctx, request, params }: RouteInput): Promise<Response> {
-    try {
-        const action = params.action ?? "";
-        const data = request.method === "POST" ? await body(request) : {};
+export const api = adminHandler({ GET: ["state"], POST: ["config", "event-reset", "maintenance"] }, async ({ ctx, request, params }: RouteInput): Promise<Response> => {
+    const action = params.action ?? "";
+    const data = request.method === "POST" ? await body(request) : {};
 
-        if (request.method === "POST" && action === "maintenance") {
-            if (data.job !== "sync") {
-                throw new Error("维护类型错误");
-            }
-
-            return Response.json(await maintenance(ctx, "sync", Date.now(), true));
+    if (request.method === "POST" && action === "maintenance") {
+        if (data.job !== "sync") {
+            throw new AdminError("validation", "维护类型错误");
         }
 
-        const { snapshot: s, sources } =
-            action === "config"
-                ? { snapshot: await snapshot(ctx.db), sources: [] }
-                : await readData(ctx.db);
+        return Response.json(await maintenance(ctx, "sync", Date.now(), true));
+    }
 
-        if (request.method === "GET" && action === "state") {
-            return Response.json({
-                ...s,
-                copyEditor,
-                conflicts: calendarService(s.config, sources).conflicts,
-                ...calendarAdminState(sources, Date.now()),
-                variables: calendarVariables.variables,
-                jobs: await ctx.db.all("SELECT * FROM {calendar_jobs}"),
-            });
+    const { snapshot: s, sources } =
+        action === "config"
+            ? { snapshot: await snapshot(ctx.db), sources: [] }
+            : await readData(ctx.db);
+
+    if (request.method === "GET" && action === "state") {
+        return stateResponse(request, {
+            ...s,
+            conflicts: calendarService(s.config, sources).conflicts,
+            ...calendarAdminState(sources, Date.now()),
+            jobs: await ctx.db.all("SELECT * FROM {calendar_jobs}"),
+        }, () => ({ copyEditor, calendarDraft: CALENDAR_COPY.draft, variables: calendarVariables.variables }));
+    }
+
+    if (action === "config" || action === "event-reset") {
+        if (data.revision !== s.revision) {
+            throw new AdminError("conflict", "日历配置已变化，请刷新");
         }
 
-        if (request.method !== "POST") {
-            throw new Error("未知接口");
-        }
-
-        if (action === "config" || action === "event-reset") {
-            if (data.revision !== s.revision) {
-                throw new Error("日历配置已变化，请刷新");
-            }
-
+        const config = validateInput(() => {
             const config = action === "config" ? validateCalendar(data.config) : structuredClone(s.config);
 
             if (action === "config") {
@@ -79,16 +75,17 @@ export async function api({ ctx, request, params }: RouteInput): Promise<Respons
                 restoreEvent(config, sources, data.id, Date.now());
             }
 
-            return Response.json({
-                revision:
-                    JSON.stringify(config) === JSON.stringify(s.config)
-                        ? s.revision
-                        : await saveConfig(ctx, s, config, Date.now()),
-            });
-        }
+            return config;
+        });
 
-        throw new Error("未知接口");
-    } catch (e) {
-        return Response.json({ error: e instanceof Error ? e.message : "日历请求失败" }, { status: 400 });
+        return Response.json({
+            revision:
+                JSON.stringify(config) === JSON.stringify(s.config)
+                    ? s.revision
+                    : await saveConfig(ctx, s, config, Date.now()),
+            refresh: true,
+        });
     }
-}
+
+    throw new AdminError("validation", "未知接口");
+});

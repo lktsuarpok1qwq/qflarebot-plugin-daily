@@ -15,8 +15,21 @@ function createCopyEditor(app, ui, id = app.id, extensions = {}) {
     const preview = createMessageEditor(app, ui, {
         id, currentValue: () => value(branch()),
         samples: () => settings().samples.filter((sample) => settings().fields[branch()].samples.includes(sample.id) && (!view().samples || view().samples.includes(sample.id))).map((sample) => ({ ...sample, name: settings().fields[branch()].sampleNames?.[sample.id] || sample.name })),
-        renderSample: (sample, mark) => extensions.renderSample ? extensions.renderSample(sample, candidate(), branch(), mark, view()) : [{ text: mark(inlineCommandTools.expand(value(branch()), sample.values || {}, sample.fragments || {})) }],
+        renderSample: (sample, mark) => extensions.renderSample ? extensions.renderSample(sample, previewConfig(), branch(), mark, view()) : [{ text: mark(inlineCommandTools.expand(value(branch()), sample.values || {}, sample.fragments || {})) }],
     });
+    function previewConfig() {
+        const config = {};
+
+        for (const [key, field] of Object.entries(settings().fields)) {
+            let target = config;
+
+            for (const part of field.path.slice(0, -1)) { target = target[part] ??= {}; }
+
+            target[field.path.at(-1)] = value(key);
+        }
+
+        return config;
+    }
     function candidate() {
         const config = structuredClone(app.config);
 
@@ -53,17 +66,19 @@ function createCopyEditor(app, ui, id = app.id, extensions = {}) {
         if (a === 'cancel-' + actionId) {
             app.render();
         } else if (a === 'save-' + actionId) {
-            app.config = candidate();
-
-            try {
-                await app.save();
-            } catch (error) {
-                app.render();
-                throw error;
+            for (const [key, field] of Object.entries(settings().fields)) {
+                try {
+                    validateCopyText(value(key), { ...field, variables: Object.keys(field.variables) });
+                } catch {
+                    selected = view().keys.includes(key) ? view().id : views().find((item) => item.keys.includes(key)).id;
+                    selectedCategory = field.category; selectedBranch = key;
+                    preview.selectBranch(); app.render(); app.focus(fieldId(key));
+                    return;
+                }
             }
 
-            drafts = {};
-            app.render();
+            app.config = candidate();
+            await app.save(undefined, () => { drafts = {}; });
         } else if (a === 'reset-' + actionId) {
             const fields = settings().fields;
 

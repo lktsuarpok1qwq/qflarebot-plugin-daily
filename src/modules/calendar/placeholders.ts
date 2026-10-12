@@ -1,7 +1,7 @@
 import type { CalendarConfig, SourceSummary } from "./types.js";
 import { calendarService } from "./service.js";
 import { dateAt, DAY } from "../../shared/date.js";
-import { calendarItem, renderCalendarDocument, renderCalendarQuery } from "./rendering.js";
+import { createCalendarItem, renderCalendarDocument, renderCalendarQuery } from "./rendering.js";
 import { expand } from "../../shared/interpolation.js";
 export function calendarValues(config: CalendarConfig, sources: SourceSummary[], due: number): Record<string, string> {
     const day = dateAt(due), copy = config.calendarCopy;
@@ -21,7 +21,8 @@ export function calendarValues(config: CalendarConfig, sources: SourceSummary[],
     const renderToday = (eventsOnly: boolean) => {
         const current = getService(), status = getToday();
         const rows = [...status.data.events, ...(eventsOnly || status.status === "unknown" ? [] : status.data.rows)];
-        return renderCalendarDocument({ kind: eventsOnly ? "event" : "today", day, items: rows.map((h) => calendarItem(h, day, current.events, current.confirmedYears, true)) }, copy, expand);
+        const item = createCalendarItem(current.events, current.confirmedYears);
+        return renderCalendarDocument({ kind: eventsOnly ? "event" : "today", day, items: rows.map((h) => item(h, day, true)) }, copy, expand);
     };
     const getters = {
         "日历.今日节日": () => renderToday(true),

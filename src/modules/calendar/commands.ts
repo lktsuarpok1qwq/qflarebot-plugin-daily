@@ -1,9 +1,7 @@
 import { commands } from "./definition.js";
-import { registerCommands } from "../../shared/declarations.js";
-import type { Command } from "@qqbot/sdk";
+import type { ModuleDefinition } from "../../shared/modules.js";
 import type { CalendarConfig, CalendarCommand, SourceSummary } from "./types.js";
 import { readQueryData, readHelp } from "./repository.js";
-import type { CommandExecutor } from "../../shared/types.js";
 import { calendarService } from "./service.js";
 import { renderCalendarQuery } from "./rendering.js";
 import { dateAt } from "../../shared/date.js";
@@ -22,8 +20,9 @@ export function renderCommand(config: CalendarConfig, sources: SourceSummary[], 
     const day = dateAt(now);
     return reply(expand(config.calendarCopy.help, { today: day, year: day.slice(0, 4) }));
 }
-export function calendarCommands(execute: CommandExecutor): Record<string, Command> {
-    return registerCommands(commands, execute, async (input, name) => {
+export const calendarCommands: NonNullable<ModuleDefinition["commands"]> = {
+    definitions: commands,
+    render: async (input, name) => {
         if (name === "假期") {
             const day = dateAt(Date.now());
             return reply(expand(await readHelp(input.ctx.db), { today: day, year: day.slice(0, 4) }));
@@ -31,5 +30,5 @@ export function calendarCommands(execute: CommandExecutor): Record<string, Comma
 
         const data = await readQueryData(input.ctx.db);
         return renderCommand(data.snapshot.config, data.sources, name as CalendarCommand, Date.now());
-    });
-}
+    },
+};

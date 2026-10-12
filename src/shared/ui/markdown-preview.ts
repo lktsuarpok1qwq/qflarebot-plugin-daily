@@ -12,14 +12,13 @@ function createMarkdownPreview(ui) {
     }
     function place(el, panel) {
         const workspace = el.closest(".markdown-workspace");
-        const toolbar = workspace.querySelector('[data-markdown-for="' + CSS.escape(el.id) + '"]');
 
         if (desktop.matches) {
             if (panel.parentElement !== workspace) {
                 workspace.append(panel);
             }
-        } else if (toolbar.nextElementSibling !== panel) {
-            toolbar.after(panel);
+        } else if ($(el.id + "-error").nextElementSibling !== panel) {
+            $(el.id + "-error").after(panel);
 
             if (document.activeElement === el) {
                 el.scrollIntoView({ block: "nearest" });

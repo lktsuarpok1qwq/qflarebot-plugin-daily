@@ -53,7 +53,7 @@ export async function claimMany(db: PluginDB, claims: Claim[], configRevision: n
     const result = await db.batch<{ key: string }>(chunks.map((data) => ({
         sql: `${jsonRows} INSERT OR IGNORE INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at,details,error)
       SELECT ${jx("key")},b.task_id,b.recipient_id,b.due_at,b.revision,${jx("status")},${jx("now")},${jx("now")},${jx("details")},${jx("error")}
-      FROM idx CROSS JOIN input JOIN {bindings} b ON b.id=${jx("id")} JOIN {state} s ON s.id=1
+      FROM idx CROSS JOIN input JOIN {bindings} b ON b.id=${jx("id")} JOIN {notification_state} s ON s.id=1
       WHERE b.enabled=1 AND b.due_at=${jx("due")} AND b.revision=${jx("revision")} AND s.revision=? RETURNING key`,
         params: [data, configRevision],
     })));
@@ -85,13 +85,14 @@ export async function finishMany(db: PluginDB, outcomes: Outcome[]) {
             messageId: o.messageId ?? null,
         })),
     );
-    const records = `${jsonRows}, records AS (SELECT ${["key", "id", "due", "revision", "status", "now", "next", "error", "messageId"].map((k) => `${jx(k)} AS ${k}`).join(",")} FROM idx CROSS JOIN input)`;
+    // Materialize parsed outcomes once per statement; correlated lookups reuse the rows.
+    const records = `${jsonRows}, records AS MATERIALIZED (SELECT ${["key", "id", "due", "revision", "status", "now", "next", "error", "messageId"].map((k) => `${jx(k)} AS ${k}`).join(",")} FROM idx CROSS JOIN input)`;
     const statements: DBStatement[] = [];
 
     for (const data of chunks) {
         statements.push(
             {
-                sql: `${records} UPDATE {deliveries} AS d SET status=(SELECT status FROM records WHERE key=d.key),updated_at=(SELECT now FROM records WHERE key=d.key),error=(SELECT error FROM records WHERE key=d.key),message_id=(SELECT messageId FROM records WHERE key=d.key) WHERE d.status='sending' AND d.key IN (SELECT key FROM records)`,
+                sql: `${records} UPDATE {deliveries} AS d SET (status,updated_at,error,message_id)=(SELECT status,now,error,messageId FROM records WHERE key=d.key) WHERE d.status='sending' AND d.key IN (SELECT key FROM records)`,
                 params: [data],
             },
             {

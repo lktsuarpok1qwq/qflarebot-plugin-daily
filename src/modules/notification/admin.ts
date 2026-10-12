@@ -1,3 +1,5 @@
+import { AdminError, validateInput } from "../../shared/admin-errors.js";
+import { adminHandler, stateResponse } from "../../shared/admin.js";
 import { settings } from "./definition.js";
 import type { VariableAPI } from "../../shared/variables.js";
 import type { PluginDB, RouteInput } from "@qqbot/sdk";
@@ -26,7 +28,7 @@ async function testResult(db: PluginDB, key: string, taskId: string, recipientId
     if (!prior) { return null; }
 
     if (prior.task_id !== taskId || prior.recipient_id !== recipientId) {
-        throw new Error("重复测试请求");
+        throw new AdminError("validation", "重复测试请求");
     }
 
     return Response.json({
@@ -36,111 +38,103 @@ async function testResult(db: PluginDB, key: string, taskId: string, recipientId
     });
 }
 // All callers enter through the host's auth: "admin" routes.
-export async function api({ ctx, request, params }: RouteInput, variables: VariableAPI): Promise<Response> {
-    try {
-        const action = params.action ?? "",
-            url = new URL(request.url);
+export const api = adminHandler({ GET: ["state", "logs"], POST: ["config", "maintenance", "test"] }, async ({ ctx, request, params }: RouteInput, variables: VariableAPI): Promise<Response> => {
+    const action = params.action ?? "",
+        url = new URL(request.url);
 
-        if (request.method === "GET") {
-            if (action === "state") {
-                const s = await snapshot(ctx.db);
-                const [cursors, jobs] = await Promise.all([
-                    s.config.bindings.length ? ctx.db.all(
-                        `${jsonRows} SELECT * FROM {bindings} WHERE id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`,
-                        JSON.stringify(
-                            s.config.bindings.map((b) => ({
-                                id: bindingId(b.taskId, b.recipientId),
-                            })),
-                        ),
-                    ) : [],
-                    ctx.db.all("SELECT * FROM {maintenance} "),
-                ]);
-                return Response.json({
-                    ...s,
-                    draftDefaults: COPY.drafts,
-                    settings,
-                    currentBotId: ctx.botId,
-                    variables: variables.keys,
-                    variableDescriptions: variables.descriptions,
-                    variableGroups: variables.groups,
-                    variableCompositions: variables.compositions,
-                    copySamples: [
-                        { id: "example", name: "模块示例内容", values: variables.sampleValues() },
-                        { id: "empty", name: "模块无内容", values: { 日期: "2026-10-03", 星期: "星期六" } },
-                    ],
-                    cursors,
-                    jobs,
-                    limits: LIMITS,
-                });
+    if (request.method === "GET") {
+        if (action === "state") {
+            const s = await snapshot(ctx.db);
+            const [cursors, jobs] = await Promise.all([
+                s.config.bindings.length ? ctx.db.all(
+                    `${jsonRows} SELECT * FROM {bindings} WHERE id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`,
+                    JSON.stringify(
+                        s.config.bindings.map((b) => ({
+                            id: bindingId(b.taskId, b.recipientId),
+                        })),
+                    ),
+                ) : [],
+                ctx.db.all("SELECT * FROM {maintenance} "),
+            ]);
+            return stateResponse(request, { ...s, currentBotId: ctx.botId, cursors, jobs }, () => ({
+                draftDefaults: COPY.drafts,
+                settings,
+                variables: variables.keys,
+                variableDescriptions: variables.descriptions,
+                variableGroups: variables.groups,
+                variableCompositions: variables.compositions,
+                copySamples: [
+                    { id: "example", name: "模块示例内容", values: variables.sampleValues() },
+                    { id: "empty", name: "模块无内容", values: { 日期: "2026-10-03", 星期: "星期六" } },
+                ],
+                limits: LIMITS,
+            }));
+        }
+
+        if (action === "logs") {
+            const filter: string[] = [],
+                args: unknown[] = [];
+
+            for (const [key, col] of [
+                ["task", "task_id"],
+                ["recipient", "recipient_id"],
+                ["status", "status"],
+            ] as const) {
+                const v = url.searchParams.get(key);
+
+                if (v) {
+                    filter.push(`${col}=?`);
+                    args.push(v);
+                }
             }
 
-            if (action === "logs") {
-                const filter: string[] = [],
-                    args: unknown[] = [];
+            const before = url.searchParams.get("before");
 
-                for (const [key, col] of [
-                    ["task", "task_id"],
-                    ["recipient", "recipient_id"],
-                    ["status", "status"],
-                ] as const) {
-                    const v = url.searchParams.get(key);
+            if (before) {
+                if (before.length > 256) { throw new AdminError("validation", "分页参数错误"); }
 
-                    if (v) {
-                        filter.push(`${col}=?`);
-                        args.push(v);
-                    }
+                const cursor: unknown = validateInput(() => JSON.parse(before));
+
+                if (!Array.isArray(cursor) || cursor.length !== 2 || !Number.isSafeInteger(cursor[0]) || cursor[0] < 0 || typeof cursor[1] !== "string" || !/^[\w:-]{1,200}$/.test(cursor[1])) {
+                    throw new AdminError("validation", "分页参数错误");
                 }
 
-                const before = url.searchParams.get("before");
-
-                if (before) {
-                    if (before.length > 256) { throw new Error("分页参数错误"); }
-
-                    const cursor: unknown = JSON.parse(before);
-
-                    if (!Array.isArray(cursor) || cursor.length !== 2 || !Number.isSafeInteger(cursor[0]) || cursor[0] < 0 || typeof cursor[1] !== "string" || !/^[\w:-]{1,200}$/.test(cursor[1])) {
-                        throw new Error("分页参数错误");
-                    }
-
-                    filter.push("(updated_at,key)<(?,?)");
-                    args.push(...cursor);
-                }
-
-                const rows = await ctx.db.all<{ key: string; updated_at: number }>(
-                    `SELECT * FROM {deliveries}${filter.length ? " WHERE " + filter.join(" AND ") : ""} ORDER BY updated_at DESC,key DESC LIMIT 51`,
-                    ...args,
-                );
-                const items = rows.slice(0, 50), last = items.at(-1);
-                return Response.json({ items, next: rows.length > 50 && last ? JSON.stringify([last.updated_at, last.key]) : null });
+                filter.push("(updated_at,key)<(?,?)");
+                args.push(...cursor);
             }
 
-            throw new Error("未知接口");
+            const rows = await ctx.db.all<{ key: string; updated_at: number }>(
+                `SELECT * FROM {deliveries}${filter.length ? " WHERE " + filter.join(" AND ") : ""} ORDER BY updated_at DESC,key DESC LIMIT 51`,
+                ...args,
+            );
+            const items = rows.slice(0, 50), last = items.at(-1);
+            return Response.json({ items, next: rows.length > 50 && last ? JSON.stringify([last.updated_at, last.key]) : null });
         }
 
-        if (request.method !== "POST") {
-            return Response.json({ error: "不支持的方法" }, { status: 405 });
+        throw new AdminError("validation", "未知接口");
+    }
+
+    const data = await body(
+        request,
+        LIMITS.bodyBytes + 4096,
+    );
+
+    if (action === "maintenance") {
+        if (data.job !== "cleanup") {
+            throw new AdminError("validation", "维护类型错误");
         }
 
-        const data = await body(
-            request,
-            LIMITS.bodyBytes + 4096,
-        );
+        return Response.json(await maintenance(ctx, Date.now(), true));
+    }
 
-        if (action === "maintenance") {
-            if (data.job !== "cleanup") {
-                throw new Error("维护类型错误");
-            }
+    const s = await snapshot(ctx.db);
 
-            return Response.json(await maintenance(ctx, Date.now(), true));
+    if (action === "config") {
+        if (data.revision !== s.revision) {
+            throw new AdminError("conflict", "配置已变化，请刷新");
         }
 
-        const s = await snapshot(ctx.db);
-
-        if (action === "config") {
-            if (data.revision !== s.revision) {
-                throw new Error("配置已变化，请刷新");
-            }
-
+        const c = validateInput(() => {
             const c = validateConfig(data.config, variables.keys);
 
             for (const r of c.recipients) {
@@ -168,123 +162,124 @@ export async function api({ ctx, request, params }: RouteInput, variables: Varia
                 }
             }
 
-            return Response.json({
-                revision:
-                    s.botId === ctx.botId && JSON.stringify(c) === JSON.stringify(s.config)
-                        ? s.revision
-                        : await saveConfig(ctx, s, c, Date.now()),
-            });
+            return c;
+        });
+
+        return Response.json({
+            revision:
+                s.botId === ctx.botId && JSON.stringify(c) === JSON.stringify(s.config)
+                    ? s.revision
+                    : await saveConfig(ctx, s, c, Date.now()),
+            refresh: true,
+        });
+    }
+
+    if (action === "test") {
+        const c = s.config,
+            t = c.tasks.find((t) => t.id === data.taskId),
+            b = c.bindings.find((b) => b.taskId === data.taskId && b.recipientId === data.recipientId);
+
+        if (!t || !b) {
+            throw new AdminError("validation", "请选择任务及其绑定目标");
         }
 
-        if (action === "test") {
-            const c = s.config,
-                t = c.tasks.find((t) => t.id === data.taskId),
-                b = c.bindings.find((b) => b.taskId === data.taskId && b.recipientId === data.recipientId);
+        const r = c.recipients.find((r) => r.id === b.recipientId)!;
 
-            if (!t || !b) {
-                throw new Error("请选择任务及其绑定目标");
-            }
+        if (r.botId !== ctx.botId) {
+            throw new AdminError("validation", "不能向其他机器人的目标发送");
+        }
 
-            const r = c.recipients.find((r) => r.id === b.recipientId)!;
+        // One-time request ID prevents a double click from sending twice.
+        if (typeof data.requestId !== "string" || !/^[\w-]{16,80}$/.test(data.requestId)) {
+            throw new AdminError("validation", "测试请求标识错误");
+        }
 
-            if (r.botId !== ctx.botId) {
-                throw new Error("不能向其他机器人的目标发送");
-            }
+        const key = `test:${data.requestId}`;
+        const prior = await testResult(ctx.db, key, t.id, r.id);
 
-            // One-time request ID prevents a double click from sending twice.
-            if (typeof data.requestId !== "string" || !/^[\w-]{16,80}$/.test(data.requestId)) {
-                throw new Error("测试请求标识错误");
-            }
+        if (prior) { return prior; }
 
-            const key = `test:${data.requestId}`;
+        if (data.config || s.config.paused || s.botId !== ctx.botId) {
+            throw new AdminError("validation", "测试需要已保存的配置且未暂停");
+        }
+
+        const rendered = await renderMessage(
+            t,
+            c,
+            Date.now(),
+            variables.resolve(ctx),
+            variables.keys,
+        );
+
+        if (!rendered.text) {
+            throw new AdminError("validation", "测试内容为空");
+        }
+
+        const now = Date.now();
+        const claimed = await ctx.db.run(
+            "INSERT OR IGNORE INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at,details) SELECT ?,?,?,?,revision,'sending',?,?,? FROM {notification_state} WHERE revision=?",
+            key,
+            t.id,
+            r.id,
+            now,
+            now,
+            now,
+            JSON.stringify({ manual: true, ...rendered }),
+            s.revision,
+        );
+
+        if (!claimed.changes) {
             const prior = await testResult(ctx.db, key, t.id, r.id);
 
             if (prior) { return prior; }
 
-            if (data.config || s.config.paused || s.botId !== ctx.botId) {
-                throw new Error("测试需要已保存的配置且未暂停");
-            }
-
-            const rendered = await renderMessage(
-                t,
-                c,
-                Date.now(),
-                variables.resolve(ctx),
-                variables.keys,
-            );
-
-            if (!rendered.text) {
-                throw new Error("测试内容为空");
-            }
-
-            const now = Date.now();
-            const claimed = await ctx.db.run(
-                "INSERT OR IGNORE INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at,details) SELECT ?,?,?,?,revision,'sending',?,?,? FROM {state} WHERE revision=?",
-                key,
-                t.id,
-                r.id,
-                now,
-                now,
-                now,
-                JSON.stringify({ manual: true, ...rendered }),
-                s.revision,
-            );
-
-            if (!claimed.changes) {
-                const prior = await testResult(ctx.db, key, t.id, r.id);
-
-                if (prior) { return prior; }
-
-                throw new Error("配置已变化，请刷新后重试");
-            }
-
-            const fresh = await ctx.db.first<{ revision: number }>("SELECT revision FROM {state} WHERE id=1");
-
-            if (fresh?.revision !== s.revision) {
-                await ctx.db.run("UPDATE {deliveries} SET status='skipped_disabled' WHERE key=?", key);
-                throw new Error("配置已变化，取消测试");
-            }
-
-            try {
-                const result = await ctx.api.sendMessage({ scene: r.scene, id: r.openid }, message(rendered.text));
-                const outcome = resultStatus(result);
-                await finishMany(ctx.db, [
-                    {
-                        d: {
-                            id: `orphan:${key}`,
-                            key,
-                            task_id: t.id,
-                            recipient_id: r.id,
-                            due_at: now,
-                            revision: s.revision,
-                            status: "sending",
-                            claimed_at: now,
-                        },
-                        ...outcome,
-                        now: Date.now(),
-                        next: null,
-                    },
-                ]);
-                return Response.json({
-                    ok: result.ok,
-                    status: outcome.status,
-                    error: result.error,
-                    messageId: result.messageId,
-                    text: rendered.text,
-                });
-            } catch (e) {
-                await ctx.db.run(
-                    "UPDATE {deliveries} SET status='uncertain',updated_at=?,error=? WHERE key=? AND status='sending'",
-                    Date.now(),
-                    String(e).slice(0, 300),
-                    key,
-                );
-                throw e;
-            }
+            throw new AdminError("conflict", "配置已变化，请刷新后重试");
         }
 
-        throw new Error("未知接口");
-    } catch (e) {
-        return Response.json({ error: e instanceof Error ? e.message : "请求失败" }, { status: 400 });
+        const fresh = await ctx.db.first<{ revision: number }>("SELECT revision FROM {notification_state} WHERE id=1");
+
+        if (fresh?.revision !== s.revision) {
+            await ctx.db.run("UPDATE {deliveries} SET status='skipped_disabled' WHERE key=?", key);
+            throw new AdminError("conflict", "配置已变化，取消测试");
+        }
+
+        try {
+            const result = await ctx.api.sendMessage({ scene: r.scene, id: r.openid }, message(rendered.text));
+            const outcome = resultStatus(result);
+            await finishMany(ctx.db, [
+                {
+                    d: {
+                        id: `orphan:${key}`,
+                        key,
+                        task_id: t.id,
+                        recipient_id: r.id,
+                        due_at: now,
+                        revision: s.revision,
+                        status: "sending",
+                        claimed_at: now,
+                    },
+                    ...outcome,
+                    now: Date.now(),
+                    next: null,
+                },
+            ]);
+            return Response.json({
+                ok: result.ok,
+                status: outcome.status,
+                error: result.error,
+                messageId: result.messageId,
+                text: rendered.text,
+            });
+        } catch (e) {
+            await ctx.db.run(
+                "UPDATE {deliveries} SET status='uncertain',updated_at=?,error=? WHERE key=? AND status='sending'",
+                Date.now(),
+                String(e).slice(0, 300),
+                key,
+            );
+            throw e;
+        }
     }
-}
+
+    throw new AdminError("validation", "未知接口");
+});

@@ -1,19 +1,16 @@
+import { AdminError, validateInput } from "../../shared/admin-errors.js";
 import type { PluginDB, DBStatement } from "@qqbot/sdk";
 import type { Ctx } from "../../shared/types.js";
 import type { CalendarConfig, CalendarSnapshot, Source, SourceSummary } from "./types.js";
 import { CALENDAR_VERSION } from "./types.js";
-import { CALENDAR_COPY } from "./copy.js";
+import { copyContract } from "./definition.js";
 import { dateAt } from "../../shared/date.js";
-import { refreshEvents } from "./calendar.js";
+import { refreshEvents } from "./events.js";
 import { validateCalendar } from "./validation.js";
 export const SOURCE_QUERY = "SELECT * FROM {calendar_sources}";
 export const SOURCE_SUMMARY_QUERY = "SELECT year,hash,has_schedule,is_complete,error,updated_at,checked_at FROM {calendar_sources}";
 export function defaults(): CalendarConfig {
-    return {
-        schemaVersion: CALENDAR_VERSION,
-        events: [],
-        calendarCopy: structuredClone(CALENDAR_COPY.text),
-    };
+    return copyContract.defaults({ schemaVersion: CALENDAR_VERSION, events: [] });
 }
 export async function install(ctx: Ctx) {
     await ctx.db.exec(`
@@ -81,7 +78,7 @@ export async function saveConfig(
 ) {
     const year = +dateAt(now).slice(0, 4);
     config.events = config.events.filter((h) => h.repeat === "yearly" || h.end >= `${year}-01-01`);
-    validateCalendar(config);
+    validateInput(() => validateCalendar(config));
     const token = crypto.randomUUID();
     const statements: DBStatement[] = [
         {
@@ -118,7 +115,7 @@ export async function saveConfig(
     const result = await ctx.db.batch(statements);
 
     if (!result[0]?.changes) {
-        throw new Error("日历配置已变化，请刷新后重试");
+        throw new AdminError("conflict", "日历配置已变化，请刷新后重试");
     }
 
     return old.revision + 1;

@@ -4,9 +4,9 @@
   "apiVersion": 2,
   "permissions": [
     "db",
-    "net",
+    "admin",
     "proactive",
-    "admin"
+    "net"
   ],
   "depends": {},
   "conflicts": [],

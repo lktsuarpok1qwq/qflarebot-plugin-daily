@@ -178,7 +178,7 @@ function createTasksPage(app, ui) {
                 "</div>" +
                 check("启用任务", "taskEnabled", t.enabled) +
                 "</div>" +
-                preview.render([{ id: "taskBody", label: "消息内容", value: draftBody, variables: app.state.variableDescriptions }], { variableGroups: app.state.variableGroups }) +
+                preview.render([{ id: "taskBody", allowEmpty: true, label: "消息内容", value: draftBody, variables: app.state.variableDescriptions }], { variableGroups: app.state.variableGroups }) +
                 '<p class="muted">改写内容仅用于当前任务，所有通知对象共用</p>' +
                 (app.state.config.tasks.some((task) => task.id === t.id)
                     ? '<fieldset><legend>通知对象</legend><div class="grid">' +
@@ -270,6 +270,8 @@ function createTasksPage(app, ui) {
         }
 
         if (a === "save-task") {
+            if (!preview.validate()) { return; }
+
             const s = { kind: $("kind").value, time: $("scheduleTime").value };
 
             if (s.kind === "weekly") {
@@ -329,9 +331,7 @@ function createTasksPage(app, ui) {
             }
 
             const savedId = editingTask.id;
-            await app.save();
-            edit(app.config.tasks.find((t) => t.id === savedId));
-            app.render();
+            await app.save(undefined, () => edit(app.config.tasks.find((t) => t.id === savedId)));
             return;
         }
 
@@ -360,17 +360,11 @@ function createTasksPage(app, ui) {
 
             app.config.tasks = app.config.tasks.filter((t) => t.id !== id);
             app.config.bindings = app.config.bindings.filter((b) => b.taskId !== id);
-            await app.save();
+            await app.save(undefined, () => {
+                if (editingTask?.id === id) { editingTask = null; }
 
-            if (editingTask?.id === id) {
-                editingTask = null;
-            }
-
-            if (testingTask === id) {
-                testingTask = null;
-            }
-
-            app.render();
+                if (testingTask === id) { testingTask = null; }
+            });
             return;
         }
     }

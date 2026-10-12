@@ -38,7 +38,7 @@ function createCopyTemplates(app, ui) {
                     "</p>"
                     : "") +
                 field("模板名称", "templateName", editing.name) +
-                preview.render([{ id: "templateBody", label: "消息内容", value: editing.body, variables: app.state.variableDescriptions }], { variableGroups: app.state.variableGroups }) +
+                preview.render([{ id: "templateBody", allowEmpty: true, label: "消息内容", value: editing.body, variables: app.state.variableDescriptions }], { variableGroups: app.state.variableGroups }) +
                 btn("保存模板", "save-template", "", "primary") +
                 btn("取消", "cancel-template") + preview.reference() +
                 "</section>";
@@ -79,11 +79,11 @@ function createCopyTemplates(app, ui) {
         }
 
         if (a === "save-template") {
+            if (!preview.validate()) { return; }
+
             capture();
             put(app.config.templates, mergeDraft(app.config.templates.find((t) => t.id === editing.id), original, editing));
-            await app.save("模板已保存");
-            reset();
-            app.render();
+            await app.save("模板已保存", reset);
             app.focus("app");
             return;
         }
@@ -98,9 +98,7 @@ function createCopyTemplates(app, ui) {
             }
 
             app.config.templates = app.config.templates.filter((t) => t.id !== id);
-            await app.save("模板已删除");
-            reset();
-            app.render();
+            await app.save("模板已删除", reset);
         }
     }
     return {

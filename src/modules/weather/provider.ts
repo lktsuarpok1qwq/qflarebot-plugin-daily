@@ -128,44 +128,44 @@ export async function lookup(config: WeatherConfig, query: string, fetcher: type
         };
     });
 }
-export function parseCurrent(raw: unknown): Current {
-    const data = object(raw),
-        humidity = number(data.humidity);
+export const CURRENT_FIELDS = ["condition", "temp", "feels", "humidity", "wind"] as const;
+export const FORECAST_FIELDS = ["low", "high", "day", "night"] as const;
+export function parseCurrent(raw: unknown, fields: readonly (keyof Current)[] = CURRENT_FIELDS): Partial<Current> {
+    const data = object(raw);
+    const readers = {
+        condition: () => text(object(data.condition).text),
+        temp: () => measurement(data.temperature, "°C"),
+        feels: () => measurement(data.feelsLike, "°C"),
+        humidity: () => {
+            const humidity = number(data.humidity);
 
-    if (humidity < 0 || humidity > 1) {
-        throw new Error("和风天气湿度错误");
-    }
+            if (humidity < 0 || humidity > 1) { throw new Error("和风天气湿度错误"); }
 
-    return {
-        condition: text(object(data.condition).text),
-        temp: measurement(data.temperature, "°C"),
-        feels: measurement(data.feelsLike, "°C"),
-        humidity: String(Math.round(humidity * 100)),
-        wind: measurement(object(data.wind).speed, "m/s"),
+            return String(Math.round(humidity * 100));
+        },
+        wind: () => measurement(object(data.wind).speed, "m/s"),
     };
+    return Object.fromEntries(fields.map((key) => [key, readers[key]()]));
 }
-export function parseForecast(raw: unknown): Forecast {
+export function parseForecast(raw: unknown, fields: readonly (typeof FORECAST_FIELDS[number])[] = FORECAST_FIELDS): Forecast {
     const data = object(raw);
 
-    if (!Array.isArray(data.days)) {
-        throw new Error("和风天气预报格式错误");
-    }
+    if (!Array.isArray(data.days)) { throw new Error("和风天气预报格式错误"); }
 
     const days = data.days.map((value) => {
-        const day = object(value),
-            start = text(day.forecastStartTime);
+        const day = object(value), start = text(day.forecastStartTime);
 
         if (!/^\d{4}-\d{2}-\d{2}T/.test(start) || !Number.isFinite(Date.parse(start))) {
             throw new Error("和风天气日期错误");
         }
 
-        return {
-            date: start.slice(0, 10),
-            low: measurement(day.temperatureMin, "°C"),
-            high: measurement(day.temperatureMax, "°C"),
-            day: text(object(object(day.daytime).condition).text),
-            night: text(object(object(day.nighttime).condition).text),
+        const readers = {
+            low: () => measurement(day.temperatureMin, "°C"),
+            high: () => measurement(day.temperatureMax, "°C"),
+            day: () => text(object(object(day.daytime).condition).text),
+            night: () => text(object(object(day.nighttime).condition).text),
         };
+        return { date: start.slice(0, 10), ...Object.fromEntries(fields.map((key) => [key, readers[key]()])) };
     });
     return { days };
 }

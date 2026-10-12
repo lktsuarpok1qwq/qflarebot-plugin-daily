@@ -17,7 +17,7 @@ function createScope(app, id) {
 
     scope.api = (action, data) => app.api(id + "/" + action, data);
     scope.load = () => app.load(scope);
-    scope.save = (message) => app.save(message, scope);
+    scope.save = (message, afterSave) => app.save(message, afterSave, scope);
     return scope;
 }
 `;

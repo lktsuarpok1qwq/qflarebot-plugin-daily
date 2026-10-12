@@ -18,6 +18,7 @@ export type CopyField = {
     variables: Readonly<Record<string, string>>;
     path: readonly string[];
     default: string;
+    allowEmpty?: boolean;
     inputId?: string;
     uses?: readonly string[];
     targets?: readonly string[];

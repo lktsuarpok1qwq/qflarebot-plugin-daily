@@ -1,10 +1,10 @@
 import type { VariableComposition } from "../../shared/variables.js";
-export const rawVariables = {
+const rawVariables = {
     name: "当前条目的节日名称", date: "单日条目日期，多日条目为空", start: "放假开始日期", end: "放假结束日期",
     days_until: "距开始天数，正在经历为 0", days_off: "已知放假天数", source: "数据来源",
     makeup: "已知调休日期，安排未知时为空", year: "当前年份", today: "今天日期",
 };
-export const fragmentVariables = { date_text: "日期说明", status: "当前条目的状态说明", makeup_text: "调休说明", today_text: "今日说明" };
+const fragmentVariables = { date_text: "日期说明", status: "当前条目的状态说明", makeup_text: "调休说明", today_text: "今日说明" };
 export const itemVariables = { ...rawVariables, ...fragmentVariables };
 const queryVariables = { ...rawVariables, date_text: fragmentVariables.date_text, status: fragmentVariables.status, makeup_text: fragmentVariables.makeup_text };
 const todayVariables = { ...rawVariables, today_text: fragmentVariables.today_text };

@@ -2,7 +2,7 @@ import { addDays } from "../../shared/date.js";
 import { calendarValues } from "./placeholders.js";
 import { CALENDAR_COPY } from "./copy.js";
 import { CALENDAR_VERSION } from "./types.js";
-import { calendarItem, queryDocument, type CalendarDocument } from "./rendering.js";
+import { createCalendarItem, queryDocument, type CalendarDocument } from "./rendering.js";
 import type { CalendarEvent } from "./types.js";
 const baseDay = "2026-10-03";
 const event = (kind: CalendarEvent["kind"], name: string, start: string, end = start): CalendarEvent => ({ id: name + start, name, start, end, kind, enabled: true, repeat: "once", source: kind === "event" ? "manual" : "uapi" });
@@ -32,13 +32,14 @@ export function calendarSamples() {
         const day = sample.day ?? baseDay;
         const confirmed = sample.complete ? [2026] : [];
         const rows = sample.events.filter((h) => h.kind !== "makeup");
+        const item = createCalendarItem(sample.events, confirmed);
         const query = queryDocument({ data: rows, status: rows.length ? "known" : sample.complete ? "none" : "unknown", complete: !!sample.complete, freshness: "current" }, "remaining", day, sample.events, true, confirmed);
         const nextDay = rows.length && !rows.some((h) => h.start > day) ? addDays(rows[0]!.start, -1) : day;
         const future = rows.filter((h) => h.start > nextDay).sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id)).slice(0, 1);
         const next = queryDocument({ data: future, status: future.length ? "known" : sample.complete ? "none" : "unknown", complete: !!sample.complete, freshness: "current" }, "next", nextDay, sample.events, true, confirmed);
         const reminder: CalendarDocument = {
             day, kind: "today",
-            items: sample.events.filter((h) => h.start <= day && h.end >= day).map((h) => calendarItem(h, day, sample.events, confirmed, true)),
+            items: sample.events.filter((h) => h.start <= day && h.end >= day).map((h) => item(h, day, true)),
         };
         return { id: sample.id, name: sample.name, query, next, reminder };
     });

@@ -9,5 +9,5 @@ export type Current = {
     humidity: string;
     wind: string;
 };
-export type Daily = { date: string; low: string; high: string; day: string; night: string };
+type Daily = { date: string } & Partial<Record<"low" | "high" | "day" | "night", string>>;
 export type Forecast = { days: Daily[] };

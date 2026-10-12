@@ -2,9 +2,9 @@ import { readJson } from "../../shared/json.js";
 import type { Ctx } from "../../shared/types.js";
 import type { Source, SourceSummary } from "./types.js";
 import { dateAt, DAY } from "../../shared/date.js";
-import { validateCalendar } from "./validation.js";
 import { readData, saveConfig, SOURCE_QUERY, SOURCE_SUMMARY_QUERY } from "./repository.js";
-import { parseResponse, refreshEvents, validateYear, refreshDays, mergeYear, summarizeYear, type CalendarYear } from "./calendar.js";
+import { parseResponse, validateYear, refreshDays, mergeYear, summarizeYear, type CalendarYear } from "./year-data.js";
+import { refreshEvents } from "./events.js";
 import { hash, recordCheck, type SyncResult } from "./source.js";
 export async function syncYear(
     ctx: Ctx,
@@ -91,7 +91,6 @@ export async function syncYear(
         };
         const config = structuredClone(current.snapshot.config);
         refreshEvents(config, [...current.sources.filter((s) => s.year !== year), published], now);
-        validateCalendar(config);
         await saveConfig(ctx, current.snapshot, config, now, published);
         return error ? { year, status: "error", error } : { year, status: "updated" };
     } catch (e) {

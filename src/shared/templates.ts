@@ -15,3 +15,10 @@ export function validateTemplate(body: string, keys: readonly string[]) {
         throw new Error("变量格式错误");
     }
 }
+export function validateCopyText(value: unknown, field: { label: string; variables: readonly string[]; allowEmpty?: boolean }): asserts value is string {
+    if (typeof value !== "string" || (!field.allowEmpty && !value.trim())) {
+        throw new Error(field.label + "格式或长度错误");
+    }
+
+    validateTemplate(value, field.variables);
+}

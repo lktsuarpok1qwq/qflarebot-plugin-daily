@@ -2,7 +2,7 @@ import { fields, list, str, bool } from "../../../shared/validation.js";
 import type { Config } from "../types.js";
 import { LIMITS, SCHEMA_VERSION } from "../types.js";
 import { validDate } from "../../../shared/date.js";
-import { validateTemplate } from "../../../shared/templates.js";
+import { validateCopyText } from "../../../shared/templates.js";
 const FIELDS = {
     config: [
         "schemaVersion",
@@ -58,8 +58,7 @@ export function validateConfig(value: unknown, variables: readonly string[]): Co
     for (const template of c.templates) {
         fields(template, FIELDS.templates);
         str(template.name, 80, "模板名称");
-        str(template.body, Infinity, "模板内容", true);
-        validateTemplate(template.body, variables);
+        validateCopyText(template.body, { label: "模板内容", variables, allowEmpty: true });
     }
 
     list(c.recipients, LIMITS.recipients, "目标");

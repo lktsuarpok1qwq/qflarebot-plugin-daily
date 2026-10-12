@@ -92,9 +92,7 @@ function createRecipientsPage(app, ui) {
                 openid: $("openid").value.trim(),
                 enabled: $("recipientEnabled").checked,
             }));
-            await app.save();
-            editingRecipient = null;
-            app.render();
+            await app.save(undefined, () => { editingRecipient = null; });
             return;
         }
 
@@ -112,13 +110,9 @@ function createRecipientsPage(app, ui) {
 
             app.config.recipients = app.config.recipients.filter((r) => r.id !== id);
             app.config.bindings = app.config.bindings.filter((b) => b.recipientId !== id);
-            await app.save();
-
-            if (editingRecipient?.id === id) {
-                editingRecipient = null;
-            }
-
-            app.render();
+            await app.save(undefined, () => {
+                if (editingRecipient?.id === id) { editingRecipient = null; }
+            });
             return;
         }
     }

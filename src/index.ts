@@ -1,8 +1,7 @@
 import { definePlugin } from "@qqbot/sdk";
-import { defaults } from "./data/repository.js";
-import { installState } from "./shared/state.js";
+import { install } from "./data/repository.js";
 import { coreCommands, moduleCommands } from "./commands.js";
-import { modules } from "./modules/index.js";
+import { registry } from "./modules/index.js";
 import { api } from "./admin.js";
 import { HTML } from "./ui/index.js";
 export default definePlugin({
@@ -10,26 +9,21 @@ export default definePlugin({
     displayName: "每日助手",
     description: "定时通知、日历、天气与一言",
     apiVersion: 2,
-    permissions: ["db", "net", "proactive", "admin"],
+    permissions: [...new Set(["db", "admin", ...registry.permissions] as const)],
     hooks: {
         onInstall: async (ctx) => {
-            await installState(ctx, Object.assign(defaults(), ...modules.map((m) => m.initialConfig?.() ?? {})));
-
-            for (const module of modules) {
-                await module.install(ctx);
-            }
+            await install(ctx);
+            await registry.install(ctx);
         },
     },
     commands: {
         ...coreCommands,
         ...moduleCommands,
     },
-    cron: Object.fromEntries(modules.flatMap((m) => Object.entries(m.cron ?? {}))),
+    cron: registry.cron,
     ui: { path: "/ui/", title: "每日助手", icon: "CalendarDays" },
     routes: [
-        ...modules.flatMap((m) => (["GET", "POST"] as const).map((method) => ({
-            method, path: `/api/${m.id}/:action`, auth: "admin" as const, handler: m.admin,
-        }))),
+        ...registry.routes,
         {
             method: "GET",
             path: "/ui/*",

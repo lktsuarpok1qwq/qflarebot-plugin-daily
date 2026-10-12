@@ -121,7 +121,7 @@ async function dispatchPass(ctx: Ctx, variables: VariableAPI, clock: () => numbe
     const owned = await claimMany(ctx.db, claims, s.revision);
     const pending = claims.filter((c) => owned.has(deliveryKey(c.d)));
     const fresh = pending.some((item) => item.status === "sending")
-        ? await ctx.db.first<{ revision: number }>("SELECT revision FROM {state} WHERE id=1")
+        ? await ctx.db.first<{ revision: number }>("SELECT revision FROM {notification_state} WHERE id=1")
         : null;
     await Promise.all(
         pending.map(async ({ d, status, error }) => {

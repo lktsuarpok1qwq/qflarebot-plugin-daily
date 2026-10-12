@@ -1,3 +1,4 @@
+import { createCopyContract } from "../../shared/copy-contract.js";
 import { weatherSamples } from "./samples.js";
 import { outputTargets, type CopyDeclaration, type SettingsDeclaration } from "../../shared/declarations.js";
 import { WEATHER_COPY, WEATHER_FIELDS } from "./copy.js";
@@ -7,7 +8,7 @@ export const outputs = outputTargets([
     { id: "current", command: commands[0]!.name, suffix: " <地点>" },
     { id: "tomorrow", command: commands[0]!.name, suffix: " <地点> 明天" },
 ]);
-export const copyEditor: CopyDeclaration = {
+const declaration: CopyDeclaration = {
     id: "weather", title: "天气文案", initial: "current", variablesId: "weatherVariables",
     samples: weatherSamples,
     outputs,
@@ -29,3 +30,6 @@ export const settings: SettingsDeclaration = {
     ],
     test: { action: "test-weather-api", endpoint: "test", resultId: "weatherConnectionResult", hint: "使用当前凭证测试城市搜索、实况和预报，不保存、不发送" },
 };
+
+export const copyContract = createCopyContract<{ copy: typeof WEATHER_COPY }>(declaration);
+export const copyEditor = copyContract.editor;

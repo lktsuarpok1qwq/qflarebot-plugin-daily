@@ -1,3 +1,4 @@
+import { createCopyContract } from "../shared/copy-contract.js";
 import { outputTargets, type CopyDeclaration } from "../shared/declarations.js";
 import { COPY } from "../copy.js";
 export const commands = [{ name: "每日", description: "每日助手帮助" }];
@@ -6,7 +7,7 @@ export const outputs = outputTargets([
     { id: "feedback:error", label: "命令处理失败" },
     { id: "feedback:tooLong", label: "消息过长" },
 ]);
-export const copyEditor: CopyDeclaration = {
+const declaration: CopyDeclaration = {
     id: "reply", title: "系统文案", initial: "command:每日", outputs,
     fields: Object.fromEntries(outputs.map((target) => {
         const feedback = !target.command, key = target.id.split(":")[1]!;
@@ -19,3 +20,7 @@ export const copyEditor: CopyDeclaration = {
     })),
     views: outputs.map((target) => ({ id: target.id, keys: [target.id], targets: [target.id] })),
 };
+
+export const copyContract = createCopyContract<{ replies: typeof COPY.replies; commandFeedback: typeof COPY.commandFeedback }>(declaration);
+export const copyEditor = copyContract.editor;
+copyContract.validateOutputs({ commands: commands.map((command) => command.name) });

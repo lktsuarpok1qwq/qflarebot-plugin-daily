@@ -1,6 +1,6 @@
 import { renderWeather } from "./rendering.js";
 import type { WeatherConfig } from "./types.js";
-import { lookup, request, parseCurrent, parseForecast, NoWeatherData } from "./provider.js";
+import { lookup, request, parseCurrent, parseForecast, CURRENT_FIELDS, FORECAST_FIELDS, NoWeatherData } from "./provider.js";
 import { expand, commandLink, commandUrl } from "../../shared/interpolation.js";
 export function localDay(now: number, tz: string, offset = 0) {
     const parts = new Intl.DateTimeFormat("en", {
@@ -62,17 +62,17 @@ export async function queryWeather(
     const day = localDay(now, city.tz, tomorrow ? 1 : 0);
     const suffix = "/" + city.lat + "/" + city.lon;
     const body = tomorrow ? copy.tomorrow : copy.current;
-    const needsForecast = ["low", "high", "day", "night"].some((key) => body.includes("{{" + key + "}}"));
-    const needsCurrent = !tomorrow && ["condition", "temp", "feels", "humidity", "wind"].some((key) => body.includes("{{" + key + "}}"));
+    const forecastFields = FORECAST_FIELDS.filter((key) => body.includes("{{" + key + "}}"));
+    const currentFields = tomorrow ? [] : CURRENT_FIELDS.filter((key) => body.includes("{{" + key + "}}"));
 
     try {
         const [forecast, current] = await Promise.all([
-            needsForecast
-                ? request(config, "/weather/v1/daily" + suffix + "?days=2&localTime=true&lang=zh", fetcher).then(parseForecast)
+            forecastFields.length
+                ? request(config, "/weather/v1/daily" + suffix + "?days=2&localTime=true&lang=zh", fetcher).then((data) => parseForecast(data, forecastFields))
                 : Promise.resolve(null),
-            needsCurrent
+            currentFields.length
                 ? request(config, "/weather/v1/current" + suffix + "?localTime=true&lang=zh", fetcher).then(
-                    parseCurrent,
+                    (data) => parseCurrent(data, currentFields),
                 )
                 : Promise.resolve(null),
         ]);

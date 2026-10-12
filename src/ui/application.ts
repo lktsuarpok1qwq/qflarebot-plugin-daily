@@ -28,7 +28,7 @@ function createApp(bridge, ui, factories) {
         const value = await res.json();
 
         if (!res.ok) {
-            throw Error(value.error || "请求失败");
+            throw Object.assign(Error(value.error || "请求失败"), { kind: value.kind });
         }
 
         return value;
@@ -109,16 +109,16 @@ function createApp(bridge, ui, factories) {
             markdownPreview.refresh();
         }
     }
-    async function load(store = current()) {
-        const fresh = await store.api("state");
-        store.state = fresh;
+    async function load(store = current(), redraw = true) {
+        const fresh = await store.api(store.state ? "state?data=1" : "state");
+        store.state = { ...store.state, ...fresh };
         store.config = structuredClone(store.state.config);
         store.synchronized = true;
         app.dirty = false;
-        app.render();
-        app.status("配置已加载");
+
+        if (redraw) { app.render(); app.status("配置已加载"); }
     }
-    async function save(message = "已保存", store = current()) {
+    async function save(message = "已保存", afterSave, store = current()) {
         if (!store.synchronized) {
             throw Error("配置状态未确认，请先刷新配置");
         }
@@ -139,16 +139,29 @@ function createApp(bridge, ui, factories) {
         store.config = structuredClone(store.state.config);
 
         try {
-            await store.api("config", { revision: store.state.revision, config: candidate });
+            const { refresh, ...saved } = await store.api("config", { revision: store.state.revision, config: candidate });
             store.synchronized = false;
-            await load(store);
+
+            if (refresh) {
+                await load(store, false);
+            } else {
+                store.state = { ...store.state, ...saved };
+                store.config = structuredClone(saved.config);
+                store.synchronized = true;
+                app.dirty = false;
+            }
+
+            afterSave?.();
+            app.render();
             app.status(message);
         } catch (error) {
-            // A lost response can hide a successful save. Reconcile before more mutations.
-            try {
-                await load(store);
-            } catch {
-                store.synchronized = false;
+            // Only explicit pre-write rejection can skip reconciliation.
+            if (error.kind !== "validation") {
+                try {
+                    await load(store);
+                } catch {
+                    store.synchronized = false;
+                }
             }
 
             for (const field of draft) {
@@ -227,6 +240,8 @@ function createApp(bridge, ui, factories) {
         window.scrollTo(scroll.x, scroll.y);
     }
     async function action(a, id) {
+        if (a === "page" && id === app.page) { return; }
+
         const discardsDraft = [
             "reload",
             "page",

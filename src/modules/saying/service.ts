@@ -1,15 +1,11 @@
 import type { Ctx } from "../../shared/types.js";
 import { dateAt } from "../../shared/date.js";
 import { expand } from "../../shared/interpolation.js";
-import { dailyState, cached, publish } from "./repository.js";
+import { dailyState, publish } from "./repository.js";
 import { randomSaying } from "./provider.js";
 import type { SayingConfig } from "./config.js";
 export function render(config: SayingConfig, key: keyof SayingConfig["copy"], text: string) {
     return text ? expand(config.copy[key], { text }) : "";
-}
-export async function today(ctx: Ctx, at: number, fetcher: typeof fetch = fetch) {
-    const day = dateAt(at);
-    return (await cached(ctx.db, day)) ?? await publish(ctx.db, day, await randomSaying(fetcher));
 }
 export function createResolver(ctx: Ctx) {
     const days = new Map<string, Promise<Record<string, string>>>();

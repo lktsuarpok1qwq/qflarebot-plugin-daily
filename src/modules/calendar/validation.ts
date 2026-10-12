@@ -3,8 +3,7 @@ import { BODY_BYTES } from "../../shared/types.js";
 import type { CalendarConfig } from "./types.js";
 import { fields, str, bool, list } from "../../shared/validation.js";
 import { validDate } from "../../shared/date.js";
-import { validateTemplate } from "../../shared/templates.js";
-import { calendarCopyVariables } from "./copy-fields.js";
+import { copyContract } from "./definition.js";
 export function validateCalendar(value: unknown): CalendarConfig {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         throw new Error("日历配置必须为对象");
@@ -62,18 +61,7 @@ export function validateCalendar(value: unknown): CalendarConfig {
         }
     }
 
-    if (!c.calendarCopy || typeof c.calendarCopy !== "object" || Array.isArray(c.calendarCopy)) {
-        throw new Error("缺少日历模块文案");
-    }
-
-    fields(c.calendarCopy, Object.keys(calendarCopyVariables));
-
-    for (const [key, variables] of Object.entries(calendarCopyVariables)) {
-        const value = c.calendarCopy[key as keyof typeof c.calendarCopy];
-
-        str(value, Infinity, "日历模块文案", true);
-        validateTemplate(value, variables);
-    }
+    copyContract.validate(c);
 
     if (new TextEncoder().encode(JSON.stringify(c)).length > BODY_BYTES) {
         throw new Error("日历配置总量超限");

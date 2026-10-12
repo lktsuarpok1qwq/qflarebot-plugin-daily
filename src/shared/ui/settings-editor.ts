@@ -61,10 +61,7 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
         } else if (a === 'save-' + d.id) {
             app.config = candidate();
 
-            try { await app.save(); } catch (error) { app.render(); throw error; }
-
-            reset();
-            app.render();
+            await app.save(undefined, reset);
         }
     }
     function input(el) {

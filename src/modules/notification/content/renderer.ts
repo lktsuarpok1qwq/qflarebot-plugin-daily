@@ -1,5 +1,6 @@
 import type { Rendered } from "../../../shared/types.js";
 import type { Config, Task } from "../types.js";
+import { expand } from "../../../shared/interpolation.js";
 import { validateTemplate } from "../../../shared/templates.js";
 import type { VariableAPI } from "../../../shared/variables.js";
 export async function renderMessage(
@@ -19,7 +20,6 @@ export async function renderMessage(
     validateTemplate(body, keysAllowed);
     const keys = [...body.matchAll(/\{\{([^{}]+)\}\}/g)].map((m) => m[1]!);
     const values = await resolve(keys, due);
-    // A single substitution preserves Markdown and line breaks authored in the template.
-    const text = body.replace(/\{\{([^{}]+)\}\}/g, (_, key: string) => values[key] ?? "");
+    const text = expand(body, {}, values);
     return { text: text.trim() ? text : "" };
 }

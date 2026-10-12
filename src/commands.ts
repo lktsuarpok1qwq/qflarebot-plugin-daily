@@ -6,8 +6,8 @@ import { readConfig } from "./data/repository.js";
 import { dateAt } from "./shared/date.js";
 import { expand, commandLink } from "./shared/interpolation.js";
 import { executeCommand } from "./content/execute-command.js";
-import { modules } from "./modules/index.js";
-export const moduleCommands = Object.fromEntries(modules.flatMap((module) => Object.entries(module.commands?.(executeCommand) ?? {})));
+import { registry } from "./modules/index.js";
+export const moduleCommands = registry.commands(executeCommand);
 export const commandLinks = Object.keys(moduleCommands).filter((name) => !/\s/.test(name)).map((name) => commandLink("/" + name, "/" + name)).join(" · ");
 export async function renderCommand(ctx: Ctx, name: CommandName, override?: Config, now = Date.now()) {
     const config = override ?? await readConfig(ctx.db),

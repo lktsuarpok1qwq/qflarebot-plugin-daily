@@ -136,9 +136,7 @@ function createCalendarEntries(app, ui) {
         if (a === "toggle-event") {
             const event = app.config.events.find((h) => h.id === id);
             event.enabled = !event.enabled;
-            await app.save(event.enabled ? "条目已启用" : "条目已停用，已退出查询与通知");
-            editingEvent = null;
-            app.render();
+            await app.save(event.enabled ? "条目已启用" : "条目已停用，已退出查询与通知", () => { editingEvent = null; });
             return;
         }
 
@@ -198,9 +196,7 @@ function createCalendarEntries(app, ui) {
             }
 
             put(app.config.events, mergeDraft(app.config.events.find((h) => h.id === value.id), originalEvent, value));
-            await app.save();
-            editingEvent = null;
-            app.render();
+            await app.save(undefined, () => { editingEvent = null; });
             return;
         }
 
@@ -224,6 +220,8 @@ function createCalendarEntries(app, ui) {
                 await app.load();
                 app.status("已恢复默认，后续跟随接口更新");
             } catch (error) {
+                if (error.kind === "validation") { throw error; }
+
                 // Reconcile a potentially successful request whose response was lost.
                 app.synchronized = false;
 
@@ -249,9 +247,7 @@ function createCalendarEntries(app, ui) {
             }
 
             app.config.events = app.config.events.filter((h) => h.id !== id);
-            await app.save();
-            editingEvent = null;
-            app.render();
+            await app.save(undefined, () => { editingEvent = null; });
             return;
         }
     }

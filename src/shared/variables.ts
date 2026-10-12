@@ -1,25 +1,25 @@
 import { dateAt } from "./date.js";
 import type { Ctx } from "./types.js";
 export type VariableComposition = { description: string; scope: string; fields: Readonly<Record<string, string>> };
-export type VariableProvider = {
-    id: string;
-    ui: { title: string };
-    variables?: readonly string[];
+export type VariableCapability = {
+    variables: readonly string[];
     variableDescriptions?: Readonly<Record<string, string>>;
     variableCompositions?: Readonly<Record<string, VariableComposition>>;
     variableGroups?: readonly { label: string; variables: readonly string[] }[];
     sampleVariables?: () => Record<string, string>;
-    createResolver?: (ctx: Ctx) => (at: number) => Promise<Record<string, string>>;
+    createResolver: (ctx: Ctx) => (at: number) => Promise<Record<string, string>>;
 };
+export type VariableProvider = { id: string; title: string; variables?: VariableCapability };
 export type VariableAPI = ReturnType<typeof createVariables>;
 export function createVariables(modules: readonly VariableProvider[]) {
-    const keys = ["日期", "星期", ...modules.flatMap((m) => [...(m.variables ?? [])])];
-    const descriptions = { 日期: "发送日期", 星期: "发送日期对应的星期", ...Object.fromEntries(modules.flatMap((m) => Object.entries(m.variableDescriptions ?? {}))) };
-    const groups = [{ label: "通用", variables: ["日期", "星期"] }, ...modules.flatMap((m) => (m.variableGroups ?? []).map((group) => ({ ...group, label: m.ui.title + " · " + group.label })))];
-    const compositions = Object.fromEntries(modules.flatMap((m) => Object.entries(m.variableCompositions ?? {})));
+    const keys = ["日期", "星期", ...modules.flatMap((m) => [...(m.variables?.variables ?? [])])];
+    const descriptions = { 日期: "发送日期", 星期: "发送日期对应的星期", ...Object.fromEntries(modules.flatMap((m) => Object.entries(m.variables?.variableDescriptions ?? {}))) };
+    const groups = [{ label: "通用", variables: ["日期", "星期"] }, ...modules.flatMap((m) => (m.variables?.variableGroups ?? []).map((group) => ({ ...group, label: m.title + " · " + group.label })))];
+    const compositions = Object.fromEntries(modules.flatMap((m) => Object.entries(m.variables?.variableCompositions ?? {})));
+    const owners = new Map(modules.flatMap((module) => (module.variables?.variables ?? []).map((key) => [key, module] as const)));
     /** One read per requested module per round; one rendering per scheduled time. */
     function resolve(ctx: Ctx) {
-        const resolvers = new Map<string, ReturnType<NonNullable<VariableProvider["createResolver"]>>>();
+        const resolvers = new Map<string, ReturnType<VariableCapability["createResolver"]>>();
         const cache = new Map<string, Map<number, Promise<Record<string, string>>>>();
         return async (keys: string[], at: number) => {
             const values: Record<string, string> = {};
@@ -32,13 +32,25 @@ export function createVariables(modules: readonly VariableProvider[]) {
                 if (keys.includes("星期")) { values.星期 = `星期${"日一二三四五六"[new Date(day).getUTCDay()]}`; }
             }
 
-            for (const module of modules) {
-                if (!module.createResolver || !keys.some((key) => module.variables?.includes(key))) {
-                    continue;
-                }
+            const requested = new Map<VariableProvider, Set<string>>();
+
+            for (const key of keys) {
+                const owner = owners.get(key);
+
+                if (!owner) { continue; }
+
+                let selection = requested.get(owner);
+
+                if (!selection) { selection = new Set(); requested.set(owner, selection); }
+
+                selection.add(key);
+            }
+
+            for (const [module, selection] of requested) {
+                const capability = module.variables!;
 
                 if (!resolvers.has(module.id)) {
-                    resolvers.set(module.id, module.createResolver(ctx));
+                    resolvers.set(module.id, capability.createResolver(ctx));
                     cache.set(module.id, new Map());
                 }
 
@@ -50,7 +62,7 @@ export function createVariables(modules: readonly VariableProvider[]) {
 
                 const resolved = await dates.get(at)!;
 
-                for (const key of keys) {
+                for (const key of selection) {
                     if (Object.hasOwn(resolved, key)) {
                         values[key] = resolved[key]!;
                     }
@@ -61,7 +73,7 @@ export function createVariables(modules: readonly VariableProvider[]) {
         };
     }
 
-    const sampleValues = () => ({ 日期: "2026-10-03", 星期: "星期六", ...Object.fromEntries(modules.flatMap((module) => Object.entries(module.sampleVariables?.() ?? {}).filter(([key]) => module.variables?.includes(key)))) });
+    const sampleValues = () => ({ 日期: "2026-10-03", 星期: "星期六", ...Object.fromEntries(modules.flatMap((module) => Object.entries(module.variables?.sampleVariables?.() ?? {}).filter(([key]) => module.variables?.variables?.includes(key)))) });
     return { keys, descriptions, groups, compositions, sampleValues, resolve };
 }
 

@@ -1,19 +1,20 @@
 import { renderWeather } from "./rendering.js";
-import { commands } from "./definition.js";
-import { registerCommands } from "../../shared/declarations.js";
-import type { ModuleAPI } from "../contract.js";
+import { copyContract, commands } from "./definition.js";
+import type { ModuleDefinition } from "../../shared/modules.js";
 import { install, snapshot } from "./repository.js";
 import { queryWeather } from "./service.js";
 import { api } from "./admin.js";
 import { weatherPage } from "./ui/page.js";
-export const weather: ModuleAPI = {
+export const weather: ModuleDefinition = {
     id: "weather",
+    title: "天气",
+    permissions: ["db", "net"],
     install,
-    commands: (execute) => registerCommands(commands, execute, async (input) => queryWeather((await snapshot(input.ctx.db)).config, input.args)),
+    copy: copyContract,
+    commands: { definitions: commands, render: async (input) => queryWeather((await snapshot(input.ctx.db)).config, input.args) },
     admin: api,
     ui: {
-        title: "天气",
         source: `const renderWeatherSample = ${renderWeather.toString()};` + weatherPage,
-        factory: "createWeatherPage",
+        sections: [{ id: "settings", title: "接入设置", factory: "createSettingsEditor" }, { id: "copy", title: "文案", factory: "createWeatherCopyEditor" }],
     },
 };

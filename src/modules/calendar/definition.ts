@@ -1,3 +1,4 @@
+import { createCopyContract } from "../../shared/copy-contract.js";
 import { calendarSamples } from "./samples.js";
 import { outputTargets, type CopyDeclaration } from "../../shared/declarations.js";
 import { CALENDAR_COPY } from "./copy.js";
@@ -8,7 +9,7 @@ export const commands = [
     { name: "假期 下个", description: "下个尚未开始的节日" },
     { name: "假期 剩余", description: "今天起今年所有剩余节日" },
 ];
-export const outputs = outputTargets([
+const outputs = outputTargets([
     { id: "help", command: commands[0]!.name },
     { id: "next", command: commands[1]!.name },
     { id: "remaining", command: commands[2]!.name },
@@ -42,13 +43,13 @@ const branches: Record<keyof CalendarCopy, { category: string; label: string; sa
     none: { category: "查询提示", label: "没有下个节日", samples: ["ordinary"], sampleNames: { ordinary: "没有下个节日" }, targets: ["next"] },
     noneRemaining: { category: "查询提示", label: "今年没有剩余节日", samples: ["ordinary"], sampleNames: { ordinary: "今年无剩余节日" }, targets: ["remaining"] },
 };
-export const copyEditor: CopyDeclaration = {
+const declaration: CopyDeclaration = {
     id: "calendar", title: "日历文案", initial: "next", outputs,
     description: "换行写在整体文案中，条目间隔由模板末尾决定；修改对关联命令和变量生效，留空不输出", variablesId: "calendarCopyVariables",
     categoryParents: { 日期信息: "整体文案", 日期状态: "整体文案", 调休信息: "整体文案", 今日内容: "整体文案" },
     variableCompositions: fragmentCompositions, samples: calendarSamples(),
     fields: Object.fromEntries(Object.entries(branches).map(([key, branch]) => [key, {
-        ...branch, path: ["calendarCopy", key], default: CALENDAR_COPY.text[key as keyof CalendarCopy],
+        ...branch, allowEmpty: true, path: ["calendarCopy", key], default: CALENDAR_COPY.text[key as keyof CalendarCopy],
         variables: Object.fromEntries(calendarCopyVariables[key as keyof CalendarCopy].map((name) => [name, itemVariables[name as keyof typeof itemVariables]])),
     }])),
     views: outputs.map((target) => {
@@ -58,3 +59,6 @@ export const copyEditor: CopyDeclaration = {
         return { id: target.id, samples: target.id === "eventToday" ? ["diy", "multiple", "referenceToday"] : ["next", "variable-next"].includes(target.id) ? ["future", "single", "reference", "diy", "partial", "unknown", "ordinary"] : undefined, keys: keys.filter((key) => !branches[key].targets || branches[key].targets!.includes(target.id)), targets: [target.id] };
     }),
 };
+
+export const copyContract = createCopyContract<{ calendarCopy: CalendarCopy }>(declaration);
+export const copyEditor = copyContract.editor;

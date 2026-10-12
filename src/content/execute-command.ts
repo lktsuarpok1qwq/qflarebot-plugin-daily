@@ -5,7 +5,7 @@ import { COPY } from "../copy.js";
 import { dateAt } from "../shared/date.js";
 import { expand } from "../shared/interpolation.js";
 import { message } from "../shared/message.js";
-export function feedbackText(copy: CommandFeedback, key: keyof CommandFeedback, now = Date.now()) {
+function feedbackText(copy: CommandFeedback, key: keyof CommandFeedback, now = Date.now()) {
     const day = dateAt(now);
     return expand(copy[key], { today: day, year: day.slice(0, 4) });
 }

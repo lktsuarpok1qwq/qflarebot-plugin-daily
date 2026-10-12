@@ -7,16 +7,17 @@ function messageSamples(samples, body) {
 
 function createMessageEditor(app, ui, settings) {
     const { $, esc } = ui, id = settings.id;
-    let mode = 'sample', referenceHTML = '';
+    let mode = 'sample', referenceHTML = '', activeFields = [];
     const sample = createSamplePreview(app, ui, { ...settings, active: () => mode === 'sample' });
     function render(fields, options = {}) {
+        activeFields = fields;
         const groups = fields.map((field) => ({ label: field.label, variables: Object.keys(field.variables) }));
         const descriptions = Object.assign({}, ...fields.map((field) => field.variables));
         referenceHTML = '<div id="' + esc(options.variablesId || id + 'Variables') + '">' + ui.variableReference(groups, descriptions, options.variableGroups, options.variableCompositions || app.state.variableCompositions) + '</div>';
         return '<div class="markdown-workspace"><div class="markdown-editor">' + fields.map((field) =>
             '<div id="' + esc(field.wrapperId || field.id + '-field') + '"><label for="' + esc(field.id) + '">' + esc(field.label) + '</label>' +
             (field.uses?.length ? '<small>用于 ' + field.uses.map((name) => '<strong>' + esc(name) + '</strong>').join('、') + '</small>' : '') +
-            '<textarea id="' + esc(field.id) + '">' + esc(field.value) + '</textarea>' + ui.toolbar(field.id) + '</div>'
+            '<textarea id="' + esc(field.id) + '" aria-describedby="' + esc(field.id) + '-error">' + esc(field.value) + '</textarea>' + ui.toolbar(field.id) + '<p id="' + esc(field.id) + '-error" class="error" role="status" hidden></p></div>'
         ).join('') + '</div><div class="local-preview">' +
             '<div class="actions" role="group" aria-label="预览方式">' +
             '<button data-action="copy-preview-layout" aria-pressed="' + (mode === 'layout') + '">排版预览</button>' +
@@ -34,9 +35,32 @@ function createMessageEditor(app, ui, settings) {
         document.querySelectorAll('[data-action^="copy-preview-"]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.action === a)));
         return true;
     }
+    function validate() {
+        let valid = true;
+
+        for (const field of activeFields) {
+            const input = $(field.id), error = $(field.id + '-error');
+
+            if (!input || !error) { continue; }
+
+            let message = '';
+
+            try {
+                validateCopyText(input.value, { ...field, variables: Object.keys(field.variables) });
+            } catch (e) { message = e.message; }
+
+            error.textContent = message;
+            error.hidden = !message;
+            input.setAttribute('aria-invalid', String(!!message));
+            valid = valid && !message;
+        }
+
+        return valid;
+    }
     return {
-        render, action, reference: () => referenceHTML, refresh: sample.refresh,
-        input() { sample.input(); return false; }, change: sample.change,
+        validate, render, action, reference: () => referenceHTML,
+        refresh() { validate(); sample.refresh(); },
+        input() { validate(); sample.input(); return false; }, change: sample.change,
         selectBranch() { mode = 'sample'; sample.reset(); },
         transientInputs: sample.transientInputs,
     };

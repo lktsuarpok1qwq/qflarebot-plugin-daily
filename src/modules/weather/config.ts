@@ -1,10 +1,9 @@
-import { WEATHER_COPY, WEATHER_FIELDS } from "./copy.js";
+import { copyContract } from "./definition.js";
 import type { WeatherConfig } from "./types.js";
 import { BODY_BYTES } from "../../shared/types.js";
 import { fields, str } from "../../shared/validation.js";
-import { validateTemplate } from "../../shared/templates.js";
 export function defaults(): WeatherConfig {
-    return { schemaVersion: 2, host: "", apiKey: "", copy: structuredClone(WEATHER_COPY) };
+    return copyContract.defaults({ schemaVersion: 2, host: "", apiKey: "" });
 }
 function validateConnection(c: Pick<WeatherConfig, "host" | "apiKey">) {
     str(c.host, 200, "API Host", true);
@@ -22,10 +21,9 @@ function validateConnection(c: Pick<WeatherConfig, "host" | "apiKey">) {
 export function parseConfig(raw: string): WeatherConfig {
     const c = JSON.parse(raw) as WeatherConfig;
 
-    if (c?.schemaVersion !== 2 || !c.copy || Array.isArray(c.copy) || Object.keys(WEATHER_COPY).some((key) => typeof c.copy[key as keyof typeof WEATHER_COPY] !== "string")) {
-        throw new Error("天气配置格式错误");
-    }
+    if (c?.schemaVersion !== 2) { throw new Error("天气配置格式错误"); }
 
+    copyContract.validate(c, true);
     validateConnection(c);
     return c;
 }
@@ -39,16 +37,7 @@ export function validate(value: unknown): WeatherConfig {
     fields(c, ["schemaVersion", "host", "apiKey", "copy"]);
     validateConnection(c);
 
-    if (!c.copy || typeof c.copy !== "object" || Array.isArray(c.copy)) {
-        throw new Error("天气文案格式错误");
-    }
-
-    fields(c.copy, Object.keys(WEATHER_COPY));
-
-    for (const key of Object.keys(WEATHER_COPY) as (keyof typeof WEATHER_COPY)[]) {
-        str(c.copy[key], Infinity, "天气文案");
-        validateTemplate(c.copy[key], Object.keys(WEATHER_FIELDS[key].variables));
-    }
+    copyContract.validate(c);
 
     if (new TextEncoder().encode(JSON.stringify(c)).length > BODY_BYTES) {
         throw new Error("天气配置总量超限");

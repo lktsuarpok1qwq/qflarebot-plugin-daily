@@ -1,5 +1,5 @@
 import type { CalendarConfig, CalendarEvent, SourceSummary } from "./types.js";
-import { activeEvents } from "./calendar.js";
+import { activeEvents } from "./events.js";
 import { dateAt, validDate } from "../../shared/date.js";
 export type Query<T> = {
     status: "known" | "none" | "unknown";
