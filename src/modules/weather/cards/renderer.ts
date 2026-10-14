@@ -1,4 +1,4 @@
-import { createT2I, type T2IService, type T2IAssets } from "../../../shared/t2i/index.js";
+import { createT2I, type T2IAssets } from "../../../shared/t2i/index.js";
 import fonts from "./generated/glyphs.json";
 import emoji from "./generated/emoji.js";
 import { weatherCardRequest } from "./request.js";
@@ -22,16 +22,14 @@ const backgrounds = {
     "clear-night": () => import("./generated/clear-night.js"),
     "cloudy-night": () => import("./generated/cloudy-night.js"),
 };
-let current: { theme: WeatherTheme; renderer: T2IService } | undefined;
+const assets: T2IAssets = { backgrounds: {}, fonts: fonts as T2IAssets["fonts"], emoji, icons: {} };
+const renderer = createT2I(assets);
 export async function renderWeatherCard(data: WeatherCardData, copy: WeatherCardCopy) {
     const request = weatherCardRequest(data, copy), theme = request.background as WeatherTheme;
-    let selected = current;
 
-    if (selected?.theme !== theme) {
-        const background = (await backgrounds[theme]()).default;
-        selected = { theme, renderer: createT2I({ backgrounds: { [theme]: background }, fonts: fonts as T2IAssets["fonts"], emoji, icons: {} }) };
-        current = selected;
+    if (!Object.hasOwn(assets.backgrounds, theme)) {
+        assets.backgrounds[theme] = (await backgrounds[theme]()).default;
     }
 
-    return selected.renderer.render(request);
+    return renderer.render(request);
 }

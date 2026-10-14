@@ -61,9 +61,11 @@ export class RegionCanvas {
 
         for (let yy = top; yy < bottom; yy++) {
             let cursor = left;
-            const spans = this.info.fixed!.allowedRows[yy]!;
+            const { segments, segmentStarts } = this.info.fixed!;
 
-            for (const [start, end] of spans) {
+            for (let index = segmentStarts[yy]!; index < segmentStarts[yy + 1]!; index++) {
+                const [, start, end] = segments[index]!;
+
                 if (start <= cursor) {
                     cursor = Math.max(cursor, end);
                 }
@@ -104,9 +106,12 @@ export class RegionCanvas {
                 let pos = chunk + 13 + (from - start) * this.channels;
                 let weight = stride * height - rawOffset - (from - start) * this.channels;
 
+                if (row.buffer !== this.data.buffer) {
+                    this.data.set(row.subarray(from * this.channels, to * this.channels), pos);
+                }
+
                 for (let x = from * this.channels; x < to * this.channels; x++, pos++, weight--) {
                     const value = row[x]!, delta = value - this.original[pos]!;
-                    this.data[pos] = value;
 
                     if (delta !== 0) { a += delta; b += delta * weight; changed = true; }
                 }
@@ -116,8 +121,6 @@ export class RegionCanvas {
                 if (changed) {
                     a %= 65521; b %= 65521;
                     view.setUint32(crcEnd, crc32(this.data, chunk + 4, crcEnd));
-                } else {
-                    this.data.set(this.original.subarray(crcEnd, crcEnd + 4), crcEnd);
                 }
             }
         }

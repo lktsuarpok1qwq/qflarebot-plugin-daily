@@ -22,7 +22,6 @@ export function weatherCardRequest(data: WeatherCardData, copy: WeatherCardCopy)
     text("area", copy.area, 24, foreground, "left", 26);
     text("temperature", data.tomorrow ? copy.tomorrow : copy.current, data.tomorrow ? 40 : 64, foreground);
     text("condition", copy.condition, 28, foreground);
-    elements.push({ type: "emoji", region: "symbol", value: WEATHER_SYMBOLS[theme], x: 0, y: 0, size: 128 });
     text("first", data.tomorrow ? copy.minimum : copy.feels, 24, panel, "center", 32);
     text("humidity", copy.humidity, 24, panel, "center", 32);
     text("wind", copy.wind, 24, panel, "center", 32);

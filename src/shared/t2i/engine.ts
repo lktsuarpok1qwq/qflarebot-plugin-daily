@@ -7,9 +7,9 @@ import { emojiId, layout, layoutRuns } from "./text.js";
 
 import { RenderError } from "./errors.js";
 
-export function renderPng(request: T2IRequest, resources: RenderResources): Uint8Array {
+export async function renderPng(request: T2IRequest, resources: RenderResources): Promise<Uint8Array> {
     const { backgroundInfo, getBackground, getEmoji, getIcon, getFont } = resources;
-    const background = getBackground(request.background);
+    const background = await getBackground(request.background);
     const bitmap = new PNGCanvas(background.data, background.info);
     const emojis = new Map<string, Pixels>();
 
@@ -80,11 +80,11 @@ export function renderPng(request: T2IRequest, resources: RenderResources): Uint
                     emoji(token.value, x, y + size * 0.1, size, bounds);
                 } else {
                     for (const character of token.value) {
-                        const glyph = font.glyphs[character]!;
-                        check(bounds, x + glyph.left, y + size + glyph.top, glyph.width, glyph.height);
-                        const mask = getGlyph(font, character);
-                        stampMask(bitmap, mask, x + glyph.left, y + size + glyph.top, ink);
-                        x += glyph.advance;
+                        const glyph = getGlyph(font, character);
+                        const { width, height, left, top, advance } = glyph;
+                        check(bounds, x + left, y + size + top, width, height);
+                        stampMask(bitmap, glyph, x + left, y + size + top, ink);
+                        x += advance;
                     }
 
                     continue;

@@ -1,5 +1,5 @@
 import { unzlibSync } from "fflate";
-import { fromBase64 } from "./encoding.js";
+import { fromBase64, inflateBackground } from "./encoding.js";
 import { createFonts } from "./fonts.js";
 import { unsupported } from "./errors.js";
 import type { IconName } from "./types.js";
@@ -49,7 +49,7 @@ export function createResources(assets: T2IAssets) {
         return { width: data.width, height: data.height, data: pixels };
     }
 
-    function getBackground(id: string): Pixels & { info: RowPNGInfo } {
+    async function getBackground(id: string): Promise<Pixels & { info: RowPNGInfo }> {
         const source = backgroundInfo(id);
         let cached = backgrounds.get(source);
 
@@ -60,7 +60,7 @@ export function createResources(assets: T2IAssets) {
             if (cached.encoded !== source.data) { cached = undefined; }
         }
 
-        const data = cached?.data ?? fromBase64(source.data);
+        const data = cached?.data ?? await inflateBackground(source);
         const { info } = source;
 
         if (data.length !== source.bytes || info.width !== source.width || info.height !== source.height

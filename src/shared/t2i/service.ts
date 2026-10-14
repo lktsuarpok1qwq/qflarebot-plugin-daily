@@ -39,7 +39,7 @@ export function createT2IService(assets: T2IAssets, reportFailure?: (stage: stri
                 const request = validateRequest(input, resources);
                 release = await acquire();
                 stage = "render";
-                const data = renderPng(request, resources);
+                const data = await renderPng(request, resources);
                 const { width, height } = resources.backgroundInfo(request.background);
                 return { ok: true, data, mimeType: "image/png", width, height };
             } catch (error) {

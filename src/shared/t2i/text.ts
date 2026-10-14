@@ -1,12 +1,12 @@
 import { parse as parseEmoji } from "@twemoji/parser";
 import type { TextRun } from "./types.js";
-import type { Atlas } from "./fonts.js";
+import { getGlyph, type Atlas } from "./fonts.js";
 import { unsupported } from "./errors.js";
 
 export type Token = { kind: "text" | "emoji"; value: string; width: number; color?: string };
 export type Line = { tokens: Token[]; width: number };
 // 此集合内每个码点都是独立字素，且不能单独构成 Emoji；组合符、变体和其他文字走通用路径
-const simpleText = /^[\x20-\x7e\n\u3000-\u3029\u3400-\u4dbf\u4e00-\u9fff\uff01-\uff60]*$/;
+const simpleText = /^[\x20-\x7e\n\u3000-\u3029\u3400-\u4dbf\u4e00-\u9fff\uff01-\uff60·°℃℉‘’“”…—]*$/;
 let segmenter: Intl.Segmenter | undefined;
 
 export function emojiId(value: string): string {
@@ -37,13 +37,13 @@ export function layout(text: string, font: Atlas, size: number, maxWidth: number
                 continue;
             }
 
+            let width = 0;
+
             for (const character of segment) {
-                if (!Object.hasOwn(font.glyphs, character)) {
-                    unsupported("文字包含尚未生成的字形");
-                }
+                width += getGlyph(font, character).advance;
             }
 
-            tokens.push({ ...style, kind: "text", value: segment, width: [...segment].reduce((width, character) => width + font.glyphs[character]!.advance, 0) });
+            tokens.push({ ...style, kind: "text", value: segment, width });
         }
     }
 

@@ -5,7 +5,6 @@ type Segment = [number, number, number, number, number];
 export interface RegionPNGInfo {
     segments: Segment[];
     segmentStarts: number[];
-    allowedRows: [number, number][][];
 }
 
 export interface RowPNGInfo {
@@ -30,6 +29,7 @@ export interface SpriteSource extends EncodedPixels {
 }
 export interface BackgroundSource extends EncodedPixels {
     description: string;
+    /** zlib 还原后的 PNG 字节数 */
     bytes: number;
     info: RowPNGInfo;
     regions?: Record<string, Region>;
