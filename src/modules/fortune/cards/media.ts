@@ -1,7 +1,6 @@
 import type { Route, RouteInput } from "@qqbot/sdk";
 import type { Ctx } from "../../../shared/types.js";
 import { addDays, dateAt, validDate } from "../../../shared/date.js";
-import { renderer } from "./renderer.js";
 import { fortuneCardRequest } from "./request.js";
 import type { CardRow, CardSnapshot } from "./store.js";
 const PREFIX = "fortune/cards/";
@@ -17,10 +16,18 @@ export function publicOrigin(ctx: Ctx): string {
 
     return url.origin;
 }
+type ImageStage = "cache_check" | "request" | "render" | "image_save";
+export class CardImageError extends Error {
+    constructor(readonly stage: ImageStage, cause: unknown) {
+        super(String(cause), { cause });
+        this.name = "CardImageError";
+    }
+}
 export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", origin: string) {
     const deadline = Date.now() + 10_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let expired = false;
+    let stage: ImageStage = "cache_check";
     const check = () => {
         if (expired || Date.now() >= deadline) { throw new Error("运势图片准备超时"); }
     };
@@ -30,23 +37,31 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
         check();
 
         if (!existing) {
+            stage = "request";
             const snapshot = JSON.parse(row.snapshot) as CardSnapshot;
-            const result = await renderer.render(fortuneCardRequest(snapshot.content, view, snapshot.labels));
+            const request = fortuneCardRequest(snapshot.content, view, snapshot.labels);
+            stage = "render";
+            const { renderer } = await import("./renderer.js");
+            check();
+            const result = await renderer.render(request);
             check();
 
             if (!result.ok) { throw new Error(`运势卡生成失败：${result.code} ${result.error}`); }
 
+            stage = "image_save";
             await ctx.r2.put(path, result.data, { contentType: "image/png" });
             check();
         }
 
-        return `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/fortune/cards/${row.day}/${row.token}/${view}`;
+        return { url: `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/fortune/cards/${row.day}/${row.token}/${view}`, cache: existing ? "hit" : "miss" };
     };
 
     try {
         return await Promise.race([prepare(), new Promise<never>((_, reject) => {
             timer = setTimeout(() => { expired = true; reject(new Error("运势图片准备超时")); }, 10_000);
         })]);
+    } catch (error) {
+        throw new CardImageError(stage, error);
     } finally {
         if (timer !== undefined) { clearTimeout(timer); }
     }
@@ -59,7 +74,17 @@ async function readImage({ ctx, params }: RouteInput) {
         return new Response(null, { status: 404 });
     }
 
-    const stream = await ctx.r2.getStream(key(day, token, view));
+    let stream;
+
+    try {
+        stream = await ctx.r2.getStream(key(day, token, view));
+    } catch (error) {
+        ctx.logger.warn("运势图片读取失败", { stage: "image_read", view, error: String(error) });
+        throw error;
+    }
+
+    if (!stream) { ctx.logger.warn("运势图片不存在", { stage: "image_read", view }); }
+
     return stream ? new Response(stream, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } }) : new Response(null, { status: 404 });
 }
 export const cardRoutes: Route[] = [{ method: "GET", path: "/fortune/cards/:day/:token/:view", auth: "public", handler: readImage }];

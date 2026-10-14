@@ -8,7 +8,7 @@ import type { FortuneConfig } from "../config.js";
 import { cardLabels } from "./labels.js";
 import { drawCard } from "./draw.js";
 import { userKey, readCard, claimCard, markDrawn } from "./store.js";
-import { cardImage, publicOrigin } from "./media.js";
+import { CardImageError, cardImage, publicOrigin } from "./media.js";
 export async function renderCardCommand({ ctx, session }: CommandInput, name: string, config: FortuneConfig): Promise<Rendered> {
     const day = dateAt(Date.now()), id = await userKey(ctx.botId, session.userId);
     let row = await readCard(ctx.db, id);
@@ -27,11 +27,11 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
 
     if (config.imageEnabled) {
         try {
-            const url = await cardImage(ctx, row, view, publicOrigin(ctx));
-            const text = `![运势 #540px #${height}px](${url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
-            return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, afterSend };
+            const image = await cardImage(ctx, row, view, publicOrigin(ctx));
+            const text = `![运势 #540px #${height}px](${image.url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
+            return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, diagnostics: { view, imageCache: image.cache }, afterSend };
         } catch (error) {
-            ctx.logger.warn("运势图片准备失败，使用文字回复", { error: String(error) });
+            ctx.logger.warn("运势图片准备失败，使用文字回复", { stage: error instanceof CardImageError ? error.stage : "public_address", view, error: String(error) });
         }
     }
 

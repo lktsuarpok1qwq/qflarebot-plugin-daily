@@ -100,17 +100,25 @@ export class RegionCanvas {
                     continue;
                 }
 
-                for (let x = from * this.channels; x < to * this.channels; x++) {
-                    const local = x - start * this.channels, pos = chunk + 13 + local;
+                let changed = false;
+                let pos = chunk + 13 + (from - start) * this.channels;
+                let weight = stride * height - rawOffset - (from - start) * this.channels;
+
+                for (let x = from * this.channels; x < to * this.channels; x++, pos++, weight--) {
                     const value = row[x]!, delta = value - this.original[pos]!;
                     this.data[pos] = value;
 
-                    if (delta !== 0) { a += delta; b += delta * (stride * height - rawOffset - local); }
+                    if (delta !== 0) { a += delta; b += delta * weight; changed = true; }
                 }
 
-                a %= 65521; b %= 65521;
                 const crcEnd = chunk + 13 + (end - start) * this.channels;
-                view.setUint32(crcEnd, crc32(this.data, chunk + 4, crcEnd));
+
+                if (changed) {
+                    a %= 65521; b %= 65521;
+                    view.setUint32(crcEnd, crc32(this.data, chunk + 4, crcEnd));
+                } else {
+                    this.data.set(this.original.subarray(crcEnd, crcEnd + 4), crcEnd);
+                }
             }
         }
 

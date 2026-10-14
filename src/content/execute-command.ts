@@ -32,7 +32,7 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
             throw new Error("命令文案为空");
         }
     } catch (error) {
-        input.ctx.logger.warn("命令处理失败", { command: name, error: String(error) });
+        input.ctx.logger.warn("命令处理失败", { command: name, stage: "command_render", error: String(error) });
         return feedback(input.ctx, "error");
     }
 
@@ -40,7 +40,7 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
         const [sent] = await deliverReply(input.session, result.reply ?? message(result.text));
 
         if (sent && !sent.ok) {
-            input.ctx.logger.warn("命令回复失败", { command: name, code: sent.code, error: sent.error });
+            input.ctx.logger.warn("命令回复失败", { ...result.diagnostics, command: name, stage: "send", status: sent.status, code: sent.code, traceId: sent.traceId, error: sent.error });
 
             if (sent.code === 40054007) {
                 return feedback(input.ctx, "tooLong");
@@ -49,10 +49,10 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
 
         if (sent?.ok && result.afterSend) {
             try { await result.afterSend(); } catch (error) {
-                input.ctx.logger.warn("命令发送后记录失败", { command: name, error: String(error) });
+                input.ctx.logger.warn("命令发送后记录失败", { ...result.diagnostics, command: name, stage: "after_send", error: String(error) });
             }
         }
     } catch (error) {
-        input.ctx.logger.warn("命令回复状态不确定", { command: name, error: String(error) });
+        input.ctx.logger.warn("命令回复状态不确定", { ...result.diagnostics, command: name, stage: "send_unknown", error: String(error) });
     }
 };
