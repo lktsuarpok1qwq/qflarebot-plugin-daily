@@ -176,6 +176,11 @@
     },
     {
       "method": "GET",
+      "path": "/weather/cards/:day/:token",
+      "auth": "public"
+    },
+    {
+      "method": "GET",
       "path": "/api/weather/:action",
       "auth": "admin"
     },

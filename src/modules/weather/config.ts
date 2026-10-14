@@ -1,9 +1,10 @@
+import { WEATHER_CARD_COPY } from "./cards/copy.js";
 import { copyContract } from "./definition.js";
 import type { WeatherConfig } from "./types.js";
 import { BODY_BYTES } from "../../shared/types.js";
 import { fields, str } from "../../shared/validation.js";
 export function defaults(): WeatherConfig {
-    return copyContract.defaults({ schemaVersion: 2, host: "", apiKey: "" });
+    return copyContract.defaults({ schemaVersion: 2, host: "", apiKey: "", imageEnabled: true, cardCopy: { ...WEATHER_CARD_COPY } });
 }
 function validateConnection(c: Pick<WeatherConfig, "host" | "apiKey">) {
     str(c.host, 200, "API Host", true);
@@ -23,7 +24,12 @@ export function parseConfig(raw: string): WeatherConfig {
 
     if (c?.schemaVersion !== 2) { throw new Error("天气配置格式错误"); }
 
+    c.imageEnabled ??= true;
+    c.cardCopy ??= { ...WEATHER_CARD_COPY };
     copyContract.validate(c, true);
+
+    if (typeof c.imageEnabled !== "boolean") { throw new Error("图片开关格式错误"); }
+
     validateConnection(c);
     return c;
 }
@@ -34,8 +40,10 @@ export function validate(value: unknown): WeatherConfig {
         throw new Error("天气配置格式错误");
     }
 
-    fields(c, ["schemaVersion", "host", "apiKey", "copy"]);
+    fields(c, ["schemaVersion", "host", "apiKey", "copy", "imageEnabled", "cardCopy"]);
     validateConnection(c);
+
+    if (typeof c.imageEnabled !== "boolean") { throw new Error("图片开关格式错误"); }
 
     copyContract.validate(c);
 

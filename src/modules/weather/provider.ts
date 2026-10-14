@@ -22,6 +22,13 @@ function number(value: unknown): number {
 
     return value;
 }
+function percent(value: unknown) {
+    const humidity = number(value);
+
+    if (humidity < 0 || humidity > 1) { throw new Error("和风天气湿度错误"); }
+
+    return String(Math.round(humidity * 100));
+}
 function measurement(value: unknown, unit: string) {
     const v = object(value);
 
@@ -134,20 +141,15 @@ export function parseCurrent(raw: unknown, fields: readonly (keyof Current)[] = 
     const data = object(raw);
     const readers = {
         condition: () => text(object(data.condition).text),
+        code: () => typeof object(data.condition).code === "string" ? String(object(data.condition).code) : "999",
         temp: () => measurement(data.temperature, "°C"),
         feels: () => measurement(data.feelsLike, "°C"),
-        humidity: () => {
-            const humidity = number(data.humidity);
-
-            if (humidity < 0 || humidity > 1) { throw new Error("和风天气湿度错误"); }
-
-            return String(Math.round(humidity * 100));
-        },
+        humidity: () => percent(data.humidity),
         wind: () => measurement(object(data.wind).speed, "m/s"),
     };
     return Object.fromEntries(fields.map((key) => [key, readers[key]()]));
 }
-export function parseForecast(raw: unknown, fields: readonly (typeof FORECAST_FIELDS[number])[] = FORECAST_FIELDS): Forecast {
+export function parseForecast(raw: unknown, fields: readonly (typeof FORECAST_FIELDS[number])[] = FORECAST_FIELDS, image = false): Forecast {
     const data = object(raw);
 
     if (!Array.isArray(data.days)) { throw new Error("和风天气预报格式错误"); }
@@ -165,7 +167,20 @@ export function parseForecast(raw: unknown, fields: readonly (typeof FORECAST_FI
             day: () => text(object(object(day.daytime).condition).text),
             night: () => text(object(object(day.nighttime).condition).text),
         };
-        return { date: start.slice(0, 10), ...Object.fromEntries(fields.map((key) => [key, readers[key]()])) };
+        const values = { date: start.slice(0, 10), ...Object.fromEntries(fields.map((key) => [key, readers[key]()])) };
+
+        if (!image) { return values; }
+
+        const daytime = object(day.daytime), nighttime = object(day.nighttime);
+        const astro = day.astro && typeof day.astro === "object" ? day.astro as Record<string, unknown> : {};
+        const optionalMeasurement = (value: unknown, unit: string) => value == null ? "—" : measurement(value, unit);
+        return {
+            ...values,
+            code: String(object(daytime.condition).code ?? "999"), nightCode: String(object(nighttime.condition).code ?? "999"),
+            sunrise: typeof astro.sunrise === "string" ? astro.sunrise : undefined, sunset: typeof astro.sunset === "string" ? astro.sunset : undefined,
+            humidity: daytime.humidity == null ? "—" : percent(daytime.humidity),
+            wind: optionalMeasurement(daytime.wind && object(daytime.wind).speed, "m/s"),
+        };
     });
     return { days };
 }

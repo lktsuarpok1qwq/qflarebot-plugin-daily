@@ -1,49 +1,27 @@
-# Dependencies and generated build output
-node_modules/
-dist/
-coverage/
-playwright-report/
-test-results/
-*.tsbuildinfo
-*.tgz
-
-# QFlareBot requires the root manifest when installing from GitHub
-!/manifest.json
-
-# Local development and verification (not required by host builds)
-/scripts/
-/test/
-/assets/
-/src/modules/fortune/cards/backgrounds/
-/src/modules/fortune/cards/generated/assets.json
-/vitest.config.ts
-/tsconfig.json
-/package.local-lock.json
-/package.local.json
-
-# Personal development preferences
+# Local development files
+/dev/
 /AGENTS.md
 /.agents/
+/.vscode/
+/.idea/
 /.prettierrc.json
 /.prettierignore
 /.editorconfig
-/.vscode/
-/.idea/
 *.code-workspace
 
-# Local implementation documents and verification reports
-/TODO.md
-/qflarebot-plugin-daily_V*.md
-/reports/
+# Log currently held open by the external Lab service
+/reports/settings-perf/lab-service.log
 
-# Local tool state and logs
+# Tool-required dependency and output locations
+node_modules/
+dist/
+*.tsbuildinfo
 .wrangler/
 .vite/
-.cache/
 .prettiercache
 *.log
 
-# Local environment and credentials (keep shareable examples)
+# Local credentials
 .env
 .env.*
 !.env.example

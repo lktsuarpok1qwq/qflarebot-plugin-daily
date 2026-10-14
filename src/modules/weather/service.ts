@@ -1,4 +1,6 @@
 import { renderWeather } from "./rendering.js";
+import { WEATHER_CARD_COPY, type WeatherCardData } from "./cards/copy.js";
+import type { Forecast, Current } from "./types.js";
 import type { WeatherConfig } from "./types.js";
 import { lookup, request, parseCurrent, parseForecast, CURRENT_FIELDS, FORECAST_FIELDS, NoWeatherData } from "./provider.js";
 import { expand, commandLink, commandUrl } from "../../shared/interpolation.js";
@@ -18,7 +20,8 @@ export async function queryWeather(
     args: string[],
     now = Date.now(),
     fetcher: typeof fetch = fetch,
-) {
+    image = false,
+): Promise<{ text: string; card?: WeatherCardData }> {
     const copy = config.copy;
 
     if (!args.length) {
@@ -65,13 +68,18 @@ export async function queryWeather(
 
     const day = localDay(now, city.tz, tomorrow ? 1 : 0);
     const suffix = "/" + city.lat + "/" + city.lon;
-    const forecastFields = FORECAST_FIELDS.filter((key) => body.includes("{{" + key + "}}"));
-    const currentFields = tomorrow ? [] : CURRENT_FIELDS.filter((key) => body.includes("{{" + key + "}}"));
+    const cardCopy = config.cardCopy ?? WEATHER_CARD_COPY;
+    const imageBody = image ? Object.entries(cardCopy).filter(([key]) => tomorrow ? !["current", "feels"].includes(key) : !["tomorrow", "minimum"].includes(key)).map(([, value]) => value).join("") : "";
+    const needed = body + imageBody;
+    const forecastFields = FORECAST_FIELDS.filter((key) => needed.includes("{{" + key + "}}") || image && ["day", "night"].includes(key));
+    const currentFields: (keyof Current)[] = tomorrow ? [] : CURRENT_FIELDS.filter((key) => needed.includes("{{" + key + "}}") || image && key === "condition");
+
+    if (image && !tomorrow) { currentFields.push("code"); }
 
     try {
         const [forecast, current] = await Promise.all([
             forecastFields.length
-                ? request(config, "/weather/v1/daily" + suffix + "?days=2&localTime=true&lang=zh", fetcher).then((data) => parseForecast(data, forecastFields))
+                ? request(config, "/weather/v1/daily" + suffix + "?days=2&localTime=true&lang=zh", fetcher).then((data) => parseForecast(data, forecastFields, image))
                 : Promise.resolve(null),
             currentFields.length
                 ? request(config, "/weather/v1/current" + suffix + "?localTime=true&lang=zh", fetcher).then(
@@ -79,7 +87,7 @@ export async function queryWeather(
                 )
                 : Promise.resolve(null),
         ]);
-        const daily = forecast ? forecast.days.find((item) => item.date === day) : { date: day };
+        const daily: Forecast["days"][number] | undefined = forecast ? forecast.days.find((item) => item.date === day) : { date: day };
 
         if (!daily) {
             return { text: copy.unavailable };
@@ -87,21 +95,37 @@ export async function queryWeather(
 
         const cityLabel = city.name + " · " + city.area;
 
+        let card: WeatherCardData | undefined;
+
+        if (image) {
+            const date = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", timeZone: "UTC" }).format(Date.parse(day));
+            const sunrise = Date.parse(daily.sunrise ?? ""), sunset = Date.parse(daily.sunset ?? "");
+            const night = Number.isFinite(sunrise) && Number.isFinite(sunset) && (now < sunrise || now >= sunset);
+            card = {
+                values: {
+                    ...Object.fromEntries(Object.entries(daily).filter((entry): entry is [string, string] => typeof entry[1] === "string")), ...current,
+                    city: city.name, area: city.area, date, condition: tomorrow ? daily.day ?? "" : current?.condition ?? ""
+                },
+                code: tomorrow ? daily.code ?? "999" : current?.code ?? "999", dayCode: daily.code ?? "999", nightCode: daily.nightCode ?? "999",
+                night: !tomorrow && night, tomorrow,
+                fragments: { current_url: commandUrl("/天气 " + city.id), tomorrow_url: commandUrl("/天气 " + city.id + " 明天") },
+            };
+        }
+
         if (tomorrow) {
             return {
+                card,
                 text: renderWeather(copy, "tomorrow", { values: { ...daily, city: cityLabel }, fragments: { current_url: commandUrl("/天气 " + city.id) } }, expand),
             };
         }
 
         const updated = new Intl.DateTimeFormat("zh-CN", {
             timeZone: city.tz,
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
+            month: "long",
+            day: "numeric",
         }).format(now);
         return {
+            card,
             text:
                 renderWeather(copy, "current", { values: { ...daily, ...current!, city: cityLabel, updated }, fragments: { tomorrow_url: commandUrl("/天气 " + city.id + " 明天") } }, expand),
         };

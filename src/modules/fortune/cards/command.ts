@@ -8,7 +8,8 @@ import type { FortuneConfig } from "../config.js";
 import { cardLabels } from "./labels.js";
 import { drawCard } from "./draw.js";
 import { userKey, readCard, claimCard, markDrawn } from "./store.js";
-import { CardImageError, cardImage, publicOrigin } from "./media.js";
+import { publicOrigin } from "../../../shared/public-origin.js";
+import { CardImageError, cardImage } from "./media.js";
 export async function renderCardCommand({ ctx, session }: CommandInput, name: string, config: FortuneConfig): Promise<Rendered> {
     const day = dateAt(Date.now()), id = await userKey(ctx.botId, session.userId);
     let row = await readCard(ctx.db, id);

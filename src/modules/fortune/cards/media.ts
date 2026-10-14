@@ -5,17 +5,6 @@ import { fortuneCardRequest } from "./request.js";
 import type { CardRow, CardSnapshot } from "./store.js";
 const PREFIX = "fortune/cards/";
 const key = (day: string, token: string, view: string) => `${PREFIX}${day}/${token}/${view}.png`;
-export function publicOrigin(ctx: Ctx): string {
-    if (!ctx.publicUrl) { throw new Error("请在 QFlareBot 设置公开 HTTPS 地址"); }
-
-    const url = new URL(ctx.publicUrl);
-
-    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
-        throw new Error("QFlareBot 公开地址须为 HTTPS 域名");
-    }
-
-    return url.origin;
-}
 type ImageStage = "cache_check" | "request" | "render" | "image_save";
 export class CardImageError extends Error {
     constructor(readonly stage: ImageStage, cause: unknown) {
