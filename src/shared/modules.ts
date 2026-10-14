@@ -1,18 +1,21 @@
 import type { CopyContract } from "./copy-contract.js";
-import type { CommandInput, CronJob, Route, RouteInput, Permission } from "@qqbot/sdk";
+import type { CommandInput, CronJob, CronMap, Route, RouteInput, Permission } from "@qqbot/sdk";
 import type { CommandExecutor, Ctx, Rendered } from "./types.js";
 import { registerCommands, type CommandDefinition } from "./declarations.js";
 import { createVariables, type VariableCapability, type VariableAPI } from "./variables.js";
+import { validateRoutes } from "./routes.js";
 export type ModuleServices = { variables: VariableAPI };
 export type ModuleDefinition = {
     id: string;
     title: string;
     permissions?: readonly Permission[];
     install?: (ctx: Ctx) => Promise<void>;
+    cleanup?: (ctx: Ctx, scheduledAt: number) => Promise<void | { ok: boolean; message: string }>;
     variables?: VariableCapability;
     copy?: CopyContract;
     commands?: { definitions: readonly CommandDefinition[]; render: (input: CommandInput, name: string, services: ModuleServices) => Promise<Rendered> };
     cron?: Record<string, Omit<CronJob, "name" | "handler"> & { handler: (input: Parameters<CronJob["handler"]>[0], services: ModuleServices) => ReturnType<CronJob["handler"]> }>;
+    routes?: readonly Route[];
     admin?: (input: RouteInput, services: ModuleServices) => ReturnType<Route["handler"]>;
     ui?: { source?: string } & ({ factory: string; sections?: never } | { sections: readonly { id: string; title: string; factory: string }[]; factory?: never });
 };
@@ -47,6 +50,30 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
 
     const variables = createVariables(modules);
     const services: ModuleServices = { variables };
+    const cleanup = modules.filter((module) => module.cleanup);
+    const cron: CronMap = Object.fromEntries(modules.flatMap((module) => Object.entries(module.cron ?? {}).map(([name, job]) => [name, { ...job, handler: (input: Parameters<CronJob["handler"]>[0]) => job.handler(input, services) }])));
+
+    if (cleanup.length) {
+        unique(jobs, "cleanup", "定时任务");
+        cron.cleanup = {
+            cron: "10 16 * * *", handler: async ({ ctx, scheduledAt }) => {
+                const failures: string[] = [];
+
+                for (const module of cleanup) {
+                    try {
+                        const result = await module.cleanup!(ctx, scheduledAt);
+
+                        if (result && !result.ok) { throw new Error(result.message); }
+                    } catch (error) {
+                        failures.push(`${module.id}: ${error instanceof Error ? error.message : String(error)}`);
+                    }
+                }
+
+                if (failures.length) { throw new Error(`模块清理失败：${failures.join("；")}`); }
+            },
+        };
+    }
+
     return {
         variables,
         permissions: [...new Set(modules.flatMap((module) => [...module.permissions ?? [], ...(module.admin ? ["admin" as const] : [])]))],
@@ -57,9 +84,9 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
         commands(execute: CommandExecutor) {
             return Object.fromEntries(modules.flatMap((module) => module.commands ? Object.entries(registerCommands(module.commands.definitions, execute, (input, name) => module.commands!.render(input, name, services))) : []));
         },
-        cron: Object.fromEntries(modules.flatMap((module) => Object.entries(module.cron ?? {}).map(([name, job]) => [name, { ...job, handler: (input: Parameters<CronJob["handler"]>[0]) => job.handler(input, services) }]))),
-        routes: modules.flatMap((module) => module.admin ? (["GET", "POST"] as const).map((method): Route => ({
+        cron,
+        routes: validateRoutes(modules.flatMap((module) => [...module.routes ?? [], ...(module.admin ? (["GET", "POST"] as const).map((method): Route => ({
             method, path: `/api/${module.id}/:action`, auth: "admin", handler: (input) => module.admin!(input, services),
-        })) : []),
+        })) : [])])),
     };
 }

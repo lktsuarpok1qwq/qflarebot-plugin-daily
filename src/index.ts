@@ -1,3 +1,4 @@
+import { validateRoutes } from "./shared/routes.js";
 import { definePlugin } from "@qqbot/sdk";
 import { install } from "./data/repository.js";
 import { coreCommands, moduleCommands } from "./commands.js";
@@ -7,8 +8,8 @@ import { HTML } from "./ui/index.js";
 export default definePlugin({
     name: "daily",
     displayName: "每日助手",
-    description: "定时通知、日历、天气、一言、运势与新闻搜索与游戏资讯",
-    apiVersion: 2,
+    description: "定时通知、日历、天气、一言、运势、新闻搜索与游戏资讯",
+    apiVersion: 3,
     permissions: [...new Set(["db", "admin", ...registry.permissions] as const)],
     hooks: {
         onInstall: async (ctx) => {
@@ -22,7 +23,7 @@ export default definePlugin({
     },
     cron: registry.cron,
     ui: { path: "/ui/", title: "每日助手", icon: "CalendarDays" },
-    routes: [
+    routes: validateRoutes([
         ...registry.routes,
         {
             method: "GET",
@@ -42,5 +43,5 @@ export default definePlugin({
             auth: "admin" as const,
             handler: api,
         })),
-    ],
+    ]),
 });

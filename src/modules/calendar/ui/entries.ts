@@ -118,7 +118,7 @@ function createCalendarEntries(app, ui) {
                 ) +
                 "</select></label>" +
                 "</div>" +
-                check("启用条目", "eventEnabled", h.enabled) +
+                '<fieldset><legend>功能开关</legend>' + check("启用条目", "eventEnabled", h.enabled) + "</fieldset>" +
                 '<p id="eventRepeatHelp" class="muted"' +
                 (h.kind === "event" ? "" : " hidden") +
                 ">每年按公历月日重复，非闰年跳过 2 月 29 日；自定义节日不代表放假</p>" +

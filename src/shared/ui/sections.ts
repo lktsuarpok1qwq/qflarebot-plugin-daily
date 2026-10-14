@@ -41,6 +41,8 @@ function createLazySection(app, ui, key, title, page) {
 }
 function createSections(app, ui, title, entries) {
     let selected = Object.keys(entries)[0];
+    const pages = {};
+    const current = () => pages[selected] ??= entries[selected].create();
     function render() {
         return (
             (Object.keys(entries).length > 1 ? '<nav class="subnav" aria-label="' +
@@ -59,7 +61,7 @@ function createSections(app, ui, title, entries) {
                     )
                     .join("") +
                 "</nav>" : "") +
-            entries[selected].page.render()
+            current().render()
         );
     }
     async function action(a, id) {
@@ -71,24 +73,24 @@ function createSections(app, ui, title, entries) {
             return;
         }
 
-        await entries[selected].page.action(a, id);
+        await current().action(a, id);
     }
     function reset() {
-        for (const entry of Object.values(entries)) {
-            entry.page.reset?.();
+        for (const page of Object.values(pages)) {
+            page.reset?.();
         }
     }
     return {
         get activeSection() { return selected; },
-        get discardActions() { return Object.values(entries).flatMap((entry) => entry.page.discardActions || []); },
-        get transientInputs() { return Object.values(entries).flatMap((entry) => entry.page.transientInputs || []); },
+        get discardActions() { return current().discardActions || []; },
+        get transientInputs() { return current().transientInputs || []; },
         render,
-        refresh: () => entries[selected].page.refresh?.(),
+        refresh: () => current().refresh?.(),
         action,
         reset,
-        input: (el) => entries[selected].page.input?.(el),
-        change: (el) => entries[selected].page.change?.(el),
-        focus: (el) => entries[selected].page.focus?.(el),
+        input: (el) => current().input?.(el),
+        change: (el) => current().change?.(el),
+        focus: (el) => current().focus?.(el),
     };
 }
 `;

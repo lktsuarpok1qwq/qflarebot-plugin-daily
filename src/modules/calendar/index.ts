@@ -15,6 +15,7 @@ export const calendar: ModuleDefinition = {
     title: "日历",
     permissions: ["db", "net"],
     install,
+    cleanup: (ctx, scheduledAt) => maintenance(ctx, "cleanup", scheduledAt),
     copy: copyContract,
     variables: {
         ...calendarVariables,
@@ -34,12 +35,6 @@ export const calendar: ModuleDefinition = {
             cron: "0,1 16 * * *",
             handler: async ({ ctx, scheduledAt }) => {
                 await maintenance(ctx, "sync", scheduledAt, false, new Date(scheduledAt).getUTCMinutes() as 0 | 1);
-            },
-        },
-        calendar_cleanup: {
-            cron: "10 16 * * *",
-            handler: async ({ ctx, scheduledAt }) => {
-                await maintenance(ctx, "cleanup", scheduledAt);
             },
         },
     },

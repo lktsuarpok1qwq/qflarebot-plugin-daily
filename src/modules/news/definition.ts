@@ -54,11 +54,11 @@ export const copyContract = createCopyContract<{ copy: NewsCopy; search: SearchC
 export const settings: SettingsDeclaration = {
     id: "news-settings", title: "游戏新闻设置", description: "每小时采集，保留今天及前两天，每个来源最多 100 条；CS 资讯仅使用 5EPlay，标题无法识别的内容可能漏筛",
     fields: [
-        ...Object.entries(SOURCES).map(([key, source]) => ({ key, id: "news-" + key, label: source.name, type: "checkbox" as const })),
-        { key: "total", id: "news-total", label: "每页总条数", type: "number" },
-        { key: "discovery", id: "news-discovery", label: "发现预留", type: "number", hint: "用于今日简报，可设为 0；一方不足由另一方补足" },
-        { key: "subscriptions", id: "news-subscriptions", label: "订阅游戏", type: "text", hint: "所有群共用，靠前优先；游戏之间用分号，名称与别名用逗号，如 CS2,反恐精英；塔科夫,Tarkov" },
-        { key: "exclude", id: "news-exclude", label: "排除关键词", type: "text", hint: "用逗号分隔，留空不额外排除" },
-        ...Object.entries(CATEGORIES).map(([key, label]) => ({ key, id: "news-" + key, label, type: "checkbox" as const })),
+        ...Object.entries(SOURCES).map(([key, source]) => ({ key, id: "news-" + key, label: source.name, group: "新闻来源", type: "checkbox" as const })),
+        ...Object.entries(CATEGORIES).map(([key, label]) => ({ key, id: "news-" + key, label, group: "新闻类型", type: "checkbox" as const })),
+        { key: "total", id: "news-total", label: "每页总条数", group: "列表参数", type: "number" },
+        { key: "discovery", id: "news-discovery", label: "发现预留", group: "列表参数", type: "number", hint: "用于今日简报，可设为 0；一方不足由另一方补足" },
+        { key: "subscriptions", id: "news-subscriptions", label: "订阅游戏", group: "订阅与筛选", type: "text", hint: "所有群共用，靠前优先；游戏之间用分号，名称与别名用逗号，如 CS2,反恐精英；塔科夫,Tarkov" },
+        { key: "exclude", id: "news-exclude", label: "排除关键词", group: "订阅与筛选", type: "text", hint: "用逗号分隔，留空不额外排除" },
     ],
 };

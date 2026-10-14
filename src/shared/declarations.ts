@@ -56,6 +56,7 @@ export function registerCommands(definitions: readonly CommandDefinition[], exec
     }]));
 }
 export type SettingField = {
+    group?: string;
     key: string;
     id: string;
     label: string;

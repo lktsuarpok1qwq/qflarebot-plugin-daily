@@ -13,9 +13,12 @@ test-results/
 # Local development and verification (not required by host builds)
 /scripts/
 /test/
+/assets/
+/src/modules/fortune/cards/backgrounds/
+/src/modules/fortune/cards/generated/assets.json
 /vitest.config.ts
 /tsconfig.json
-/package-lock.json
+/package.local-lock.json
 /package.local.json
 
 # Personal development preferences

@@ -1,7 +1,7 @@
 {
   "name": "daily",
   "version": "2.0.0",
-  "apiVersion": 2,
+  "apiVersion": 3,
   "permissions": [
     "db",
     "admin",
@@ -76,6 +76,14 @@
       ]
     },
     {
+      "name": "运势 解",
+      "description": "查看今日解签",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
       "name": "新闻",
       "description": "新闻帮助",
       "scenes": [
@@ -133,20 +141,16 @@
       "cron": "* * * * *"
     },
     {
-      "name": "cleanup",
-      "cron": "10 16 * * *"
-    },
-    {
       "name": "calendar_sync",
       "cron": "0,1 16 * * *"
     },
     {
-      "name": "calendar_cleanup",
-      "cron": "10 16 * * *"
-    },
-    {
       "name": "game_news_sync",
       "cron": "0 * * * *"
+    },
+    {
+      "name": "cleanup",
+      "cron": "10 16 * * *"
     }
   ],
   "routes": [
@@ -192,6 +196,11 @@
     },
     {
       "method": "GET",
+      "path": "/fortune/cards/:day/:token/:view",
+      "auth": "public"
+    },
+    {
+      "method": "GET",
       "path": "/api/fortune/:action",
       "auth": "admin"
     },
@@ -230,7 +239,7 @@
   "services": [],
   "durableObjects": [],
   "displayName": "每日助手",
-  "description": "定时通知、日历、天气、一言、运势与新闻搜索与游戏资讯",
+  "description": "定时通知、日历、天气、一言、运势、新闻搜索与游戏资讯",
   "ui": {
     "path": "/ui/",
     "title": "每日助手",

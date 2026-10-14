@@ -37,9 +37,12 @@ import { createBridge } from "/bridge.js";
     ...registry.pages.map((page) => page.source ?? ""),
     `
 const bridge = await createBridge();
+bridge.setTitle("每日助手");
+document.querySelector("header").hidden = bridge.embedded;
+document.body.classList.toggle("embedded", bridge.embedded);
 await createApp(bridge, createUI(), {
     ${registry.pages.map((page) => {
-        const sections = page.sections?.map((section) => `${JSON.stringify(section.id)}: { label: ${JSON.stringify(section.title)}, page: ${section.factory}(app, ui) }`).join(",");
+        const sections = page.sections?.map((section) => `${JSON.stringify(section.id)}: { label: ${JSON.stringify(section.title)}, create: () => ${section.factory}(app, ui) }`).join(",");
         const factory = page.factory ?? `(app, ui) => createSections(app, ui, ${JSON.stringify(page.title)}, {${sections}})`;
         return `${JSON.stringify(page.id)}: { title: ${JSON.stringify(page.title)}, create: ${factory}, module: true },`;
     }).join("\n")}

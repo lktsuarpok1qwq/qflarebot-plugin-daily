@@ -42,8 +42,8 @@ function createRecipientsPage(app, ui) {
                 (r.scene === "c2c" ? "selected" : "") +
                 ">私聊</option></select></label>" +
                 field("OpenID", "openid", r.openid, "text", existing) +
-                check("接收定时通知", "recipientEnabled", r.enabled) +
                 "</div>" +
+                '<fieldset><legend>功能开关</legend>' + check("接收定时通知", "recipientEnabled", r.enabled) + "</fieldset>" +
                 btn("保存对象", "save-recipient", "", "primary") +
                 btn("取消", "cancel-recipient") +
                 "</section>";

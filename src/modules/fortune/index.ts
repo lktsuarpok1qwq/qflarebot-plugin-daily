@@ -1,28 +1,28 @@
 import type { ModuleDefinition } from "../../shared/modules.js";
 import { configAdmin } from "../../shared/admin.js";
-import { dateAt } from "../../shared/date.js";
-import { expand } from "../../shared/interpolation.js";
 import { copyContract, commands, settings } from "./definition.js";
 import { install, snapshot, save } from "./repository.js";
 import { corpus } from "./corpus.js";
-import { generateFortune } from "./service.js";
-import { renderFortune } from "./rendering.js";
+import { renderCardCommand } from "./cards/command.js";
+import { installCards } from "./cards/store.js";
+import { cardRoutes, cleanupCards } from "./cards/media.js";
+import { renderFortuneText } from "./cards/text.js";
 import { fortunePage } from "./ui/page.js";
 export const fortune: ModuleDefinition = {
-    id: "fortune", title: "运势", permissions: ["db"], install, copy: copyContract,
+    id: "fortune", title: "运势", permissions: ["db"], install: async (ctx) => { await install(ctx); await installCards(ctx.db); }, routes: cardRoutes,
+    cleanup: cleanupCards, copy: copyContract,
     commands: {
-        definitions: commands, render: async ({ ctx, session }, name) => {
+        definitions: commands, render: async (input, name) => {
+            const { ctx, session } = input;
             const { config } = await snapshot(ctx.db);
 
-            if (name === "运势") { return { text: renderFortune(config.copy, { kind: "help" }, expand) }; }
+            if (name === "运势") { return { text: config.copy.help }; }
 
-            if (!session.userId.trim()) { return { text: renderFortune(config.copy, { kind: "noIdentity" }, expand) }; }
+            if (!session.userId.trim()) { return { text: config.copy.noIdentity }; }
 
-            const parts = new Set((["good", "bad", "effect", "item", "egg"] as const).filter((key) => config.copy.body.includes("{{" + key + "}}") && config.copy[key]));
-            const result = corpus.data ? generateFortune({ userId: session.userId, date: dateAt(Date.now()), config, corpus: corpus.data, parts }) : undefined;
-            return { text: renderFortune(config.copy, result ? { kind: "draw", result } : { kind: "unavailable" }, expand) };
+            return renderCardCommand(input, name, config);
         }
     },
     admin: configAdmin({ label: "运势", snapshot, save, present: (state) => ({ ...state, corpusStatus: corpus.status }), declaration: () => ({ copyEditor: copyContract.editor, settings }) }),
-    ui: { source: `const renderFortuneSample = ${renderFortune.toString()};` + fortunePage, sections: [{ id: "settings", title: "设置", factory: "createFortuneSettings" }, { id: "copy", title: "文案", factory: "createFortuneCopyEditor" }] },
+    ui: { source: `const renderFortuneText = ${renderFortuneText.toString()};` + fortunePage, sections: [{ id: "settings", title: "设置", factory: "createFortuneSettings" }, { id: "copy", title: "文案", factory: "createFortuneCopyEditor" }] },
 };

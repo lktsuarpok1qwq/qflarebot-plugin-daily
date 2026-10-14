@@ -26,7 +26,7 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
     try {
         result = await render();
 
-        if (!result.text.trim()) {
+        if (!result.reply && !result.text.trim()) {
             if (result.empty === "skip") { return; }
 
             throw new Error("命令文案为空");
@@ -37,13 +37,19 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
     }
 
     try {
-        const [sent] = await deliverReply(input.session, message(result.text));
+        const [sent] = await deliverReply(input.session, result.reply ?? message(result.text));
 
         if (sent && !sent.ok) {
             input.ctx.logger.warn("命令回复失败", { command: name, code: sent.code, error: sent.error });
 
             if (sent.code === 40054007) {
                 return feedback(input.ctx, "tooLong");
+            }
+        }
+
+        if (sent?.ok && result.afterSend) {
+            try { await result.afterSend(); } catch (error) {
+                input.ctx.logger.warn("命令发送后记录失败", { command: name, error: String(error) });
             }
         }
     } catch (error) {

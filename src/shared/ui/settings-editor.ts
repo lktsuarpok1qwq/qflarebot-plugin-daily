@@ -3,27 +3,42 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
     const { $, esc, btn } = ui;
     let drafts = {}, cleared = new Set();
     const settings = () => declaration();
+    function renderFields(fields) {
+        return '<div class="grid">' + fields.map((field) => {
+            const value = field.secret ? drafts[field.key] || '' : drafts[field.key] ?? app.config[field.key];
+            let input;
+
+            if (field.type === 'checkbox') {
+                input = ui.check(esc(field.label), field.id, value);
+            } else if (field.type === 'select') {
+                input = '<label>' + esc(field.label) + '<select id="' + esc(field.id) + '">' + ui.options(field.options, String(value)) + '</select></label>';
+            } else {
+                input = '<label>' + esc(field.label) + '<input id="' + esc(field.id) + '" type="' + field.type + '" value="' + esc(value) + '"' +
+                    (field.type === 'password' ? ' autocomplete="new-password"' : '') +
+                    (field.secret ? ' placeholder="' + esc(app.state[field.secret.saved] ? '已保存，留空保留' : '填写 ' + field.label) + '"' : '') + '></label>';
+            }
+
+            return '<div>' + input + (field.hint ? '<small>' + esc(field.hint) + '</small>' : '') +
+                (field.secret ? ui.check('清除已保存密钥', field.secret.clearId, cleared.has(field.key)) : '') + '</div>';
+        }).join('') + '</div>';
+    }
     function render() {
-        const d = settings();
+        const d = settings(), groups = new Map();
+
+        for (const field of d.fields) {
+            const title = field.group || (field.type === 'checkbox' ? '开关选项' : '参数设置');
+
+            if (!groups.has(title)) { groups.set(title, []); }
+
+            groups.get(title).push(field);
+        }
+
+        const content = groups.size > 1
+            ? Array.from(groups, ([title, fields]) => '<fieldset><legend>' + esc(title) + '</legend>' + renderFields(fields) + '</fieldset>').join('')
+            : renderFields(d.fields);
         return '<section><h2>' + esc(d.title) + '</h2>' + (d.description ? '<p>' + esc(d.description) + '</p>' : '') +
             (d.link ? '<p><a href="' + esc(d.link.url) + '" target="_blank" rel="noopener noreferrer">' + esc(d.link.label) + '</a></p>' : '') +
-            '<div class="grid">' + d.fields.map((field) => {
-                const value = field.secret ? drafts[field.key] || '' : drafts[field.key] ?? app.config[field.key];
-                let input;
-
-                if (field.type === 'checkbox') {
-                    input = ui.check(esc(field.label), field.id, value);
-                } else if (field.type === 'select') {
-                    input = '<label>' + esc(field.label) + '<select id="' + esc(field.id) + '">' + ui.options(field.options, String(value)) + '</select></label>';
-                } else {
-                    input = '<label>' + esc(field.label) + '<input id="' + esc(field.id) + '" type="' + field.type + '" value="' + esc(value) + '"' +
-                        (field.type === 'password' ? ' autocomplete="new-password"' : '') +
-                        (field.secret ? ' placeholder="' + esc(app.state[field.secret.saved] ? '已保存，留空保留' : '填写 ' + field.label) + '"' : '') + '></label>';
-                }
-
-                return '<div>' + input + (field.hint ? '<small>' + esc(field.hint) + '</small>' : '') +
-                    (field.secret ? ui.check('清除已保存密钥', field.secret.clearId, cleared.has(field.key)) : '') + '</div>';
-            }).join('') + '</div><div class="actions">' + btn('保存', 'save-' + d.id, '', 'primary') + btn('取消', 'cancel-' + d.id) +
+            content + '<div class="actions">' + btn('保存', 'save-' + d.id, '', 'primary') + btn('取消', 'cancel-' + d.id) +
             (d.test ? btn('测试连接', d.test.action) : '') + '</div>' +
             (d.test ? '<p id="' + d.test.resultId + '" role="status" class="muted">' + esc(d.test.hint) + '</p>' : '') + '</section>';
     }

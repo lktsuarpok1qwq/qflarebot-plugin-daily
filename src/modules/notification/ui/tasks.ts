@@ -182,8 +182,8 @@ function createTasksPage(app, ui) {
                 ">" +
                 field("一次性日期", "onceDate", s.date || "", "date") +
                 "</div>" +
-                check("启用任务", "taskEnabled", t.enabled) +
                 "</div>" +
+                '<fieldset><legend>功能开关</legend>' + check("启用任务", "taskEnabled", t.enabled) + "</fieldset>" +
                 preview.render([{ id: "taskBody", allowEmpty: true, label: "消息内容", value: draftBody, variables: app.state.variableDescriptions }], { variableGroups: app.state.variableGroups }) +
                 '<p class="muted">改写内容仅用于当前任务，所有通知对象共用</p>' +
                 (app.state.config.tasks.some((task) => task.id === t.id)

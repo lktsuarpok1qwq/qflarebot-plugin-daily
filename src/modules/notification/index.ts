@@ -12,10 +12,10 @@ export const notification: ModuleDefinition = {
     id: "notification",
     permissions: ["db", "proactive"],
     install,
+    cleanup: (ctx, scheduledAt) => maintenance(ctx, scheduledAt),
     title: "通知",
     cron: {
         send: { cron: "* * * * *", handler: ({ ctx }, { variables }) => dispatch(ctx, variables) },
-        cleanup: { cron: "10 16 * * *", handler: async ({ ctx, scheduledAt }) => { await maintenance(ctx, scheduledAt); } },
     },
     admin: (input, { variables }) => api(input, variables),
     ui: {

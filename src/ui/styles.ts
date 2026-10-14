@@ -28,9 +28,7 @@ export const styles = String.raw`
 }
 body {
     margin: 0;
-    font:
-        14px/1.6 system-ui,
-        sans-serif;
+    font: var(--qb-text-base) / var(--qb-leading) var(--qb-font-sans);
     background: var(--qb-bg);
     color: var(--qb-fg);
 }
@@ -39,7 +37,7 @@ header {
 }
 h1 {
     margin: 0;
-    font-size: 22px;
+    font-size: var(--qb-text-2xl);
     font-weight: 650;
 }
 header p {
@@ -53,6 +51,9 @@ nav {
     padding: 0 24px 16px;
     border-bottom: 1px solid var(--qb-border);
 }
+.embedded > #nav {
+    padding-top: var(--qb-space-4);
+}
 button,
 input,
 select,
@@ -64,8 +65,11 @@ textarea {
     background: var(--qb-input);
     color: var(--qb-fg);
     border: 1px solid var(--qb-border-strong);
-    border-radius: 6px;
+    border-radius: var(--qb-radius);
     padding: 6px 10px;
+}
+button {
+    border-radius: var(--qb-radius-full);
 }
 .select-picker-slot {
     display: block;
@@ -116,12 +120,12 @@ textarea:disabled {
 body.busy button:disabled {
     cursor: wait;
 }
-:where(button, input, select, textarea, summary, a):focus-visible {
-    outline: 2px solid var(--qb-accent);
+.qb-page :where(button, input, select, textarea, summary, a):focus-visible {
+    outline: 2px solid var(--qb-ring);
     outline-offset: -3px;
 }
-button.primary:focus-visible,
-nav button.active:focus-visible {
+.qb-page button.primary:focus-visible,
+.qb-page nav button.active:focus-visible {
     outline-color: var(--qb-on-accent);
 }
 .variable-composition {
@@ -177,14 +181,14 @@ main {
 section {
     background: var(--qb-surface);
     border: 1px solid var(--qb-border);
-    border-radius: 8px;
+    border-radius: var(--qb-radius-lg);
     padding: 16px;
     margin-bottom: 16px;
     min-width: 0;
     scroll-margin-top: 16px;
 }
 h2 {
-    font-size: 17px;
+    font-size: var(--qb-text-lg);
     margin: 0 0 12px;
     overflow-wrap: anywhere;
 }
@@ -345,10 +349,10 @@ summary {
     padding: 4px 0;
 }
 #busy {
-    display: none;
+    visibility: hidden;
 }
 body.busy #busy {
-    display: inline;
+    visibility: visible;
 }
 .viewport-probe {
     position: fixed;
@@ -406,7 +410,7 @@ dialog::backdrop {
     button,
     input,
     select {
-        min-height: 40px;
+        min-height: var(--qb-touch-min);
     }
     table,
     tbody,

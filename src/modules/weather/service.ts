@@ -33,6 +33,10 @@ export async function queryWeather(
         return { text: copy.help };
     }
 
+    const body = tomorrow ? copy.tomorrow : copy.current;
+
+    if (!/\{\{[^{}]+\}\}/.test(body)) { return { text: body }; }
+
     if (!config.host || !config.apiKey) {
         throw new Error("天气 API 尚未配置");
     }
@@ -61,7 +65,6 @@ export async function queryWeather(
 
     const day = localDay(now, city.tz, tomorrow ? 1 : 0);
     const suffix = "/" + city.lat + "/" + city.lon;
-    const body = tomorrow ? copy.tomorrow : copy.current;
     const forecastFields = FORECAST_FIELDS.filter((key) => body.includes("{{" + key + "}}"));
     const currentFields = tomorrow ? [] : CURRENT_FIELDS.filter((key) => body.includes("{{" + key + "}}"));
 

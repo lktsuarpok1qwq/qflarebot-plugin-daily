@@ -9,9 +9,8 @@ function createApp(bridge, ui, factories) {
     const stores = Object.fromEntries(
         Object.entries(factories).map(([key, entry]) => [key, entry.module ? createScope(app, key) : app]),
     );
-    const pages = Object.fromEntries(
-        Object.entries(factories).map(([key, entry]) => [key, entry.create(stores[key], ui)]),
-    );
+    const pages = {};
+    const page = () => pages[app.page] ??= factories[app.page].create(stores[app.page], ui);
     const titles = Object.fromEntries(Object.entries(factories).map(([key, entry]) => [key, entry.title]));
     const current = () => stores[app.page];
     async function api(action, data) {
@@ -218,7 +217,7 @@ function createApp(bridge, ui, factories) {
             html += '<div class="notice">配置未确认，请刷新</div>';
         }
 
-        $("app").innerHTML = html + (current().state ? pages[app.page].render() : "");
+        $("app").innerHTML = html + (current().state ? page().render() : "");
         selectPicker.refresh();
 
         for (const id of expanded) {
@@ -229,7 +228,7 @@ function createApp(bridge, ui, factories) {
 
         updateDirty();
         markdownPreview.refresh();
-        pages[app.page].refresh?.();
+        page().refresh?.();
         restoreFocus(previousFocus);
         const nextEditor = document.querySelector(".markdown-editor");
 
@@ -242,7 +241,7 @@ function createApp(bridge, ui, factories) {
     async function action(a, id) {
         if (a === "page" && id === app.page) { return; }
 
-        if (a === "section" && id === pages[app.page].activeSection) { return; }
+        if (a === "section" && id === page().activeSection) { return; }
 
         const discardsDraft = [
             "reload",
@@ -250,7 +249,7 @@ function createApp(bridge, ui, factories) {
             "section",
         ];
 
-        if (app.dirty && [...discardsDraft, ...(pages[app.page].discardActions || [])].includes(a)) {
+        if (app.dirty && [...discardsDraft, ...(page().discardActions || [])].includes(a)) {
             if (!(await confirmAction("有未保存的编辑，放弃后继续？"))) {
                 return;
             }
@@ -294,11 +293,11 @@ function createApp(bridge, ui, factories) {
             return;
         }
 
-        await pages[app.page].action(a, id);
+        await page().action(a, id);
     }
     const changesConfig = (el) =>
         el.closest("#app") &&
-        !(pages[app.page].transientInputs || []).includes(el.id);
+        !(page().transientInputs || []).includes(el.id);
     function start() {
         document.addEventListener("click", (e) => {
             const b = e.target.closest("button[data-action]");
@@ -308,7 +307,7 @@ function createApp(bridge, ui, factories) {
             }
         });
         document.addEventListener("focusin", (e) => {
-            pages[app.page].focus?.(e.target);
+            page().focus?.(e.target);
             markdownPreview.focus(e.target);
         });
         document.addEventListener("input", (e) => {
@@ -317,7 +316,7 @@ function createApp(bridge, ui, factories) {
             }
 
             updateDirty();
-            pages[app.page].input?.(e.target);
+            page().input?.(e.target);
             markdownPreview.input(e.target);
         });
         document.addEventListener("change", (e) => {
@@ -326,7 +325,7 @@ function createApp(bridge, ui, factories) {
             }
 
             updateDirty();
-            pages[app.page].change?.(e.target);
+            page().change?.(e.target);
             markdownPreview.refresh();
         });
         bridge.resize();
