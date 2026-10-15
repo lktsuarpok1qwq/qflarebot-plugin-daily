@@ -331,7 +331,7 @@ function createApp(bridge, ui, factories) {
         bridge.resize();
         return run(load);
     }
-    Object.assign(app, { api, status, confirmAction, run, load, save, render, focus, resetDrafts, start });
+    Object.assign(app, { resource: (path, init) => bridge.fetch(path, init), api, status, confirmAction, run, load, save, render, focus, resetDrafts, start });
     return app;
 }
 `;

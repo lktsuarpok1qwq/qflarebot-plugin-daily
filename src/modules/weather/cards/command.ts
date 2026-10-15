@@ -13,7 +13,7 @@ export async function renderWeatherCommand(input: CommandInput, config: WeatherC
     const copy = config.cardCopy ?? WEATHER_CARD_COPY;
 
     try {
-        const url = await weatherImage(input.ctx, result.card, copy);
+        const url = await weatherImage(input.ctx, result.card, copy, config.cardDesigns);
         const caption = expand(copy.caption, result.card.values, result.card.fragments);
         const text = `![天气 #540px #850px](${url})${caption ? "\n\n" + caption : ""}`;
         return { text, reply: { markdown: { content: text, forceVerifyImage: true } } };

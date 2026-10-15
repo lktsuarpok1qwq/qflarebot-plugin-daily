@@ -1,10 +1,8 @@
-import type { Region } from "../../../shared/t2i/index.js";
+type Region = { x: number; y: number; width: number; height: number };
 
 export const CARD_THEMES = ["absurd", "gaming", "daily", "student", "mystic"] as const;
 export type CardTheme = typeof CARD_THEMES[number];
 export type CardLayout = "small" | "detail" | "egg";
-export const CARD_LIMITS = { title: 6, sign: 24, explanation: 32, action: 8, name: 6, description: 16, egg: 36 } as const;
-export const CARD_SIZES = { title: 40, body: 28, secondary: 24, icon: 48 } as const;
 
 const common = {
     header: { x: 26, y: 18, width: 240, height: 42 }, date: { x: 316, y: 18, width: 198, height: 42 },
@@ -13,7 +11,7 @@ const common = {
     rarity: { x: 26, y: 240, width: 250, height: 42 }
 } satisfies Record<string, Region>;
 
-export function cardLayoutRegions(layout: CardLayout): Record<string, Region> {
+function cardLayoutRegions(layout: CardLayout): Record<string, Region> {
     const regions: Record<string, Region> = Object.fromEntries(Object.entries(common).map(([key, region]) => [key, { ...region }]));
 
     if (layout === "small") { return regions; }
@@ -30,7 +28,7 @@ export function cardLayoutRegions(layout: CardLayout): Record<string, Region> {
     return regions;
 }
 
-/** 只编码运行时会改动的区域，固定标题与图标保留在压缩背景中 */
+/** 默认排版避开背景已预绘的固定标题与图标 */
 export function cardRegions(layout: CardLayout): Record<string, Region> {
     const regions = cardLayoutRegions(layout);
     delete regions.header;

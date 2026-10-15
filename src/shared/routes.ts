@@ -1,24 +1,33 @@
 import type { Route } from "@qqbot/sdk";
 
-function overlaps(left: string, right: string): boolean {
-    const a = left.split("/").filter(Boolean), b = right.split("/").filter(Boolean);
-    const aw = a.at(-1) === "*", bw = b.at(-1) === "*";
+type ParsedRoute = { route: Route; parts: string[]; wildcard: boolean };
+function overlaps(a: ParsedRoute, b: ParsedRoute): boolean {
+    if ((!a.wildcard && !b.wildcard && a.parts.length !== b.parts.length) || (a.wildcard && !b.wildcard && b.parts.length < a.parts.length) || (b.wildcard && !a.wildcard && a.parts.length < b.parts.length)) { return false; }
 
-    if (aw) { a.pop(); }
+    const count = Math.min(a.parts.length, b.parts.length);
 
-    if (bw) { b.pop(); }
+    for (let i = 0; i < count; i++) {
+        if (!a.parts[i]!.startsWith(":") && !b.parts[i]!.startsWith(":") && a.parts[i] !== b.parts[i]) { return false; }
+    }
 
-    if ((!aw && !bw && a.length !== b.length) || (aw && !bw && b.length < a.length) || (bw && !aw && a.length < b.length)) { return false; }
-
-    return a.slice(0, Math.min(a.length, b.length)).every((part, index) => part.startsWith(":") || b[index]!.startsWith(":") || part === b[index]);
+    return true;
 }
 
 export function validateRoutes<T extends readonly Route[]>(routes: T): T {
-    for (let i = 0; i < routes.length; i++) {
-        const route = routes[i]!;
-        const conflict = routes.slice(0, i).find((other) => other.method === route.method && overlaps(other.path, route.path));
+    const methods = new Map<Route["method"], ParsedRoute[]>();
 
-        if (conflict) { throw new Error(`路由冲突：${route.method} ${route.path} 与 ${conflict.path}`); }
+    for (const route of routes) {
+        const parts = route.path.split("/").filter(Boolean), wildcard = parts.at(-1) === "*";
+
+        if (wildcard) { parts.pop(); }
+
+        const parsed = { route, parts, wildcard }, previous = methods.get(route.method) ?? [];
+        const conflict = previous.find(other => overlaps(other, parsed));
+
+        if (conflict) { throw new Error(`路由冲突：${route.method} ${route.path} 与 ${conflict.route.path}`); }
+
+        previous.push(parsed);
+        methods.set(route.method, previous);
     }
 
     return routes;

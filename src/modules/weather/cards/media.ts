@@ -1,10 +1,16 @@
+import { backgrounds } from "./backgrounds/index.js";
+import type { CardState } from "../../../shared/cards/types.js";
+import { renderDesign } from "../../../shared/cards/render.js";
+import { weatherDefault } from "./presets.js";
+import { weatherTheme } from "./conditions.js";
+import { weatherDesignValues } from "./design.js";
 import type { Route, RouteInput } from "@qqbot/sdk";
 import type { Ctx } from "../../../shared/types.js";
 import { publicOrigin } from "../../../shared/public-origin.js";
 import { dateAt, addDays, validDate } from "../../../shared/date.js";
 import type { WeatherCardCopy, WeatherCardData } from "./copy.js";
 const PREFIX = "weather/cards/";
-export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: WeatherCardCopy) {
+export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: WeatherCardCopy, state?: CardState) {
     const day = dateAt(Date.now()), token = crypto.randomUUID();
     const deadline = Date.now() + 10_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -15,15 +21,14 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
     const prepare = async () => {
         const origin = publicOrigin(ctx);
         stage = "render";
-        const { renderWeatherCard } = await import("./renderer.js");
-        check();
-        const image = await renderWeatherCard(data, copy);
-        check();
+        const design = state?.config.weather;
 
-        if (!image.ok) { throw new Error(`${image.code}: ${image.error}`); }
-
+        const selected = design?.enabled ? design : weatherDefault(weatherTheme(data.code, data.night), data.tomorrow);
+        const stream = await renderDesign(ctx, selected, weatherDesignValues(data, copy), AbortSignal.timeout(Math.max(1, deadline - Date.now())), backgrounds);
+        check();
         stage = "image_save";
-        await ctx.r2.put(`${PREFIX}${day}/${token}.png`, image.data, { contentType: "image/png" });
+        await ctx.r2.put(`${PREFIX}${day}/${token}.png`, stream, { contentType: "image/png" });
+
         check();
         return `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/weather/cards/${day}/${token}`;
     };
@@ -51,7 +56,7 @@ async function readImage({ ctx, params }: RouteInput) {
 }
 export const weatherCardRoutes: Route[] = [{ method: "GET", path: "/weather/cards/:day/:token", auth: "public", handler: readImage }];
 export async function cleanupWeatherImages(ctx: Ctx, now: number) {
-    const cutoff = addDays(dateAt(now), -1);
+    const cutoff = dateAt(now);
 
     for (; ;) {
         const objects = await ctx.r2.list(PREFIX, { limit: 1000 });

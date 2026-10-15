@@ -149,7 +149,7 @@ export function parseCurrent(raw: unknown, fields: readonly (keyof Current)[] = 
     };
     return Object.fromEntries(fields.map((key) => [key, readers[key]()]));
 }
-export function parseForecast(raw: unknown, fields: readonly (typeof FORECAST_FIELDS[number])[] = FORECAST_FIELDS, image = false): Forecast {
+export function parseForecast(raw: unknown, fields: readonly Exclude<keyof Forecast["days"][number], "date">[] = FORECAST_FIELDS): Forecast {
     const data = object(raw);
 
     if (!Array.isArray(data.days)) { throw new Error("和风天气预报格式错误"); }
@@ -161,26 +161,24 @@ export function parseForecast(raw: unknown, fields: readonly (typeof FORECAST_FI
             throw new Error("和风天气日期错误");
         }
 
+        const daytime = () => object(day.daytime), nighttime = () => object(day.nighttime);
+        const astro = () => day.astro && typeof day.astro === "object" ? day.astro as Record<string, unknown> : {};
         const readers = {
             low: () => measurement(day.temperatureMin, "°C"),
             high: () => measurement(day.temperatureMax, "°C"),
-            day: () => text(object(object(day.daytime).condition).text),
-            night: () => text(object(object(day.nighttime).condition).text),
+            day: () => text(object(daytime().condition).text),
+            night: () => text(object(nighttime().condition).text),
+            code: () => String(object(daytime().condition).code ?? "999"),
+            nightCode: () => String(object(nighttime().condition).code ?? "999"),
+            sunrise: () => typeof astro().sunrise === "string" ? astro().sunrise : undefined,
+            sunset: () => typeof astro().sunset === "string" ? astro().sunset : undefined,
+            humidity: () => daytime().humidity == null ? "—" : percent(daytime().humidity),
+            wind: () => {
+                const speed = daytime().wind && object(daytime().wind).speed;
+                return speed == null ? "—" : measurement(speed, "m/s");
+            },
         };
-        const values = { date: start.slice(0, 10), ...Object.fromEntries(fields.map((key) => [key, readers[key]()])) };
-
-        if (!image) { return values; }
-
-        const daytime = object(day.daytime), nighttime = object(day.nighttime);
-        const astro = day.astro && typeof day.astro === "object" ? day.astro as Record<string, unknown> : {};
-        const optionalMeasurement = (value: unknown, unit: string) => value == null ? "—" : measurement(value, unit);
-        return {
-            ...values,
-            code: String(object(daytime.condition).code ?? "999"), nightCode: String(object(nighttime.condition).code ?? "999"),
-            sunrise: typeof astro.sunrise === "string" ? astro.sunrise : undefined, sunset: typeof astro.sunset === "string" ? astro.sunset : undefined,
-            humidity: daytime.humidity == null ? "—" : percent(daytime.humidity),
-            wind: optionalMeasurement(daytime.wind && object(daytime.wind).speed, "m/s"),
-        };
+        return { date: start.slice(0, 10), ...Object.fromEntries(fields.map(key => [key, readers[key]()])) };
     });
     return { days };
 }

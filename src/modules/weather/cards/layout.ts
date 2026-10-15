@@ -1,4 +1,4 @@
-import type { Region } from "../../../shared/t2i/index.js";
+type Region = { x: number; y: number; width: number; height: number };
 export const WEATHER_REGIONS = {
     city: { x: 32, y: 42, width: 476, height: 78 }, area: { x: 32, y: 121, width: 476, height: 54 },
     temperature: { x: 32, y: 220, width: 300, height: 90 }, condition: { x: 32, y: 330, width: 300, height: 70 },

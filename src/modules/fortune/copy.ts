@@ -18,7 +18,6 @@ export const FORTUNE_COPY = {
 export type FortuneCopy = typeof FORTUNE_COPY;
 export const LEVEL_NAMES = { great: "大吉", good: "中吉", small: "小吉", neutral: "小凶", bad: "中凶", worst: "大凶" };
 export const RARITY_NAMES = { common: "普通", rare: "稀有", epic: "史诗", legendary: "传说" };
-export const FORTUNE_CARD_HEADINGS = { small: "今日签", detail: "今日解签", explanation: "解签", good: "宜", bad: "忌", effect: "今日效果", item: "幸运物", egg: "隐藏彩蛋" };
 export const FORTUNE_CARD_LABELS = { levels: LEVEL_NAMES, rarities: RARITY_NAMES };
 export const THEME_NAMES = { absurd: "抽象荒诞", gaming: "二次元＋CS", daily: "日常生活", student: "学生", mystic: "轻玄学" };
 

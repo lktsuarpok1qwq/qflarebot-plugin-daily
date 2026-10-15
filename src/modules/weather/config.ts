@@ -1,3 +1,5 @@
+import { validateCardState } from "../../shared/cards/validation.js";
+import { weatherDesigns } from "./cards/design.js";
 import { WEATHER_CARD_COPY } from "./cards/copy.js";
 import { copyContract } from "./definition.js";
 import type { WeatherConfig } from "./types.js";
@@ -40,10 +42,12 @@ export function validate(value: unknown): WeatherConfig {
         throw new Error("天气配置格式错误");
     }
 
-    fields(c, ["schemaVersion", "host", "apiKey", "copy", "imageEnabled", "cardCopy"]);
+    fields(c, ["schemaVersion", "cardDesigns", "host", "apiKey", "copy", "imageEnabled", "cardCopy"]);
     validateConnection(c);
 
     if (typeof c.imageEnabled !== "boolean") { throw new Error("图片开关格式错误"); }
+
+    if (c.cardDesigns !== undefined) { c.cardDesigns = validateCardState(c.cardDesigns, weatherDesigns, "weather"); }
 
     copyContract.validate(c);
 

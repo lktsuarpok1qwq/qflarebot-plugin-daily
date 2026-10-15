@@ -156,6 +156,11 @@
   "routes": [
     {
       "method": "GET",
+      "path": "/cards/assets/:asset",
+      "auth": "public"
+    },
+    {
+      "method": "GET",
       "path": "/api/notification/:action",
       "auth": "admin"
     },
@@ -181,6 +186,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/cards/weather/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/weather/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
       "path": "/api/weather/:action",
       "auth": "admin"
     },
@@ -203,6 +218,16 @@
       "method": "GET",
       "path": "/fortune/cards/:day/:token/:view",
       "auth": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cards/fortune/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/fortune/:action",
+      "auth": "admin"
     },
     {
       "method": "GET",

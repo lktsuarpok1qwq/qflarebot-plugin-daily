@@ -1,7 +1,13 @@
+import { backgrounds } from "./backgrounds/index.js";
+import type { CardState } from "../../../shared/cards/types.js";
+import { renderDesign } from "../../../shared/cards/render.js";
+import { fortuneDesignValues, fortuneHighlights } from "./design.js";
 import type { Route, RouteInput } from "@qqbot/sdk";
 import type { Ctx } from "../../../shared/types.js";
 import { addDays, dateAt, validDate } from "../../../shared/date.js";
-import { fortuneCardRequest } from "./request.js";
+import { CARD_PALETTES } from "./layout.js";
+import { LEVELS } from "../types.js";
+import { fortuneDefault } from "./presets.js";
 import type { CardRow, CardSnapshot } from "./store.js";
 const PREFIX = "fortune/cards/";
 const key = (day: string, token: string, view: string) => `${PREFIX}${day}/${token}/${view}.png`;
@@ -12,7 +18,7 @@ export class CardImageError extends Error {
         this.name = "CardImageError";
     }
 }
-export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", origin: string) {
+export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", origin: string, state?: CardState) {
     const deadline = Date.now() + 10_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let expired = false;
@@ -21,28 +27,30 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
         if (expired || Date.now() >= deadline) { throw new Error("运势图片准备超时"); }
     };
     const prepare = async () => {
-        const path = key(row.day, row.token, view);
+        const design = state?.config[view];
+        const custom = design?.enabled ? design : null;
+        const imageView = `${view}-i1-r${custom ? state!.revision : 0}`;
+        const path = key(row.day, row.token, imageView);
         const existing = await ctx.r2.head(path);
         check();
 
         if (!existing) {
             stage = "request";
             const snapshot = JSON.parse(row.snapshot) as CardSnapshot;
-            const request = fortuneCardRequest(snapshot.content, view, snapshot.labels);
+
+            const selected = custom ?? fortuneDefault(snapshot.content.theme, view === "small" ? "small" : snapshot.content.egg ? "egg" : "detail");
+
+            if (!custom) { selected.regions.find(region => region.field === "level")!.color = LEVELS[snapshot.content.level][0] >= 55 ? CARD_PALETTES[snapshot.content.theme].good : CARD_PALETTES[snapshot.content.theme].bad; }
+
             stage = "render";
-            const { renderer } = await import("./renderer.js");
+            const stream = await renderDesign(ctx, selected, fortuneDesignValues(snapshot), AbortSignal.timeout(Math.max(1, deadline - Date.now())), backgrounds, custom ? {} : fortuneHighlights(snapshot, CARD_PALETTES[snapshot.content.theme].accent));
             check();
-            const result = await renderer.render(request);
-            check();
-
-            if (!result.ok) { throw new Error(`运势卡生成失败：${result.code} ${result.error}`); }
-
             stage = "image_save";
-            await ctx.r2.put(path, result.data, { contentType: "image/png" });
+            await ctx.r2.put(path, stream, { contentType: "image/png" });
             check();
         }
 
-        return { url: `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/fortune/cards/${row.day}/${row.token}/${view}`, cache: existing ? "hit" : "miss" };
+        return { url: `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/fortune/cards/${row.day}/${row.token}/${imageView}`, cache: existing ? "hit" : "miss" };
     };
 
     try {
@@ -59,7 +67,7 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
 async function readImage({ ctx, params }: RouteInput) {
     const { day = "", token = "", view = "" } = params, today = dateAt(Date.now());
 
-    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token) || !["small", "detail"].includes(view)) {
+    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token) || !/^(small|detail)-i1-r[0-9]{1,10}$/.test(view)) {
         return new Response(null, { status: 404 });
     }
 
@@ -78,7 +86,7 @@ async function readImage({ ctx, params }: RouteInput) {
 }
 export const cardRoutes: Route[] = [{ method: "GET", path: "/fortune/cards/:day/:token/:view", auth: "public", handler: readImage }];
 export async function cleanupCards(ctx: Ctx, now: number) {
-    const cutoff = addDays(dateAt(now), -1);
+    const cutoff = dateAt(now);
 
     for (; ;) {
         const objects = await ctx.r2.list(PREFIX, { limit: 1000 });

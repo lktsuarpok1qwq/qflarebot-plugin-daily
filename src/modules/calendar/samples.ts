@@ -32,16 +32,21 @@ export function calendarSamples() {
         const day = sample.day ?? baseDay;
         const confirmed = sample.complete ? [2026] : [];
         const rows = sample.events.filter((h) => h.kind !== "makeup");
-        const item = createCalendarItem(sample.events, confirmed);
-        const query = queryDocument({ data: rows, status: rows.length ? "known" : sample.complete ? "none" : "unknown", complete: !!sample.complete, freshness: "current" }, "remaining", day, sample.events, true, confirmed);
-        const nextDay = rows.length && !rows.some((h) => h.start > day) ? addDays(rows[0]!.start, -1) : day;
-        const future = rows.filter((h) => h.start > nextDay).sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id)).slice(0, 1);
-        const next = queryDocument({ data: future, status: future.length ? "known" : sample.complete ? "none" : "unknown", complete: !!sample.complete, freshness: "current" }, "next", nextDay, sample.events, true, confirmed);
-        const reminder: CalendarDocument = {
-            day, kind: "today",
-            items: sample.events.filter((h) => h.start <= day && h.end >= day).map((h) => item(h, day, true)),
+        return {
+            id: sample.id, name: sample.name,
+            get query() {
+                return queryDocument({ data: rows, status: rows.length ? "known" : sample.complete ? "none" : "unknown", complete: !!sample.complete, freshness: "current" }, "remaining", day, sample.events, true, confirmed);
+            },
+            get next() {
+                const nextDay = rows.length && !rows.some((h) => h.start > day) ? addDays(rows[0]!.start, -1) : day;
+                const future = rows.filter((h) => h.start > nextDay).sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id)).slice(0, 1);
+                return queryDocument({ data: future, status: future.length ? "known" : sample.complete ? "none" : "unknown", complete: !!sample.complete, freshness: "current" }, "next", nextDay, sample.events, true, confirmed);
+            },
+            get reminder(): CalendarDocument {
+                const item = createCalendarItem(sample.events, confirmed);
+                return { day, kind: "today", items: sample.events.filter((h) => h.start <= day && h.end >= day).map((h) => item(h, day, true)) };
+            },
         };
-        return { id: sample.id, name: sample.name, query, next, reminder };
     });
 }
 

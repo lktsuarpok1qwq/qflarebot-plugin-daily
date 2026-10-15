@@ -1,3 +1,4 @@
+import { cardEditor } from "../shared/ui/cards/editor.js";
 import { validateTemplate, validateCopyText } from "../shared/templates.js";
 import { commandUrl, expand } from "../shared/interpolation.js";
 import { commandLinkPage } from "./pages/command-link.js";
@@ -23,6 +24,7 @@ import { createBridge } from "/bridge.js";
     `const validateTemplate = ${validateTemplate.toString()}; const validateCopyText = ${validateCopyText.toString()};`,
     commandLinkPage,
     components,
+    cardEditor,
     markdownPreview,
     sections,
     samplePreview,

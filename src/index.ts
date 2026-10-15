@@ -4,7 +4,6 @@ import { install } from "./data/repository.js";
 import { coreCommands, moduleCommands } from "./commands.js";
 import { registry } from "./modules/index.js";
 import { api } from "./admin.js";
-import { HTML } from "./ui/index.js";
 export default definePlugin({
     name: "daily",
     displayName: "每日助手",
@@ -29,8 +28,8 @@ export default definePlugin({
             method: "GET",
             path: "/ui/*",
             auth: "admin",
-            handler: () =>
-                new Response(HTML, {
+            handler: async () =>
+                new Response((await import("./ui/index.js")).HTML, {
                     headers: {
                         "content-type": "text/html; charset=utf-8",
                         "cache-control": "no-store",

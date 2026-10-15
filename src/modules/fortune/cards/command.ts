@@ -28,7 +28,7 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
 
     if (config.imageEnabled) {
         try {
-            const image = await cardImage(ctx, row, view, publicOrigin(ctx));
+            const image = await cardImage(ctx, row, view, publicOrigin(ctx), config.cardDesigns);
             const text = `![运势 #540px #${height}px](${image.url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
             return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, diagnostics: { view, imageCache: image.cache }, afterSend };
         } catch (error) {

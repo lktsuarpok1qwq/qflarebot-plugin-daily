@@ -11,7 +11,7 @@ function createScope(app, id) {
         });
     }
 
-    for (const key of ["status", "confirmAction", "run", "render", "focus", "resetDrafts"]) {
+    for (const key of ["resource", "status", "confirmAction", "run", "render", "focus", "resetDrafts"]) {
         scope[key] = (...args) => app[key](...args);
     }
 

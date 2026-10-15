@@ -6,9 +6,5 @@
     "type": "module",
     "keywords": [
         "qflarebot-plugin"
-    ],
-    "dependencies": {
-        "@twemoji/parser": "17.0.2",
-        "fflate": "0.8.3"
-    }
+    ]
 }

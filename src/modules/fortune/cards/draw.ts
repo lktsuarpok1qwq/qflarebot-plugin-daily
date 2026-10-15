@@ -5,11 +5,6 @@ import { LEVELS, RARITIES, type DrawSettings } from "../types.js";
 import { CARD_THEMES, type CardTheme } from "./layout.js";
 import type { CardPhrase, FortuneCardContent, FortuneHoliday } from "./types.js";
 
-const pools = new Map(CARD_THEMES.flatMap(theme => Object.keys(LEVELS).map(level => [
-    `${theme}:${level}`, corpus.data.cards.filter(card => card.theme === theme && card.level === level).sort((a, b) => a.id.localeCompare(b.id))
-] as const)));
-const ordinary = new Map(CARD_THEMES.map(theme => [theme, corpus.data.ordinaryEggs.filter(egg => egg.theme === theme)]));
-
 export function holidayWindow(date: string): { holidays: FortuneHoliday[]; chance: number } {
     const year = Number(date.slice(0, 4)), today = Date.parse(date + "T00:00:00Z");
     let nearest = 8;
@@ -36,7 +31,7 @@ export function selectEgg(theme: CardTheme, date: string, chance: number, pick: 
 
     if (holiday && chance < window.chance) { return choose(holiday.eggs, () => 1, pick); }
 
-    if (chance >= window.chance && chance < window.chance + 0.05) { return choose(ordinary.get(theme)!, () => 1, pick); }
+    if (chance >= window.chance && chance < window.chance + 0.05) { return choose(corpus.data.ordinaryEggs.filter(egg => egg.theme === theme), () => 1, pick); }
 
     return undefined;
 }
@@ -51,7 +46,7 @@ export function drawCard(user: string, date: string, config: DrawSettings): Fort
 
     const level = choose(Object.keys(LEVELS) as (keyof typeof LEVELS)[], key => config[`level_${key}`], random(seed + ":level"))!;
     const rarity = choose(RARITIES, key => config[`rarity_${key}`], random(seed + ":rarity"))!;
-    const story = choose(pools.get(`${theme}:${level}`)!, () => 1, random(seed + ":story"))!;
+    const story = choose(corpus.data.cards.filter(card => card.theme === theme && card.level === level), () => 1, random(seed + ":story"))!;
     const [min, max] = LEVELS[level];
     const egg = config.eggs ? selectEgg(theme, date, random(seed + ":egg-chance")(), random(seed + ":egg-pick")) : undefined;
     return {

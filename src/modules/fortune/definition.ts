@@ -19,7 +19,7 @@ const branches: Record<keyof FortuneCopy, { label: string; category: string; sam
 };
 const declaration: CopyDeclaration = {
     id: "fortune", title: "运势文案", initial: "draw", outputs: outputTargets([{ id: "help", command: "运势" }, { id: "draw", command: "运势 抽" }, { id: "detail", command: "运势 解" }]),
-    description: "关闭图片或图片准备失败时使用文字回复；吉凶和稀有度名称使用卡面字形，次日抽签生效；情景预览展示当前文字",
+    description: "关闭图片或图片准备失败时使用文字回复；吉凶和稀有度名称次日抽签生效；情景预览展示当前文字",
     samples: fortuneSamples,
     fields: Object.fromEntries(Object.entries(branches).map(([key, field]) => [key, { ...field, path: ["copy", key], default: FORTUNE_COPY[key as keyof FortuneCopy], allowEmpty: ["drawCaption", "detailCaption"].includes(key) }])) satisfies Record<string, CopyField>,
     views: [
@@ -32,7 +32,7 @@ export const copyContract = createCopyContract<{ copy: FortuneCopy }>(declaratio
 export const settings: SettingsDeclaration = {
     id: "fortune-settings", title: "运势设置", description: "图片开关保存后生效，准备超过 10 秒改发文字；抽取设置次日生效",
     fields: [
-        { key: "imageEnabled", id: "fortune-image-enabled", label: "启用图片卡片（T2I）", group: "功能开关", type: "checkbox" },
+        { key: "imageEnabled", id: "fortune-image-enabled", label: "启用图片卡片", group: "功能开关", type: "checkbox" },
         { key: "eggs", id: "fortune-eggs", label: "参与彩蛋抽取", group: "功能开关", type: "checkbox" },
         ...THEMES.filter((id) => corpus.data.cards.some((entry) => entry.theme === id)).map((id) => ({ key: "theme_" + id, id: "fortune-theme-" + id, label: THEME_NAMES[id], group: "语料类型", type: "checkbox" as const })),
         ...Object.entries(LEVEL_NAMES).map(([id, label]) => ({ key: "level_" + id, id: "fortune-level-" + id, label: label + "权重", group: "吉凶权重", type: "number" as const })),

@@ -1,3 +1,4 @@
+import { cardStyles } from "../shared/ui/cards/styles.js";
 import { styles } from "./styles.js";
 import { client } from "./client.js";
 export const HTML = `<!doctype html>
@@ -6,7 +7,7 @@ export const HTML = `<!doctype html>
         name="viewport"
         content="width=device-width,initial-scale=1"
     /><title>每日助手</title>
-    <link rel="stylesheet" href="/tokens.css" /><style>${styles}</style>
+    <link rel="stylesheet" href="/tokens.css" /><style>${styles}${cardStyles}</style>
     <body class="qb-page">
     <header>
         <h1>每日助手</h1>

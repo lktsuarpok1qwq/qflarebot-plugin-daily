@@ -1,0 +1,13 @@
+Card fonts: Noto Sans CJK SC Regular and Bold, SIL Open Font License 1.1 (see OFL.txt)
+https://github.com/notofonts/noto-cjk/tree/f8d157532fbfaeda587e826d4cd5b21a49186f7c
+The administrator prepares these fonts in the plugin's scoped R2 storage
+metrics.json contains advances measured from these fonts for shared local/server layout
+
+Color emoji: Twemoji, CC BY 4.0, https://github.com/jdecked/twemoji/tree/v17.0.2
+https://creativecommons.org/licenses/by/4.0/
+Emoji PNG assets are fetched by the browser and Images from the pinned public CDN
+
+Built-in backgrounds include fixed labels rendered with the above Noto fonts and Twemoji graphics
+Fortune backgrounds: project geometric artwork; weather backgrounds: generated with OpenAI imagegen
+Background files are losslessly encoded as WebP during local asset preparation
+Built-in WebP source files live beside each module resource index and are served from the public source repository

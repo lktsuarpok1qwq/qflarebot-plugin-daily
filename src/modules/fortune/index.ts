@@ -1,3 +1,6 @@
+import { backgrounds } from "./cards/backgrounds/index.js";
+import { bindCards } from "../../shared/cards/store.js";
+import { fortuneDesigns } from "./cards/design.js";
 import type { ModuleDefinition } from "../../shared/modules.js";
 import { configAdmin } from "../../shared/admin.js";
 import { copyContract, commands, settings } from "./definition.js";
@@ -9,7 +12,7 @@ import { cardRoutes, cleanupCards } from "./cards/media.js";
 import { renderFortuneText } from "./cards/text.js";
 import { fortunePage } from "./ui/page.js";
 export const fortune: ModuleDefinition = {
-    id: "fortune", title: "运势", permissions: ["db"], install: async (ctx) => { await install(ctx); await installCards(ctx.db); }, routes: cardRoutes,
+    id: "fortune", cards: bindCards(fortuneDesigns, { snapshot, save }, backgrounds), title: "运势", permissions: ["db", "net"], install: async (ctx) => { await install(ctx); await installCards(ctx.db); }, routes: cardRoutes,
     cleanup: cleanupCards, copy: copyContract,
     commands: {
         definitions: commands, render: async (input, name) => {
@@ -24,5 +27,5 @@ export const fortune: ModuleDefinition = {
         }
     },
     admin: configAdmin({ label: "运势", snapshot, save, present: (state) => ({ ...state, corpusStatus: corpus.status }), declaration: () => ({ copyEditor: copyContract.editor, settings }) }),
-    ui: { source: `const renderFortuneText = ${renderFortuneText.toString()};` + fortunePage, sections: [{ id: "settings", title: "设置", factory: "createFortuneSettings" }, { id: "copy", title: "文案", factory: "createFortuneCopyEditor" }] },
+    ui: { source: `const renderFortuneText = ${renderFortuneText.toString()};` + fortunePage, sections: [{ id: "settings", title: "设置", factory: "createFortuneSettings" }, { id: "cards", title: "卡面", factory: "createCardEditor" }, { id: "copy", title: "文案", factory: "createFortuneCopyEditor" }] },
 };

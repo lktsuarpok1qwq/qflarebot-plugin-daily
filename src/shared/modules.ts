@@ -4,6 +4,9 @@ import type { CommandExecutor, Ctx, Rendered } from "./types.js";
 import { registerCommands, type CommandDefinition } from "./declarations.js";
 import { createVariables, type VariableCapability, type VariableAPI } from "./variables.js";
 import { validateRoutes } from "./routes.js";
+import type { CardBinding } from "./cards/store.js";
+import { cardAdminRoutes } from "./cards/admin.js";
+import { readAsset } from "./cards/assets.js";
 export type ModuleServices = { variables: VariableAPI };
 export type ModuleDefinition = {
     id: string;
@@ -13,6 +16,7 @@ export type ModuleDefinition = {
     cleanup?: (ctx: Ctx, scheduledAt: number) => Promise<void | { ok: boolean; message: string }>;
     variables?: VariableCapability;
     copy?: CopyContract;
+    cards?: CardBinding;
     commands?: { definitions: readonly CommandDefinition[]; render: (input: CommandInput, name: string, services: ModuleServices) => Promise<Rendered> };
     cron?: Record<string, Omit<CronJob, "name" | "handler"> & { handler: (input: Parameters<CronJob["handler"]>[0], services: ModuleServices) => ReturnType<CronJob["handler"]> }>;
     routes?: readonly Route[];
@@ -85,8 +89,8 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
             return Object.fromEntries(modules.flatMap((module) => module.commands ? Object.entries(registerCommands(module.commands.definitions, execute, (input, name) => module.commands!.render(input, name, services))) : []));
         },
         cron,
-        routes: validateRoutes(modules.flatMap((module) => [...module.routes ?? [], ...(module.admin ? (["GET", "POST"] as const).map((method): Route => ({
+        routes: validateRoutes([...(modules.some(module => module.cards) ? [{ method: "GET" as const, path: "/cards/assets/:asset", auth: "public" as const, handler: readAsset }] : []), ...modules.flatMap((module) => [...module.routes ?? [], ...(module.cards ? cardAdminRoutes(module.id, module.cards) : []), ...(module.admin ? (["GET", "POST"] as const).map((method): Route => ({
             method, path: `/api/${module.id}/:action`, auth: "admin", handler: (input) => module.admin!(input, services),
-        })) : [])])),
+        })) : [])])]),
     };
 }
