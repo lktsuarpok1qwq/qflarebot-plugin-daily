@@ -20,7 +20,7 @@ export const weather: ModuleDefinition = {
     commands: { definitions: commands, render: async (input) => renderWeatherCommand(input, (await snapshot(input.ctx.db)).config) },
     admin: api,
     ui: {
-        source: `const renderWeatherSample = ${renderWeather.toString()};` + weatherPage,
+        get source() { return `const renderWeatherSample = ${renderWeather.toString()};` + weatherPage; },
         sections: [{ id: "settings", title: "接入设置", factory: "createSettingsEditor" }, { id: "cards", title: "卡面", factory: "createCardEditor" }, { id: "copy", title: "文案", factory: "createWeatherCopyEditor" }],
     },
 };

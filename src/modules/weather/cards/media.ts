@@ -1,8 +1,7 @@
 import { backgrounds } from "./backgrounds/index.js";
 import type { CardState } from "../../../shared/cards/types.js";
-import { renderDesign } from "../../../shared/cards/render.js";
-import { weatherDefault } from "./presets.js";
-import { weatherTheme } from "./conditions.js";
+import { renderDesign, renderLayers } from "../../../shared/cards/render.js";
+import { layoutWeather } from "./default.js";
 import { weatherDesignValues } from "./design.js";
 import type { Route, RouteInput } from "@qqbot/sdk";
 import type { Ctx } from "../../../shared/types.js";
@@ -23,8 +22,16 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
         stage = "render";
         const design = state?.config.weather;
 
-        const selected = design?.enabled ? design : weatherDefault(weatherTheme(data.code, data.night), data.tomorrow);
-        const stream = await renderDesign(ctx, selected, weatherDesignValues(data, copy), AbortSignal.timeout(Math.max(1, deadline - Date.now())), backgrounds);
+        const signal = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
+        let stream: ReadableStream<Uint8Array>;
+
+        if (design?.enabled) {
+            stream = await renderDesign(ctx, design, weatherDesignValues(data, copy), signal, backgrounds);
+        } else {
+            const selected = layoutWeather(data, copy);
+            stream = await renderLayers(ctx, selected.background, selected.layout, signal, backgrounds);
+        }
+
         check();
         stage = "image_save";
         await ctx.r2.put(`${PREFIX}${day}/${token}.png`, stream, { contentType: "image/png" });

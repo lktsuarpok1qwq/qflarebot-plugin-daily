@@ -81,9 +81,9 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
     return {
         variables,
         permissions: [...new Set(modules.flatMap((module) => [...module.permissions ?? [], ...(module.admin ? ["admin" as const] : [])]))],
-        pages: modules.flatMap((module) => module.ui ? [{ id: module.id, title: module.title, ...module.ui }] : []),
+        get pages() { return modules.flatMap((module) => module.ui ? [{ id: module.id, title: module.title, ...module.ui }] : []); },
         async install(ctx: Ctx) {
-            for (const module of modules) { await module.install?.(ctx); }
+            for (const module of modules) { module.copy?.assertDeclaration(); await module.install?.(ctx); }
         },
         commands(execute: CommandExecutor) {
             return Object.fromEntries(modules.flatMap((module) => module.commands ? Object.entries(registerCommands(module.commands.definitions, execute, (input, name) => module.commands!.render(input, name, services))) : []));

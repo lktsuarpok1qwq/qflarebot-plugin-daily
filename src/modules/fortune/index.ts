@@ -17,15 +17,15 @@ export const fortune: ModuleDefinition = {
     commands: {
         definitions: commands, render: async (input, name) => {
             const { ctx, session } = input;
-            const { config } = await snapshot(ctx.db);
 
-            if (name === "运势") { return { text: config.copy.help }; }
+            if (name === "运势" || !session.userId.trim()) {
+                const { config } = await snapshot(ctx.db);
+                return { text: name === "运势" ? config.copy.help : config.copy.noIdentity };
+            }
 
-            if (!session.userId.trim()) { return { text: config.copy.noIdentity }; }
-
-            return renderCardCommand(input, name, config);
+            return renderCardCommand(input, name);
         }
     },
     admin: configAdmin({ label: "运势", snapshot, save, present: (state) => ({ ...state, corpusStatus: corpus.status }), declaration: () => ({ copyEditor: copyContract.editor, settings }) }),
-    ui: { source: `const renderFortuneText = ${renderFortuneText.toString()};` + fortunePage, sections: [{ id: "settings", title: "设置", factory: "createFortuneSettings" }, { id: "cards", title: "卡面", factory: "createCardEditor" }, { id: "copy", title: "文案", factory: "createFortuneCopyEditor" }] },
+    ui: { get source() { return `const renderFortuneText = ${renderFortuneText.toString()};` + fortunePage; }, sections: [{ id: "settings", title: "设置", factory: "createFortuneSettings" }, { id: "cards", title: "卡面", factory: "createCardEditor" }, { id: "copy", title: "文案", factory: "createFortuneCopyEditor" }] },
 };

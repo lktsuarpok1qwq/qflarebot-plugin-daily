@@ -102,14 +102,14 @@ export async function lookup(config: WeatherConfig, query: string, fetcher: type
     return data.location.map((value) => {
         const city = object(value),
             id = text(city.id),
-            tz = text(city.tz);
+            offset = /^([+-])([01]\d|2[0-3]):([0-5]\d)$/.exec(text(city.utcOffset));
         const latitude = text(city.lat),
             longitude = text(city.lon);
         const lat = Number(latitude),
             lon = Number(longitude);
 
         if (
-            !/^[\w-]+$/.test(id) ||
+            !offset || !/^[\w-]+$/.test(id) ||
             !Number.isFinite(lat) ||
             !Number.isFinite(lon) ||
             Math.abs(lat) > 90 ||
@@ -118,7 +118,6 @@ export async function lookup(config: WeatherConfig, query: string, fetcher: type
             throw new Error("和风天气地点数据错误");
         }
 
-        new Intl.DateTimeFormat("en", { timeZone: tz });
         return {
             id,
             name: text(city.name),
@@ -131,7 +130,7 @@ export async function lookup(config: WeatherConfig, query: string, fetcher: type
             ].join(" · "),
             lat: lat.toFixed(2),
             lon: lon.toFixed(2),
-            tz,
+            utcOffset: (Number(offset[2]) * 60 + Number(offset[3])) * (offset[1] === "-" ? -1 : 1),
         };
     });
 }

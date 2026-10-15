@@ -1,21 +1,34 @@
 import { expand } from "../interpolation.js";
 import metrics from "./metrics.json";
-import type { CardDesign } from "./types.js";
+import type { CardDesign, CardRegion } from "./types.js";
 export type CardHighlights = Record<string, { words: readonly string[]; color: string }>;
 type CardLayer = { text?: string; emoji?: string; left: number; top: number; size: number; color: string; weight: number };
-// Shared pure layout: the browser and Images receive the same line breaks and positions.
-export function layoutCard(design: CardDesign, values: Record<string, string>, widths: Record<string, Record<string, number>>, interpolate: typeof expand, highlights: CardHighlights = {}): { layers: CardLayer[]; overflow: string[] } {
+export type CardLayoutResult = { layers: CardLayer[]; overflow: string[] };
+type TextRegion = Omit<CardRegion, "field" | "text" | "color">;
+// Shared glyph layout keeps browser previews and Images positions identical.
+export function createTextLayout(widths: Record<string, Record<string, number>>) {
     const layers: CardLayer[] = [], overflow: string[] = [];
     let segmenter: Intl.Segmenter | undefined;
+    function add(region: TextRegion, text: string, color: string, emphasis?: CardHighlights[string]) {
+        if (!text) { return; }
 
-    for (const region of design.regions) {
-        const text = region.text === undefined ? values[region.field] ?? "" : interpolate(region.text, {}, values);
+        if (text.length > 1000) { overflow.push(region.id); return; }
 
-        if (!text) { continue; }
+        const simple = /^[\x20-\x7e\n\u3000-\u3029\u3400-\u4dbf\u4e00-\u9fff\uff01-\uff60·°℃℉‘’“”…—]*$/.test(text);
+        const advances = widths[region.weight];
 
-        if (text.length > 1000) { overflow.push(region.id); continue; }
+        if (simple && !emphasis?.words.length && !text.includes("\n") && region.height >= region.size) {
+            let width = 0;
 
-        const emphasis = region.text === undefined ? highlights[region.field] : undefined;
+            for (const ch of text) { width += (advances?.[ch] ?? 1) * region.size; }
+
+            if (width <= region.width) {
+                const x = region.x + (region.align === "center" ? (region.width - width) / 2 : region.align === "right" ? region.width - width : 0);
+                layers.push({ text, left: Math.round(x), top: region.y, size: region.size, color, weight: region.weight });
+                return;
+            }
+        }
+
         const ranges: { start: number; end: number }[] = [];
 
         for (const word of emphasis?.words ?? []) {
@@ -30,14 +43,12 @@ export function layoutCard(design: CardDesign, values: Record<string, string>, w
         type Token = { text: string; emoji?: string; width: number; color: string };
         const lines: { tokens: Token[]; width: number }[] = [{ tokens: [], width: 0 }];
 
-        const simple = /^[\x20-\x7e\n\u3000-\u3029\u3400-\u4dbf\u4e00-\u9fff\uff01-\uff60·°℃℉‘’“”…—]*$/.test(text);
         const segments = simple ? text : /^\p{Extended_Pictographic}\ufe0f?$/u.test(text) ? [text] : (segmenter ??= new Intl.Segmenter("zh", { granularity: "grapheme" })).segment(text);
-        const advances = widths[region.weight];
         const maxLines = Math.floor((region.height - region.size) / region.lineHeight) + 1;
 
         for (const part of segments) {
             const segment = typeof part === "string" ? part : part.segment;
-            const color = ranges.length && ranges.some(range => offset >= range.start && offset < range.end) ? emphasis!.color : region.color;
+            const tokenColor = ranges.length && ranges.some(range => offset >= range.start && offset < range.end) ? emphasis!.color : color;
             offset += segment.length;
 
             if (segment === "\n") {
@@ -65,7 +76,7 @@ export function layoutCard(design: CardDesign, values: Record<string, string>, w
 
             if (lines.length > maxLines) { break; }
 
-            line.tokens.push({ text: segment, emoji, width, color }); line.width += width;
+            line.tokens.push({ text: segment, emoji, width, color: tokenColor }); line.width += width;
         }
 
         if ((lines.length - 1) * region.lineHeight + region.size > region.height || lines.some(line => line.width > region.width)) { overflow.push(region.id); }
@@ -79,7 +90,7 @@ export function layoutCard(design: CardDesign, values: Record<string, string>, w
             for (const token of line.tokens) {
                 if (token.emoji) {
                     group = undefined;
-                    layers.push({ emoji: token.emoji, left: Math.round(x), top: region.y + index * region.lineHeight, size: region.size, color: region.color, weight: region.weight });
+                    layers.push({ emoji: token.emoji, left: Math.round(x), top: region.y + index * region.lineHeight, size: region.size, color: color, weight: region.weight });
                 } else {
                     if (!group || group.color !== token.color) { group = { text: "", left: Math.round(x), top: region.y + index * region.lineHeight, size: region.size, color: token.color, weight: region.weight }; layers.push(group); }
 
@@ -90,10 +101,23 @@ export function layoutCard(design: CardDesign, values: Record<string, string>, w
             }
         }
     }
+    function finish(): CardLayoutResult {
+        if (layers.length > 100) { throw new Error("内容过于复杂，请减少区域或文字"); }
 
-    if (layers.length > 100) { throw new Error("内容过于复杂，请减少区域或文字"); }
+        return { layers, overflow };
+    }
+    return { add, finish };
+}
+export const textLayout = () => createTextLayout(metrics);
+export function layoutCard(design: CardDesign, values: Record<string, string>, widths: Record<string, Record<string, number>>, interpolate: typeof expand, highlights: CardHighlights = {}): CardLayoutResult {
+    const layout = createTextLayout(widths);
 
-    return { layers, overflow };
+    for (const region of design.regions) {
+        const text = region.text === undefined ? values[region.field] ?? "" : interpolate(region.text, {}, values);
+        layout.add(region, text, region.color, region.text === undefined ? highlights[region.field] : undefined);
+    }
+
+    return layout.finish();
 }
 export const cardLayout = (design: CardDesign, values: Record<string, string>, highlights: CardHighlights = {}) => layoutCard(design, values, metrics, expand, highlights);
 export const emojiURL = (id: string) => `https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/72x72/${id}.png`;

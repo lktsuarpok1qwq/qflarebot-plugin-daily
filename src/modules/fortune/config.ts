@@ -25,7 +25,7 @@ export function validate(value: unknown, shapeOnly = false): FortuneConfig {
 
     if (config.cardDesigns !== undefined) { config.cardDesigns = validateCardState(config.cardDesigns, fortuneDesigns, "fortune"); }
 
-    validateSettings(config, shapeOnly ? undefined : corpus.data);
+    validateSettings(config, shapeOnly ? undefined : corpus);
     copyContract.validate(config, shapeOnly);
 
     if (!shapeOnly) { validateCardLabels(config.copy); }

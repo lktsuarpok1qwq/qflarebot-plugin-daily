@@ -34,7 +34,7 @@ export const settings: SettingsDeclaration = {
     fields: [
         { key: "imageEnabled", id: "fortune-image-enabled", label: "启用图片卡片", group: "功能开关", type: "checkbox" },
         { key: "eggs", id: "fortune-eggs", label: "参与彩蛋抽取", group: "功能开关", type: "checkbox" },
-        ...THEMES.filter((id) => corpus.data.cards.some((entry) => entry.theme === id)).map((id) => ({ key: "theme_" + id, id: "fortune-theme-" + id, label: THEME_NAMES[id], group: "语料类型", type: "checkbox" as const })),
+        ...THEMES.filter((id) => Object.values(corpus.cards[id]).some(range => range[1] > 0)).map((id) => ({ key: "theme_" + id, id: "fortune-theme-" + id, label: THEME_NAMES[id], group: "语料类型", type: "checkbox" as const })),
         ...Object.entries(LEVEL_NAMES).map(([id, label]) => ({ key: "level_" + id, id: "fortune-level-" + id, label: label + "权重", group: "吉凶权重", type: "number" as const })),
         ...Object.entries(RARITY_NAMES).map(([id, label]) => ({ key: "rarity_" + id, id: "fortune-rarity-" + id, label: label + "权重", group: "稀有度权重", type: "number" as const })),
 

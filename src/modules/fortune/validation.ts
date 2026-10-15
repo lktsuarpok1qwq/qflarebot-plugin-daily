@@ -1,7 +1,7 @@
-import type { FortuneCorpus } from "./cards/types.js";
+import type { FortuneCorpusIndex } from "./cards/types.js";
 import { validWeights } from "./random.js";
 import { LEVELS, RARITIES, THEMES, type DrawSettings } from "./types.js";
-export function validateSettings(config: DrawSettings, corpus?: FortuneCorpus) {
+export function validateSettings(config: DrawSettings, corpus?: Pick<FortuneCorpusIndex, "cards">) {
     validWeights(Object.keys(LEVELS).map((level) => config[`level_${level as keyof typeof LEVELS}`]));
     validWeights(RARITIES.map((rarity) => config[`rarity_${rarity}`]));
 
@@ -11,8 +11,8 @@ export function validateSettings(config: DrawSettings, corpus?: FortuneCorpus) {
 
     if (corpus) { validateThemeCoverage(config, corpus); }
 }
-export function validateThemeCoverage(config: DrawSettings, corpus: FortuneCorpus) {
+export function validateThemeCoverage(config: DrawSettings, corpus: Pick<FortuneCorpusIndex, "cards">) {
     for (const level of Object.keys(LEVELS) as (keyof typeof LEVELS)[]) {
-        if (corpus.cards.length && config[`level_${level}`] > 0 && !corpus.cards.some((entry) => entry.level === level && config[`theme_${entry.theme}`])) { throw new Error("启用主题未覆盖等级：" + level); }
+        if (config[`level_${level}`] > 0 && !THEMES.some(theme => config[`theme_${theme}`] && corpus.cards[theme][level][1] > 0)) { throw new Error("启用主题未覆盖等级：" + level); }
     }
 }

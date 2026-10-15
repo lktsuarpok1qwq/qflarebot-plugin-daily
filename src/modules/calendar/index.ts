@@ -40,7 +40,7 @@ export const calendar: ModuleDefinition = {
     },
     admin: api,
     ui: {
-        source: [`const renderCalendarSample = ${renderCalendarDocument.toString()};`, calendarPage, calendarEntries].join("\n"),
+        get source() { return [`const renderCalendarSample = ${renderCalendarDocument.toString()};`, calendarPage, calendarEntries].join("\n"); },
         sections: [{ id: "entries", title: "日历条目", factory: "createCalendarEntries" }, { id: "copy", title: "文案", factory: "createCalendarCopyEditor" }],
     },
 };

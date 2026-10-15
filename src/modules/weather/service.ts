@@ -4,16 +4,10 @@ import type { Forecast, Current } from "./types.js";
 import type { WeatherConfig } from "./types.js";
 import { lookup, request, parseCurrent, parseForecast, CURRENT_FIELDS, FORECAST_FIELDS, NoWeatherData } from "./provider.js";
 import { expand, commandLink, commandUrl } from "../../shared/interpolation.js";
-export function localDay(now: number, tz: string, offset = 0) {
-    const parts = new Intl.DateTimeFormat("en", {
-        timeZone: tz,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-    }).formatToParts(now);
-    const part = (key: string) => parts.find((p) => p.type === key)!.value;
-    const day = `${part("year")}-${part("month")}-${part("day")}`;
-    return new Date(Date.parse(day) + offset * 86_400_000).toISOString().slice(0, 10);
+// GeoAPI supplies the current UTC offset, including daylight saving time.
+export function localDay(now: number, utcOffset: number, offset = 0) {
+    const day = new Date(now + utcOffset * 60_000).toISOString().slice(0, 10);
+    return offset ? new Date(Date.parse(day) + offset * 86_400_000).toISOString().slice(0, 10) : day;
 }
 export async function queryWeather(
     config: WeatherConfig,
@@ -66,7 +60,7 @@ export async function queryWeather(
         };
     }
 
-    const day = localDay(now, city.tz, tomorrow ? 1 : 0);
+    const day = localDay(now, city.utcOffset, tomorrow ? 1 : 0);
     const suffix = "/" + city.lat + "/" + city.lon;
     const cardCopy = config.cardCopy ?? WEATHER_CARD_COPY;
     const custom = image && config.cardDesigns?.config.weather?.enabled ? config.cardDesigns.config.weather : undefined;
@@ -115,11 +109,11 @@ export async function queryWeather(
         }
 
         const cityLabel = city.name + " · " + city.area;
+        const date = Number(day.slice(5, 7)) + "月" + Number(day.slice(8, 10)) + "日";
 
         let card: WeatherCardData | undefined;
 
         if (image) {
-            const date = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", timeZone: "UTC" }).format(Date.parse(day));
             const sunrise = Date.parse(daily.sunrise ?? ""), sunset = Date.parse(daily.sunset ?? "");
             const night = Number.isFinite(sunrise) && Number.isFinite(sunset) && (now < sunrise || now >= sunset);
             card = {
@@ -140,15 +134,10 @@ export async function queryWeather(
             };
         }
 
-        const updated = new Intl.DateTimeFormat("zh-CN", {
-            timeZone: city.tz,
-            month: "long",
-            day: "numeric",
-        }).format(now);
         return {
             card,
             text:
-                renderWeather(copy, "current", { values: { ...daily, ...current!, city: cityLabel, updated }, fragments: { tomorrow_url: commandUrl("/天气 " + city.id + " 明天") } }, expand),
+                renderWeather(copy, "current", { values: { ...daily, ...current!, city: cityLabel, updated: date }, fragments: { tomorrow_url: commandUrl("/天气 " + city.id + " 明天") } }, expand),
         };
     } catch (error) {
         if (error instanceof NoWeatherData) {

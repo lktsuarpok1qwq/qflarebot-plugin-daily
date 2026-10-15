@@ -1,7 +1,6 @@
 import type { CardDefinition } from "../../../shared/cards/types.js";
-import { expand } from "../../../shared/interpolation.js";
+import { weatherCardValue } from "./values.js";
 import type { WeatherCardCopy, WeatherCardData } from "./copy.js";
-import { WEATHER_SYMBOLS, weatherTheme } from "./conditions.js";
 import { weatherPresets } from "./presets.js";
 export const weatherDesigns: readonly CardDefinition[] = [{
     id: "weather", presets: weatherPresets, samples: [
@@ -19,12 +18,9 @@ export const weatherDesigns: readonly CardDefinition[] = [{
 export function weatherDesignValues(data: WeatherCardData, copy: WeatherCardCopy): Record<string, string> {
     const result: Record<string, string> = {};
 
-    for (const key of ["city", "area", "condition", "humidity", "wind", "range", "day", "night", "date"] as const) { result[key] = expand(copy[key], {}, data.values); }
+    for (const key of ["city", "area", "condition", "humidity", "wind", "range", "day", "night", "date", "temperature", "first", "day_icon", "night_icon", "icon"] as const) {
+        result[key] = weatherCardValue(key, data, copy);
+    }
 
-    result.temperature = expand(data.tomorrow ? copy.tomorrow : copy.current, {}, data.values);
-    result.first = expand(data.tomorrow ? copy.minimum : copy.feels, {}, data.values);
-    result.day_icon = WEATHER_SYMBOLS[weatherTheme(data.dayCode, false)];
-    result.night_icon = WEATHER_SYMBOLS[weatherTheme(data.nightCode, true)];
-    result.icon = WEATHER_SYMBOLS[weatherTheme(data.code, data.night)];
     return result;
 }

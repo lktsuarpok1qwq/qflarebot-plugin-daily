@@ -33,8 +33,3 @@ export function fortuneDesignValues(snapshot: CardSnapshot): Record<string, stri
         explanation: c.explanation.text, good: c.good.join("\n"), bad: c.bad.join("\n"), effect: c.effect.name + "\n" + c.effect.description.text, item: c.item.name + "\n" + c.item.description.text, egg: c.egg?.text ?? ""
     };
 }
-
-export function fortuneHighlights(snapshot: CardSnapshot, color: string) {
-    const c = snapshot.content;
-    return Object.fromEntries(Object.entries({ sign: c.sign, explanation: c.explanation, effect_text: c.effect.description, item_text: c.item.description, egg: c.egg }).filter(([, phrase]) => phrase?.emphasis?.length).map(([field, phrase]) => [field, { words: phrase!.emphasis!, color }]));
-}

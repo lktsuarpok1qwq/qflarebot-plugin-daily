@@ -1,8 +1,9 @@
-import { layoutCard, emojiURL } from "../../cards/layout.js";
+import { createTextLayout, layoutCard, emojiURL } from "../../cards/layout.js";
 import { validateRegionContent } from "../../cards/validation.js";
 import metrics from "../../cards/metrics.json";
 import { fontAsset } from "../../cards/types.js";
-export const cardEditor = `const cardWidths = ${JSON.stringify(metrics)};\nconst validateRegionContent = ${validateRegionContent.toString()};\nconst layoutCard = ${layoutCard.toString()};\nconst cardEmojiURL = ${emojiURL.toString()};\nconst cardFontNames = ${JSON.stringify({ 400: fontAsset(400), 700: fontAsset(700) })};\n` + String.raw`
+export const cardEditor = `const cardWidths = ${JSON.stringify(metrics)};\nconst validateRegionContent = ${validateRegionContent.toString()};\nconst createTextLayout = ${createTextLayout.toString()};
+const layoutCard = ${layoutCard.toString()};\nconst cardEmojiURL = ${emojiURL.toString()};\nconst cardFontNames = ${JSON.stringify({ 400: fontAsset(400), 700: fontAsset(700) })};\n` + String.raw`
 function createCardEditor(app, ui) {
     let state = null, draft = null, selected = '', regionId = '', loading = false, failure = '', generation = 0;
     let realURL = '', realStale = false, background = null, backgroundAsset = '', backgroundPending = null, imageToken = 0, synchronized = true;

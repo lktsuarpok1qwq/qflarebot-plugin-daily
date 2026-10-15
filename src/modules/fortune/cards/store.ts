@@ -11,12 +11,13 @@ export async function userKey(botId: string, userId: string) {
 }
 export const readCard = (db: PluginDB, id: string) => db.first<CardRow>("SELECT id,day,token,snapshot,drawn FROM {fortune_cards} WHERE id=?", id);
 export async function claimCard(db: PluginDB, id: string, day: string, card: CardSnapshot) {
-    const claimed = await db.first<CardRow>("INSERT INTO {fortune_cards}(id,day,token,snapshot) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET day=excluded.day,token=excluded.token,snapshot=excluded.snapshot,drawn=0 WHERE {fortune_cards}.day<excluded.day RETURNING id,day,token,snapshot,drawn", id, day, crypto.randomUUID(), JSON.stringify(card));
-    const row = claimed ?? await readCard(db, id);
+    const token = crypto.randomUUID(), snapshot = JSON.stringify(card);
+    const claimed = await db.first<{ claimed: number }>("INSERT INTO {fortune_cards}(id,day,token,snapshot) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET day=excluded.day,token=excluded.token,snapshot=excluded.snapshot,drawn=0 WHERE {fortune_cards}.day<excluded.day RETURNING 1 AS claimed", id, day, token, snapshot);
+    const row = claimed ? { id, day, token, snapshot, drawn: 0 } : await readCard(db, id);
 
     if (!row || row.day !== day) { throw new Error("抽签日期已变化，请重新抽签"); }
 
-    return row;
+    return { row, fresh: claimed ? card : undefined };
 }
 export async function markDrawn(db: PluginDB, row: CardRow) {
     if (row.drawn) { return; }

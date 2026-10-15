@@ -27,5 +27,13 @@ export interface FortuneCardLabels {
 
 export type FortuneCardEntry = Omit<FortuneCardContent, "date" | "score" | "rarity" | "egg"> & { id: string };
 export type FortuneEgg = CardPhrase & { id: string; theme?: CardTheme };
-export type FortuneHoliday = { id: string; name: string; date: string; eggs: FortuneEgg[] };
-export type FortuneCorpus = { cards: FortuneCardEntry[]; ordinaryEggs: FortuneEgg[]; holidays: FortuneHoliday[] };
+export type CorpusRange = readonly [pool: number, count: number];
+export type FortuneHoliday = { id: string; name: string; date: string; eggs: CorpusRange };
+export type FortuneCorpusIndex = {
+    cards: Record<CardTheme, Record<Level, CorpusRange>>;
+    ordinaryEggs: Record<CardTheme, CorpusRange>;
+    holidays: FortuneHoliday[];
+    sampleCard: readonly [pool: number, position: number];
+    sampleEgg: readonly [pool: number, position: number];
+    status: string;
+};

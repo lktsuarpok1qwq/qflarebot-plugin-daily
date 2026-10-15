@@ -19,7 +19,7 @@ export const notification: ModuleDefinition = {
     },
     admin: (input, { variables }) => api(input, variables),
     ui: {
-        source: [notificationPage, tasksPage, recipientsPage, copyTemplates, recordsPage].join("\n"),
+        get source() { return [notificationPage, tasksPage, recipientsPage, copyTemplates, recordsPage].join("\n"); },
         factory: "createNotificationPage",
     },
 };

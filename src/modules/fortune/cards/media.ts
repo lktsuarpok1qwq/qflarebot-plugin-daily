@@ -1,13 +1,11 @@
 import { backgrounds } from "./backgrounds/index.js";
 import type { CardState } from "../../../shared/cards/types.js";
-import { renderDesign } from "../../../shared/cards/render.js";
-import { fortuneDesignValues, fortuneHighlights } from "./design.js";
+import { renderDesign, renderLayers } from "../../../shared/cards/render.js";
+import { fortuneDesignValues } from "./design.js";
 import type { Route, RouteInput } from "@qqbot/sdk";
 import type { Ctx } from "../../../shared/types.js";
 import { addDays, dateAt, validDate } from "../../../shared/date.js";
-import { CARD_PALETTES } from "./layout.js";
-import { LEVELS } from "../types.js";
-import { fortuneDefault } from "./presets.js";
+import { layoutFortune } from "./default.js";
 import type { CardRow, CardSnapshot } from "./store.js";
 const PREFIX = "fortune/cards/";
 const key = (day: string, token: string, view: string) => `${PREFIX}${day}/${token}/${view}.png`;
@@ -18,7 +16,7 @@ export class CardImageError extends Error {
         this.name = "CardImageError";
     }
 }
-export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", origin: string, state?: CardState) {
+export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", origin: string, state?: CardState, fresh?: CardSnapshot) {
     const deadline = Date.now() + 10_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let expired = false;
@@ -31,19 +29,25 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
         const custom = design?.enabled ? design : null;
         const imageView = `${view}-i1-r${custom ? state!.revision : 0}`;
         const path = key(row.day, row.token, imageView);
-        const existing = await ctx.r2.head(path);
+        // A successful claim creates a new token; only an existing snapshot can have a cached image.
+        const existing = fresh ? null : await ctx.r2.head(path);
         check();
 
         if (!existing) {
             stage = "request";
-            const snapshot = JSON.parse(row.snapshot) as CardSnapshot;
+            const snapshot = fresh ?? JSON.parse(row.snapshot) as CardSnapshot;
 
-            const selected = custom ?? fortuneDefault(snapshot.content.theme, view === "small" ? "small" : snapshot.content.egg ? "egg" : "detail");
-
-            if (!custom) { selected.regions.find(region => region.field === "level")!.color = LEVELS[snapshot.content.level][0] >= 55 ? CARD_PALETTES[snapshot.content.theme].good : CARD_PALETTES[snapshot.content.theme].bad; }
-
+            const signal = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
             stage = "render";
-            const stream = await renderDesign(ctx, selected, fortuneDesignValues(snapshot), AbortSignal.timeout(Math.max(1, deadline - Date.now())), backgrounds, custom ? {} : fortuneHighlights(snapshot, CARD_PALETTES[snapshot.content.theme].accent));
+            let stream: ReadableStream<Uint8Array>;
+
+            if (custom) {
+                stream = await renderDesign(ctx, custom, fortuneDesignValues(snapshot), signal, backgrounds);
+            } else {
+                const selected = layoutFortune(snapshot, view);
+                stream = await renderLayers(ctx, selected.background, selected.layout, signal, backgrounds);
+            }
+
             check();
             stage = "image_save";
             await ctx.r2.put(path, stream, { contentType: "image/png" });

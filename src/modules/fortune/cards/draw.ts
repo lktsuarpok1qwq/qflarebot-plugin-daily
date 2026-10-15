@@ -1,5 +1,5 @@
 import { validDate } from "../../../shared/date.js";
-import { corpus } from "../corpus.js";
+import { corpus, readStory, readEgg } from "../corpus.js";
 import { choose, random } from "../random.js";
 import { LEVELS, RARITIES, type DrawSettings } from "../types.js";
 import { CARD_THEMES, type CardTheme } from "./layout.js";
@@ -10,7 +10,7 @@ export function holidayWindow(date: string): { holidays: FortuneHoliday[]; chanc
     let nearest = 8;
     let holidays: FortuneHoliday[] = [];
 
-    for (const holiday of corpus.data.holidays) {
+    for (const holiday of corpus.holidays) {
         for (const eventYear of [year, year + 1]) {
             const gap = (Date.parse(`${eventYear}-${holiday.date}T00:00:00Z`) - today) / 86400000;
 
@@ -29,9 +29,9 @@ export function selectEgg(theme: CardTheme, date: string, chance: number, pick: 
     const window = holidayWindow(date);
     const holiday = choose(window.holidays, () => 1, pick);
 
-    if (holiday && chance < window.chance) { return choose(holiday.eggs, () => 1, pick); }
+    if (holiday && chance < window.chance) { return readEgg(holiday.eggs, pick()); }
 
-    if (chance >= window.chance && chance < window.chance + 0.05) { return choose(corpus.data.ordinaryEggs.filter(egg => egg.theme === theme), () => 1, pick); }
+    if (chance >= window.chance && chance < window.chance + 0.05) { return readEgg(corpus.ordinaryEggs[theme], pick()); }
 
     return undefined;
 }
@@ -46,7 +46,7 @@ export function drawCard(user: string, date: string, config: DrawSettings): Fort
 
     const level = choose(Object.keys(LEVELS) as (keyof typeof LEVELS)[], key => config[`level_${key}`], random(seed + ":level"))!;
     const rarity = choose(RARITIES, key => config[`rarity_${key}`], random(seed + ":rarity"))!;
-    const story = choose(corpus.data.cards.filter(card => card.theme === theme && card.level === level), () => 1, random(seed + ":story"))!;
+    const story = readStory(theme, level, random(seed + ":story")());
     const [min, max] = LEVELS[level];
     const egg = config.eggs ? selectEgg(theme, date, random(seed + ":egg-chance")(), random(seed + ":egg-pick")) : undefined;
     return {

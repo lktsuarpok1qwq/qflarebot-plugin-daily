@@ -17,7 +17,7 @@ export const news: ModuleDefinition = {
     cron: { game_news_sync: { cron: "0 * * * *", handler: async ({ ctx, scheduledAt }) => { await sync(ctx, scheduledAt); } } },
     admin: api,
     ui: {
-        source: `const renderNewsSample = ${renderNews.toString()}; const renderSearchSample = ${renderSearch.toString()};` + newsPage, sections: [
+        get source() { return `const renderNewsSample = ${renderNews.toString()}; const renderSearchSample = ${renderSearch.toString()};` + newsPage; }, sections: [
             { id: "settings", title: "游戏设置", factory: "createSettingsEditor" },
             { id: "cache", title: "游戏缓存", factory: "createNewsCache" },
             { id: "copy", title: "文案", factory: "createNewsCopyEditor" },
