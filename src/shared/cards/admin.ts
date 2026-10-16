@@ -50,7 +50,7 @@ export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
                     return [field.key, value];
                 }));
             });
-            return new Response(await renderDesign(ctx, design, values, AbortSignal.timeout(10_000), binding.assets), { headers: { "content-type": "image/png" } });
+            return new Response(await renderDesign(ctx, design, values, AbortSignal.timeout(10_000), binding.assets, {}, binding.format), { headers: { "content-type": `image/${binding.format}` } });
         }
 
         const state = await binding.read(ctx);

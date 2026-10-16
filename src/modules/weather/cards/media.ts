@@ -26,18 +26,18 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
         let stream: ReadableStream<Uint8Array>;
 
         if (design?.enabled) {
-            stream = await renderDesign(ctx, design, weatherDesignValues(data, copy), signal, backgrounds);
+            stream = await renderDesign(ctx, design, weatherDesignValues(data, copy), signal, backgrounds, {}, "jpeg");
         } else {
             const selected = layoutWeather(data, copy);
-            stream = await renderLayers(ctx, selected.background, selected.layout, signal, backgrounds);
+            stream = await renderLayers(ctx, selected.background, selected.layout, signal, backgrounds, "jpeg");
         }
 
         check();
         stage = "image_save";
-        await ctx.r2.put(`${PREFIX}${day}/${token}.png`, stream, { contentType: "image/png" });
+        await ctx.r2.put(`${PREFIX}${day}/${token}.jpg`, stream, { contentType: "image/jpeg" });
 
         check();
-        return `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/weather/cards/${day}/${token}`;
+        return `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/weather/cards/${day}/${token}.jpg`;
     };
 
     try {
@@ -54,12 +54,13 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
 async function readImage({ ctx, params }: RouteInput) {
     const { day = "", token = "" } = params, today = dateAt(Date.now());
 
-    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token)) {
+    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\.jpg)?$/.test(token)) {
         return new Response(null, { status: 404 });
     }
 
-    const stream = await ctx.r2.getStream(`${PREFIX}${day}/${token}.png`);
-    return stream ? new Response(stream, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } }) : new Response(null, { status: 404 });
+    const jpeg = token.endsWith(".jpg");
+    const stream = await ctx.r2.getStream(`${PREFIX}${day}/${jpeg ? token : token + ".png"}`);
+    return stream ? new Response(stream, { headers: { "content-type": jpeg ? "image/jpeg" : "image/png", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } }) : new Response(null, { status: 404 });
 }
 export const weatherCardRoutes: Route[] = [{ method: "GET", path: "/weather/cards/:day/:token", auth: "public", handler: readImage }];
 export async function cleanupWeatherImages(ctx: Ctx, now: number) {

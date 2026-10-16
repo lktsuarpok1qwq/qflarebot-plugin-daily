@@ -10,7 +10,7 @@ import { weatherCardRoutes, cleanupWeatherImages } from "./cards/media.js";
 import { api } from "./admin.js";
 import { weatherPage } from "./ui/page.js";
 export const weather: ModuleDefinition = {
-    id: "weather", cards: bindCards(weatherDesigns, { snapshot, save }, backgrounds),
+    id: "weather", cards: bindCards(weatherDesigns, { snapshot, save }, backgrounds, "jpeg"),
     title: "天气",
     permissions: ["db", "net"],
     install,

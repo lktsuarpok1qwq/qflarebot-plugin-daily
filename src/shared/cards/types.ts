@@ -1,3 +1,4 @@
+export type CardFormat = "png" | "jpeg";
 export type CardField = { key: string; label: string; sample: string };
 export type CardDefinition = { id: string; title: string; width: 540; height: 300 | 850; fields: readonly CardField[]; presets: readonly { id: string; title: string; design: CardDesign }[]; samples: readonly { id: string; title: string; values: Record<string, string> }[] };
 export type CardRegion = { id: string; field: string; text?: string; x: number; y: number; width: number; height: number; size: number; weight: 400 | 700; color: string; align: "left" | "center" | "right"; lineHeight: number };

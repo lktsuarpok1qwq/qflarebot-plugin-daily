@@ -1,11 +1,12 @@
 import type { Ctx } from "../types.js";
 import type { ConfigState } from "../config-store.js";
-import type { CardDefinition, CardState, CardAssets } from "./types.js";
+import type { CardDefinition, CardState, CardAssets, CardFormat } from "./types.js";
 import { validateDesigns } from "./validation.js";
 import { AdminError } from "../admin-errors.js";
 export type CardBinding = {
     definitions: readonly CardDefinition[];
     assets: CardAssets;
+    format: CardFormat;
     read: (ctx: Ctx) => Promise<CardState & { commit: (config: CardState["config"]) => Promise<CardState> }>;
 };
 function emptyDesigns(definitions: readonly CardDefinition[]): CardState {
@@ -14,9 +15,9 @@ function emptyDesigns(definitions: readonly CardDefinition[]): CardState {
 export function bindCards<T extends { cardDesigns?: CardState }>(definitions: readonly CardDefinition[], storage: {
     snapshot: (db: Ctx["db"]) => Promise<ConfigState<T>>;
     save: (ctx: Ctx, old: ConfigState<T>, config: unknown) => Promise<ConfigState<T>>;
-}, assets: CardAssets = {}): CardBinding {
+}, assets: CardAssets = {}, format: CardFormat = "png"): CardBinding {
     return {
-        definitions, assets,
+        definitions, assets, format,
         async read(ctx) {
             const source = await storage.snapshot(ctx.db), state = source.config.cardDesigns ?? emptyDesigns(definitions);
             return {
