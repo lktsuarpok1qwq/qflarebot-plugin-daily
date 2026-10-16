@@ -10,6 +10,16 @@ export default definePlugin({
     displayName: "每日助手",
     description: "定时通知、日历、天气、一言、运势、新闻搜索与游戏资讯",
     apiVersion: 3,
+    configSchema: {
+        type: "object",
+        properties: {
+            imagePublicUrl: {
+                type: "string", title: "图片公开地址", default: "",
+                description: "当前 R2 桶绑定的 HTTPS 自定义域名，如 https://img.example.com，留空使用机器人地址",
+            },
+        },
+    },
+    defaultConfig: { imagePublicUrl: "" },
     permissions: [...new Set(["db", "admin", ...registry.permissions] as const)],
     hooks: {
         onInstall: async (ctx) => {

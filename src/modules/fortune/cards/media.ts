@@ -7,20 +7,21 @@ import type { Ctx } from "../../../shared/types.js";
 import { addDays, dateAt, validDate } from "../../../shared/date.js";
 import { layoutFortune } from "./default.js";
 import type { CardRow, CardSnapshot } from "./store.js";
+import { storedImageUrl } from "../../../shared/public-origin.js";
 const PREFIX = "fortune/cards/";
 const key = (day: string, token: string, view: string) => `${PREFIX}${day}/${token}/${view}.png`;
-type ImageStage = "cache_check" | "request" | "render" | "image_save";
+type ImageStage = "public_address" | "cache_check" | "request" | "render" | "image_save";
 export class CardImageError extends Error {
     constructor(readonly stage: ImageStage, cause: unknown) {
         super(String(cause), { cause });
         this.name = "CardImageError";
     }
 }
-export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", origin: string, state?: CardState, fresh?: CardSnapshot) {
+export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", state?: CardState, fresh?: CardSnapshot) {
     const deadline = Date.now() + 10_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let expired = false;
-    let stage: ImageStage = "cache_check";
+    let stage: ImageStage = "public_address";
     const check = () => {
         if (expired || Date.now() >= deadline) { throw new Error("运势图片准备超时"); }
     };
@@ -29,6 +30,8 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
         const custom = design?.enabled ? design : null;
         const imageView = `${view}-i1-r${custom ? state!.revision : 0}`;
         const path = key(row.day, row.token, imageView);
+        const url = storedImageUrl(ctx, path, `${PREFIX}${row.day}/${row.token}/${imageView}`);
+        stage = "cache_check";
         // A successful claim creates a new token; only an existing snapshot can have a cached image.
         const existing = fresh ? null : await ctx.r2.head(path);
         check();
@@ -54,7 +57,7 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
             check();
         }
 
-        return { url: `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/fortune/cards/${row.day}/${row.token}/${imageView}`, cache: existing ? "hit" : "miss" };
+        return { url, cache: existing ? "hit" : "miss" };
     };
 
     try {

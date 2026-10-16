@@ -8,7 +8,6 @@ import { readCommandState } from "../repository.js";
 import { cardLabels } from "./labels.js";
 import { drawCard } from "./draw.js";
 import { userKey, claimCard, markDrawn } from "./store.js";
-import { publicOrigin } from "../../../shared/public-origin.js";
 import { CardImageError, cardImage } from "./media.js";
 export async function renderCardCommand({ ctx, session }: CommandInput, name: string): Promise<Rendered> {
     const day = dateAt(Date.now()), id = await userKey(ctx.botId, session.userId);
@@ -33,7 +32,7 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
 
     if (config.imageEnabled) {
         try {
-            const image = await cardImage(ctx, row, view, publicOrigin(ctx), config.cardDesigns, fresh);
+            const image = await cardImage(ctx, row, view, config.cardDesigns, fresh);
             const text = `![运势 #540px #${height}px](${image.url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
             return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, imageFallback: textFallback, diagnostics: { view, imageCache: image.cache }, afterSend };
         } catch (error) {

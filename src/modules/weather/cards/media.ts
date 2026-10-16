@@ -5,7 +5,7 @@ import { layoutWeather } from "./default.js";
 import { weatherDesignValues } from "./design.js";
 import type { Route, RouteInput } from "@qqbot/sdk";
 import type { Ctx } from "../../../shared/types.js";
-import { publicOrigin } from "../../../shared/public-origin.js";
+import { storedImageUrl } from "../../../shared/public-origin.js";
 import { dateAt, addDays, validDate } from "../../../shared/date.js";
 import type { WeatherCardCopy, WeatherCardData } from "./copy.js";
 const PREFIX = "weather/cards/";
@@ -18,7 +18,8 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
         if (expired || Date.now() >= deadline) { throw new Error("天气图片准备超时"); }
     };
     const prepare = async () => {
-        const origin = publicOrigin(ctx);
+        const path = `${PREFIX}${day}/${token}.jpg`;
+        const url = storedImageUrl(ctx, path);
         stage = "render";
         const design = state?.config.weather;
 
@@ -34,10 +35,10 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
 
         check();
         stage = "image_save";
-        await ctx.r2.put(`${PREFIX}${day}/${token}.jpg`, stream, { contentType: "image/jpeg" });
+        await ctx.r2.put(path, stream, { contentType: "image/jpeg" });
 
         check();
-        return `${origin}/p/${encodeURIComponent(ctx.plugin.name)}/weather/cards/${day}/${token}.jpg`;
+        return url;
     };
 
     try {
