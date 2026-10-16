@@ -72,36 +72,37 @@ export async function finishMany(db: PluginDB, outcomes: Outcome[]) {
         return;
     }
 
-    const chunks = jsonChunks(
-        outcomes.map((o) => ({
-            key: deliveryKey(o.d),
-            id: o.d.id,
-            due: o.d.due_at,
-            revision: o.d.revision,
-            status: o.status,
-            now: o.now,
-            next: o.next?.due ?? null,
-            error: o.error ?? null,
-            messageId: o.messageId ?? null,
-        })),
-        500_000,
-        25,
-    );
+    const rows = outcomes.map((o) => ({
+        key: deliveryKey(o.d),
+        id: o.d.id === `${o.d.task_id}:${o.d.recipient_id}` ? o.d.id : null,
+        due: o.d.due_at,
+        revision: o.d.revision,
+        status: o.status,
+        now: o.now,
+        next: o.next?.due ?? null,
+        error: o.error ?? null,
+        messageId: o.messageId ?? null,
+    }));
+    const chunks = jsonChunks(rows, 500_000, 25);
+    const scheduled = rows.filter((row) => row.id !== null);
+    const bindingChunks = scheduled.length === rows.length ? chunks : jsonChunks(scheduled, 500_000, 25);
     // Materialize parsed outcomes once per statement; correlated lookups reuse the rows.
     const records = `${jsonRows}, records AS MATERIALIZED (SELECT ${["key", "id", "due", "revision", "status", "now", "next", "error", "messageId"].map((k) => `${jx(k)} AS ${k}`).join(",")} FROM idx CROSS JOIN input)`;
     const statements: DBStatement[] = [];
 
     for (const data of chunks) {
-        statements.push(
-            {
-                sql: `${records} UPDATE {deliveries} AS d SET (status,updated_at,error,message_id)=(SELECT status,now,error,messageId FROM records WHERE key=d.key) WHERE d.status='sending' AND d.key IN (SELECT key FROM records)`,
-                params: [data],
-            },
-            {
-                sql: `${records} UPDATE {bindings} AS b SET last_due=MAX(COALESCE(last_due,0),due_at),due_at=(SELECT next FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision) WHERE b.id IN (SELECT id FROM records) AND EXISTS(SELECT 1 FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision)`,
-                params: [data],
-            },
-        );
+        statements.push({
+            sql: `${records} UPDATE {deliveries} AS d SET (status,updated_at,error,message_id)=(SELECT status,now,error,messageId FROM records WHERE key=d.key) WHERE d.status='sending' AND d.key IN (SELECT key FROM records)`,
+            params: [data],
+        });
+    }
+
+    // Manual tests and detached claims have no schedule to advance.
+    for (const data of bindingChunks) {
+        statements.push({
+            sql: `${records} UPDATE {bindings} AS b SET last_due=MAX(COALESCE(last_due,0),due_at),due_at=(SELECT next FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision) WHERE b.id IN (SELECT id FROM records) AND EXISTS(SELECT 1 FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision)`,
+            params: [data],
+        });
     }
 
     await db.batch(statements);

@@ -24,7 +24,3 @@ export async function markDrawn(db: PluginDB, row: CardRow) {
 
     await db.run("UPDATE {fortune_cards} SET drawn=1 WHERE id=? AND day=? AND token=? AND drawn=0", row.id, row.day, row.token);
 }
-
-export async function resetCards(db: PluginDB, day: string) {
-    await db.run("DELETE FROM {fortune_cards} WHERE day=?", day);
-}

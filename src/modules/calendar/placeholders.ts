@@ -1,9 +1,9 @@
-import type { CalendarConfig, SourceSummary } from "./types.js";
+import type { CalendarConfig, SourceCoverage } from "./types.js";
 import { calendarService } from "./service.js";
 import { dateAt, DAY } from "../../shared/date.js";
 import { createCalendarItem, renderCalendarDocument, renderCalendarQuery } from "./rendering.js";
 import { expand } from "../../shared/interpolation.js";
-export function calendarValues(config: CalendarConfig, sources: SourceSummary[], due: number): Record<string, string> {
+export function calendarValues(config: CalendarConfig, sources: SourceCoverage[], due: number): Record<string, string> {
     const day = dateAt(due), copy = config.calendarCopy;
     let service: ReturnType<typeof calendarService> | undefined;
     const getService = () => service ??= calendarService(config, sources, due);

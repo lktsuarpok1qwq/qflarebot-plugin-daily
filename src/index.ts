@@ -4,11 +4,10 @@ import { install } from "./data/repository.js";
 import { coreCommands, moduleCommands } from "./commands.js";
 import { registry } from "./modules/index.js";
 import { api } from "./admin.js";
-import { prepareFont } from "./shared/cards/assets.js";
 export default definePlugin({
     name: "daily",
     displayName: "每日助手",
-    description: "定时通知、日历、天气、一言、运势、新闻搜索与游戏资讯",
+    description: "定时通知、日历、天气、一言与运势",
     apiVersion: 3,
     configSchema: {
         type: "object",
@@ -25,8 +24,6 @@ export default definePlugin({
         onInstall: async (ctx) => {
             await install(ctx);
             await registry.install(ctx);
-
-            for (const weight of [400, 700]) { await prepareFont(ctx, weight); }
         },
     },
     commands: {

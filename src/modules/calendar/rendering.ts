@@ -1,3 +1,4 @@
+import { analyzeTemplate } from "../../shared/templates.js";
 import type { Query } from "./service.js";
 import type { CalendarCopy, CalendarEvent } from "./types.js";
 import { DAY } from "../../shared/date.js";
@@ -57,12 +58,17 @@ export function renderCalendarDocument(doc: CalendarDocument, copy: CalendarCopy
 
     if (doc.kind === "help") { const text = interpolate(copy.help, context); return decorate ? decorate("help", text) : text; }
 
+    const references = new Map<CalendarItem["base"], Set<string>>();
     const rows = doc.items.map((item) => {
         const body = copy[item.base];
+
+        if (!references.has(item.base)) { references.set(item.base, analyzeTemplate(body).keys); }
+
+        const selected = references.get(item.base)!;
         const keys: Record<string, keyof CalendarCopy | null> = item.base === "summary"
             ? { date_text: item.date, status: item.status, makeup_text: item.makeup }
             : { today_text: item.today };
-        const fragments = Object.fromEntries(Object.entries(keys).filter(([name]) => body.includes("{{" + name + "}}")).map(([name, key]) => {
+        const fragments = Object.fromEntries(Object.entries(keys).filter(([name]) => selected.has(name)).map(([name, key]) => {
             const text = key ? interpolate(copy[key], item.values) : "";
             return [name, key && decorate ? decorate(key, text) : text];
         }));

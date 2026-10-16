@@ -17,7 +17,7 @@ export async function maintenance(
 
     if (!manual) {
         const r = await ctx.db.run(
-            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,NULL) ON CONFLICT(job) DO UPDATE SET day=excluded.day WHERE day<>excluded.day",
+            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,NULL) ON CONFLICT(job) DO UPDATE SET day=excluded.day WHERE day<excluded.day",
             jobKey,
             day,
         );
@@ -58,7 +58,7 @@ export async function maintenance(
         const failures = results.filter((r) => r.status === "error").map(describe);
         const error = failures.length ? failures.join("；") : null;
         await ctx.db.run(
-            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<>excluded.day OR error IS NOT excluded.error",
+            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<excluded.day OR (day=excluded.day AND error IS NOT excluded.error)",
             jobKey,
             day,
             error,
@@ -70,7 +70,7 @@ export async function maintenance(
         };
     } catch (e) {
         await ctx.db.run(
-            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<>excluded.day OR error IS NOT excluded.error",
+            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<excluded.day OR (day=excluded.day AND error IS NOT excluded.error)",
             jobKey,
             day,
             e instanceof Error ? e.message.slice(0, 200) : "maintenance_failed",

@@ -26,8 +26,6 @@ export function parseConfig(raw: string): WeatherConfig {
 
     if (c?.schemaVersion !== 2) { throw new Error("天气配置格式错误"); }
 
-    c.imageEnabled ??= true;
-    c.cardCopy ??= { ...WEATHER_CARD_COPY };
     copyContract.validate(c, true);
 
     if (typeof c.imageEnabled !== "boolean") { throw new Error("图片开关格式错误"); }

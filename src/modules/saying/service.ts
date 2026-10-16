@@ -1,3 +1,4 @@
+import { analyzeTemplate } from "../../shared/templates.js";
 import type { Ctx } from "../../shared/types.js";
 import { dateAt } from "../../shared/date.js";
 import { expand } from "../../shared/interpolation.js";
@@ -17,7 +18,7 @@ export function createResolver(ctx: Ctx) {
                 try {
                     const { config, text } = await dailyState(ctx.db, day);
 
-                    if (!config.copy.today.includes("{{text}}")) {
+                    if (!analyzeTemplate(config.copy.today).keys.has("text")) {
                         return { "一言.今日": config.copy.today };
                     }
 

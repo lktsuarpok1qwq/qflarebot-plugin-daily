@@ -1,15 +1,13 @@
 import type { CardRegion } from "../../../shared/cards/types.js";
-export const CARD_THEMES = ["absurd", "gaming", "daily", "student", "mystic"] as const;
-export type CardTheme = typeof CARD_THEMES[number];
 export type CardLayout = "small" | "detail" | "egg";
 type DefaultRegion = Omit<CardRegion, "color"> & { color: "text" | "muted" | "good" | "rarity" | "accent" };
 const small: Readonly<Record<string, DefaultRegion>> = {
-    "month": { x: 316, y: 18, width: 36, height: 42, id: "month", field: "month", size: 24, weight: 400, color: "muted", align: "right", lineHeight: 32 },
-    "day": { x: 392, y: 18, width: 36, height: 42, id: "day", field: "day", size: 24, weight: 400, color: "muted", align: "right", lineHeight: 32 },
+    "month": { x: 316, y: 24, width: 36, height: 36, id: "month", field: "month", size: 24, weight: 400, color: "muted", align: "right", lineHeight: 32 },
+    "day": { x: 392, y: 24, width: 36, height: 36, id: "day", field: "day", size: 24, weight: 400, color: "muted", align: "right", lineHeight: 32 },
     "title": { x: 26, y: 72, width: 256, height: 58, id: "title", field: "title", size: 40, weight: 700, color: "text", align: "left", lineHeight: 48 },
     "icon": { x: 296, y: 78, width: 48, height: 48, id: "icon", field: "icon", size: 48, weight: 400, color: "text", align: "left", lineHeight: 56 },
     "result": { x: 386, y: 82, width: 128, height: 65, id: "result", field: "level", size: 40, weight: 700, color: "good", align: "center", lineHeight: 48 },
-    "score": { x: 390, y: 142, width: 50, height: 36, id: "score", field: "score", size: 24, weight: 400, color: "text", align: "right", lineHeight: 32 },
+    "score": { x: 390, y: 148, width: 50, height: 30, id: "score", field: "score", size: 24, weight: 400, color: "text", align: "right", lineHeight: 32 },
     "sign": { x: 26, y: 144, width: 344, height: 84, id: "sign", field: "sign", size: 28, weight: 400, color: "text", align: "left", lineHeight: 36 },
     "rarity": { x: 66, y: 240, width: 210, height: 42, id: "rarity", field: "rarity", size: 24, weight: 400, color: "rarity", align: "left", lineHeight: 32 }
 };

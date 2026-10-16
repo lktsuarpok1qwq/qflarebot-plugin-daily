@@ -35,12 +35,12 @@ export function calendarSamples() {
         return {
             id: sample.id, name: sample.name,
             get query() {
-                return queryDocument({ data: rows, status: rows.length ? "known" : sample.complete ? "none" : "unknown", complete: !!sample.complete, freshness: "current" }, "remaining", day, sample.events, true, confirmed);
+                return queryDocument({ data: rows, status: rows.length ? "known" : sample.complete ? "none" : "unknown" }, "remaining", day, sample.events, true, confirmed);
             },
             get next() {
                 const nextDay = rows.length && !rows.some((h) => h.start > day) ? addDays(rows[0]!.start, -1) : day;
                 const future = rows.filter((h) => h.start > nextDay).sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id)).slice(0, 1);
-                return queryDocument({ data: future, status: future.length ? "known" : sample.complete ? "none" : "unknown", complete: !!sample.complete, freshness: "current" }, "next", nextDay, sample.events, true, confirmed);
+                return queryDocument({ data: future, status: future.length ? "known" : sample.complete ? "none" : "unknown" }, "next", nextDay, sample.events, true, confirmed);
             },
             get reminder(): CalendarDocument {
                 const item = createCalendarItem(sample.events, confirmed);

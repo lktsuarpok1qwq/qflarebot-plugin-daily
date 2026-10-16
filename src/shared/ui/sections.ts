@@ -22,7 +22,7 @@ function createLazySection(app, ui, key, title, page) {
 
             const panel = ui.$(loadingId);
 
-            if (app.state === state && panel) { panel.outerHTML = page.render(); }
+            if (app.state === state && panel) { panel.outerHTML = page.render(); app.refresh(); }
         }
     }
     page.render = () => {
@@ -66,7 +66,7 @@ function createSections(app, ui, title, entries) {
     }
     async function action(a, id) {
         if (a === "section") {
-            reset();
+            reset(false);
             selected = id;
             app.render();
             app.focus("app");
@@ -75,9 +75,9 @@ function createSections(app, ui, title, entries) {
 
         await current().action(a, id);
     }
-    function reset() {
+    function reset(invalidate = true) {
         for (const page of Object.values(pages)) {
-            page.reset?.();
+            page.reset?.(invalidate);
         }
     }
     return {

@@ -1,6 +1,9 @@
+import { cleanupDatedObjects } from "../../../shared/dated-objects.js";
+import { cardLayout } from "../../../shared/cards/layout.js";
+import { errorDetails, type Diagnostics } from "../../../shared/diagnostics.js";
 import { backgrounds } from "./backgrounds/index.js";
 import type { CardState } from "../../../shared/cards/types.js";
-import { renderDesign, renderLayers } from "../../../shared/cards/render.js";
+import { CardImageError, renderLayers } from "../../../shared/cards/render.js";
 import { layoutWeather } from "./default.js";
 import { weatherDesignValues } from "./design.js";
 import type { Route, RouteInput } from "@qqbot/sdk";
@@ -12,42 +15,48 @@ const PREFIX = "weather/cards/";
 export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: WeatherCardCopy, state?: CardState) {
     const day = dateAt(Date.now()), token = crypto.randomUUID();
     const deadline = Date.now() + 10_000;
+    const diagnostics: Diagnostics = { imageFormat: "jpeg", imageCache: "disabled", imageSaved: false };
     let timer: ReturnType<typeof setTimeout> | undefined;
     let expired = false, stage = "public_address";
     const check = () => {
-        if (expired || Date.now() >= deadline) { throw new Error("天气图片准备超时"); }
+        if (expired || Date.now() >= deadline) { throw new DOMException("天气图片准备超时", "TimeoutError"); }
     };
     const prepare = async () => {
         const path = `${PREFIX}${day}/${token}.jpg`;
+        diagnostics.imageKey = path;
         const url = storedImageUrl(ctx, path);
-        stage = "render";
+        diagnostics.imageHost = new URL(url).hostname;
+        stage = "layout";
         const design = state?.config.weather;
 
         const signal = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
-        let stream: ReadableStream<Uint8Array>;
+        diagnostics.customDesign = Boolean(design?.enabled);
+        const selected = design?.enabled
+            ? { background: design.background, layout: cardLayout(design, weatherDesignValues(data, copy)) }
+            : layoutWeather(data, copy);
 
-        if (design?.enabled) {
-            stream = await renderDesign(ctx, design, weatherDesignValues(data, copy), signal, backgrounds, {}, "jpeg");
-        } else {
-            const selected = layoutWeather(data, copy);
-            stream = await renderLayers(ctx, selected.background, selected.layout, signal, backgrounds, "jpeg");
-        }
+        if (!selected.background) { throw new Error("请先上传背景"); }
+
+        if (selected.layout.overflow.length) { throw new Error("文字超出区域，请调整字号或区域大小"); }
+
+        stage = "images_request";
+        const stream = await renderLayers(ctx, selected.background, selected.layout, signal, backgrounds, "jpeg");
 
         check();
         stage = "image_save";
         await ctx.r2.put(path, stream, { contentType: "image/jpeg" });
+        diagnostics.imageSaved = true;
 
         check();
-        return url;
+        return { url, diagnostics: { ...diagnostics } };
     };
 
     try {
         return await Promise.race([prepare(), new Promise<never>((_, reject) => {
-            timer = setTimeout(() => { expired = true; reject(new Error("天气图片准备超时")); }, 10_000);
+            timer = setTimeout(() => { expired = true; reject(new DOMException("天气图片准备超时", "TimeoutError")); }, 10_000);
         })]);
     } catch (error) {
-        ctx.logger.warn("天气图片准备失败，使用文字回复", { stage, error: String(error) });
-        throw error;
+        throw new CardImageError(stage, error, { ...diagnostics, ...errorDetails(error) });
     } finally {
         if (timer !== undefined) { clearTimeout(timer); }
     }
@@ -55,24 +64,15 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
 async function readImage({ ctx, params }: RouteInput) {
     const { day = "", token = "" } = params, today = dateAt(Date.now());
 
-    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\.jpg)?$/.test(token)) {
+    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/.test(token)) {
         return new Response(null, { status: 404 });
     }
 
-    const jpeg = token.endsWith(".jpg");
-    const stream = await ctx.r2.getStream(`${PREFIX}${day}/${jpeg ? token : token + ".png"}`);
-    return stream ? new Response(stream, { headers: { "content-type": jpeg ? "image/jpeg" : "image/png", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } }) : new Response(null, { status: 404 });
+    const stream = await ctx.r2.getStream(`${PREFIX}${day}/${token}`);
+    return stream ? new Response(stream, { headers: { "content-type": "image/jpeg", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } }) : new Response(null, { status: 404 });
 }
 export const weatherCardRoutes: Route[] = [{ method: "GET", path: "/weather/cards/:day/:token", auth: "public", handler: readImage }];
 export async function cleanupWeatherImages(ctx: Ctx, now: number) {
     const cutoff = dateAt(now);
-
-    for (; ;) {
-        const objects = await ctx.r2.list(PREFIX, { limit: 1000 });
-        const expired = objects.filter(object => object.key.slice(PREFIX.length, PREFIX.length + 10) < cutoff).map(object => object.key);
-
-        if (expired.length) { await ctx.r2.delete(expired); }
-
-        if (objects.length < 1000 || expired.length < objects.length) { break; }
-    }
+    await cleanupDatedObjects(ctx.r2, PREFIX, cutoff);
 }

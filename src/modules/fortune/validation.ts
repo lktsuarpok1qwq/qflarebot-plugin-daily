@@ -11,7 +11,7 @@ export function validateSettings(config: DrawSettings, corpus?: Pick<FortuneCorp
 
     if (corpus) { validateThemeCoverage(config, corpus); }
 }
-export function validateThemeCoverage(config: DrawSettings, corpus: Pick<FortuneCorpusIndex, "cards">) {
+function validateThemeCoverage(config: DrawSettings, corpus: Pick<FortuneCorpusIndex, "cards">) {
     for (const level of Object.keys(LEVELS) as (keyof typeof LEVELS)[]) {
         if (config[`level_${level}`] > 0 && !THEMES.some(theme => config[`theme_${theme}`] && corpus.cards[theme][level][1] > 0)) { throw new Error("启用主题未覆盖等级：" + level); }
     }

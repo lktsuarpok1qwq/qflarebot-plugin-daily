@@ -4,7 +4,7 @@ import { weatherDesigns } from "./cards/design.js";
 import { renderWeather } from "./rendering.js";
 import { copyContract, commands } from "./definition.js";
 import type { ModuleDefinition } from "../../shared/modules.js";
-import { install, snapshot, save } from "./repository.js";
+import { install, snapshot, save, readHelp } from "./repository.js";
 import { renderWeatherCommand } from "./cards/command.js";
 import { weatherCardRoutes, cleanupWeatherImages } from "./cards/media.js";
 import { api } from "./admin.js";
@@ -17,7 +17,13 @@ export const weather: ModuleDefinition = {
     routes: weatherCardRoutes,
     cleanup: cleanupWeatherImages,
     copy: copyContract,
-    commands: { definitions: commands, render: async (input) => renderWeatherCommand(input, (await snapshot(input.ctx.db)).config) },
+    commands: {
+        definitions: commands, render: async (input) => {
+            if (!input.args.length || (input.args.length === 1 && input.args[0] === "明天")) { return { text: await readHelp(input.ctx.db) }; }
+
+            return renderWeatherCommand(input, (await snapshot(input.ctx.db)).config);
+        }
+    },
     admin: api,
     ui: {
         get source() { return `const renderWeatherSample = ${renderWeather.toString()};` + weatherPage; },

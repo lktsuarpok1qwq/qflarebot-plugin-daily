@@ -1,6 +1,6 @@
 import { fields, list, str, bool } from "../../../shared/validation.js";
 import type { Config } from "../types.js";
-import { LIMITS, SCHEMA_VERSION } from "../types.js";
+import { LIMITS, SCHEMA_VERSION, RETENTION_DAYS } from "../types.js";
 import { validDate } from "../../../shared/date.js";
 import { validateCopyText } from "../../../shared/templates.js";
 const FIELDS = {
@@ -47,7 +47,7 @@ export function validateConfig(value: unknown, variables: readonly string[]): Co
 
     bool(c.paused);
 
-    if (![7, 30, 90].includes(c.retentionDays)) {
+    if (!RETENTION_DAYS.includes(c.retentionDays)) {
         throw new Error("保留期应为 7/30/90");
     }
 

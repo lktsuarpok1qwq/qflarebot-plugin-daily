@@ -1,5 +1,5 @@
 import { cardEditor } from "../shared/ui/cards/editor.js";
-import { validateTemplate, validateCopyText } from "../shared/templates.js";
+import { analyzeTemplate, validateTemplate, validateCopyText } from "../shared/templates.js";
 import { commandUrl, expand } from "../shared/interpolation.js";
 import { commandLinkPage } from "./pages/command-link.js";
 import { registry } from "../modules/index.js";
@@ -15,13 +15,14 @@ import { application } from "./application.js";
 import { sections } from "../shared/ui/sections.js";
 import { settingsPage } from "./pages/settings.js";
 import { settingsEditor } from "../shared/ui/settings-editor.js";
+const pages = registry.pages;
 // Keep browser code as source strings so the SDK can build this plugin without a separate frontend pipeline.
 export const client = [
     String.raw`
 import { createBridge } from "/bridge.js";
 `,
     `const inlineCommandTools = { url: ${commandUrl.toString()}, expand: ${expand.toString()} };`,
-    `const validateTemplate = ${validateTemplate.toString()}; const validateCopyText = ${validateCopyText.toString()};`,
+    `const analyzeTemplate = ${analyzeTemplate.toString()}; const validateTemplate = ${validateTemplate.toString()}; const validateCopyText = ${validateCopyText.toString()};`,
     commandLinkPage,
     components,
     cardEditor,
@@ -36,14 +37,14 @@ import { createBridge } from "/bridge.js";
     settingsEditor,
     application,
     scopes,
-    ...registry.pages.map((page) => page.source ?? ""),
+    ...pages.map((page) => page.source ?? ""),
     `
 const bridge = await createBridge();
 bridge.setTitle("每日助手");
 document.querySelector("header").hidden = bridge.embedded;
 document.body.classList.toggle("embedded", bridge.embedded);
 await createApp(bridge, createUI(), {
-    ${registry.pages.map((page) => {
+    ${pages.map((page) => {
         const sections = page.sections?.map((section) => `${JSON.stringify(section.id)}: { label: ${JSON.stringify(section.title)}, create: () => ${section.factory}(app, ui) }`).join(",");
         const factory = page.factory ?? `(app, ui) => createSections(app, ui, ${JSON.stringify(page.title)}, {${sections}})`;
         return `${JSON.stringify(page.id)}: { title: ${JSON.stringify(page.title)}, create: ${factory}, module: true },`;

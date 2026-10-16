@@ -1,5 +1,6 @@
 import { BODY_BYTES } from "../../shared/types.js";
 export const SCHEMA_VERSION = 1;
+export const RETENTION_DAYS: readonly number[] = [7, 30, 90];
 type Scene = "group" | "c2c";
 export type Schedule =
     | { kind: "daily"; time: string }

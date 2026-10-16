@@ -27,7 +27,7 @@ export function validateCalendar(value: unknown): CalendarConfig {
         }
 
         ids.add(h.id);
-        fields(h, ["id", "enabled", "name", "start", "end", "kind", "source", "repeat", "batchId"]);
+        fields(h, ["id", "enabled", "name", "start", "end", "kind", "source", "repeat"]);
         bool(h.enabled);
         str(h.name, 80, "事件名称");
 
@@ -54,10 +54,6 @@ export function validateCalendar(value: unknown): CalendarConfig {
 
         if (h.kind === "event" && h.source !== "manual") {
             throw new Error("自定义节日须为人工来源");
-        }
-
-        if (h.batchId !== undefined) {
-            str(h.batchId, 80, "批次标识");
         }
     }
 

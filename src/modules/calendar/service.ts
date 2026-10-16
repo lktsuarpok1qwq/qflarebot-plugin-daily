@@ -1,13 +1,11 @@
-import type { CalendarConfig, CalendarEvent, SourceSummary } from "./types.js";
+import type { CalendarConfig, CalendarEvent, SourceCoverage } from "./types.js";
 import { activeEvents } from "./events.js";
 import { dateAt, validDate } from "../../shared/date.js";
 export type Query<T> = {
     status: "known" | "none" | "unknown";
     data: T;
-    complete: boolean;
-    freshness: "current" | "stale" | "unknown";
 };
-export function calendarService(config: CalendarConfig, sources: SourceSummary[] = [], now = Date.now()) {
+export function calendarService(config: CalendarConfig, sources: SourceCoverage[] = [], now = Date.now()) {
     const all = activeEvents(config, +dateAt(now).slice(0, 4)).sort(
         (a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id),
     );
@@ -35,11 +33,9 @@ export function calendarService(config: CalendarConfig, sources: SourceSummary[]
             }
         }
 
-        const relevant = sources.filter((s) => s.year >= +from.slice(0, 4) && s.year <= +to.slice(0, 4));
         return {
             status: hasData ? "known" : complete ? "none" : "unknown",
-            data, complete,
-            freshness: relevant.some((s) => s.hash && s.error) ? "stale" : hasData || complete ? "current" : "unknown",
+            data,
         };
     }
     function eventResult(from: string, nearest: boolean): Query<CalendarEvent | null> {

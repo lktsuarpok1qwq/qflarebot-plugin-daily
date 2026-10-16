@@ -8,7 +8,7 @@ import { corpus } from "./corpus.js";
 import { validateCardLabels } from "./cards/labels.js";
 import { validateSettings } from "./validation.js";
 import { LEVELS, RARITIES, THEMES, type DrawSettings } from "./types.js";
-import { FORTUNE_COPY, type FortuneCopy } from "./copy.js";
+import type { FortuneCopy } from "./copy.js";
 export type FortuneConfig = { schemaVersion: 1; cardDesigns?: CardState; imageEnabled: boolean; copy: FortuneCopy } & DrawSettings;
 const configFields = ["schemaVersion", "cardDesigns", "imageEnabled", "copy", "eggs", ...Object.keys(LEVELS).map((key) => "level_" + key), ...RARITIES.map((key) => "rarity_" + key), ...THEMES.map((key) => "theme_" + key)];
 export function defaults(): FortuneConfig {
@@ -35,18 +35,5 @@ export function validate(value: unknown, shapeOnly = false): FortuneConfig {
     return config;
 }
 export function parseConfig(raw: string): FortuneConfig {
-    const value = JSON.parse(raw);
-
-    if (!value || typeof value !== "object" || Array.isArray(value) || !value.copy || typeof value.copy !== "object" || Array.isArray(value.copy)) { throw new Error("运势配置格式错误"); }
-
-    const config = Object.fromEntries(Object.entries(value).filter(([key]) => configFields.includes(key)));
-    const copy = Object.fromEntries(Object.entries(value.copy).filter(([key]) => Object.hasOwn(FORTUNE_COPY, key)));
-
-    for (const [key, fallback] of Object.entries(FORTUNE_COPY)) {
-        if (!Object.hasOwn(copy, key)) { copy[key] = fallback; }
-    }
-
-    config.imageEnabled ??= true;
-    config.copy = copy;
-    return validate(config, true);
+    return validate(JSON.parse(raw), true);
 }

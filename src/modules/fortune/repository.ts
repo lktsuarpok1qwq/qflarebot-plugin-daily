@@ -14,3 +14,10 @@ export async function readCommandState(db: PluginDB, id: string) {
     const { config, ...card } = row;
     return { config: parseConfig(config), card: card.id === null ? null : card };
 }
+export async function readPrompt(db: PluginDB, key: "help" | "noIdentity") {
+    const row = await db.first<{ text: string }>("SELECT json_extract(config,?) AS text FROM {fortune_state} WHERE id=1 AND json_extract(config,'$.schemaVersion')=1", "$.copy." + key);
+
+    if (!row || typeof row.text !== "string") { throw new Error("运势提示配置无效"); }
+
+    return row.text;
+}

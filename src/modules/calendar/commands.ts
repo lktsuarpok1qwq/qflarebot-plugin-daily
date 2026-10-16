@@ -1,13 +1,13 @@
 import { commands } from "./definition.js";
 import type { ModuleDefinition } from "../../shared/modules.js";
-import type { CalendarConfig, CalendarCommand, SourceSummary } from "./types.js";
+import type { CalendarConfig, CalendarCommand, SourceCoverage } from "./types.js";
 import { readQueryData, readHelp } from "./repository.js";
 import { calendarService } from "./service.js";
 import { renderCalendarQuery } from "./rendering.js";
 import { dateAt } from "../../shared/date.js";
 import { expand } from "../../shared/interpolation.js";
 const reply = (text: string) => text.trim() ? { text } : { text, empty: "skip" as const };
-export function renderCommand(config: CalendarConfig, sources: SourceSummary[], name: CalendarCommand, now: number) {
+export function renderCommand(config: CalendarConfig, sources: SourceCoverage[], name: CalendarCommand, now: number) {
     if (name === "假期 下个" || name === "假期 剩余") {
         const day = dateAt(now),
             service = calendarService(config, sources, now);

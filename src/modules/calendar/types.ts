@@ -7,8 +7,6 @@ export type CalendarEvent = {
     kind: "holiday" | "makeup" | "reference" | "event";
     repeat: "once" | "yearly";
     source: "uapi" | "manual";
-    /** 条目批次元数据，不参与查询和调度 */
-    batchId?: string;
 };
 export type CalendarCopy = typeof import("./copy.js").CALENDAR_COPY.text;
 export type SourceSummary = {
@@ -22,6 +20,7 @@ export type SourceSummary = {
 };
 
 export type CalendarCommand = "假期" | "假期 下个" | "假期 剩余";
+export type SourceCoverage = Pick<SourceSummary, "year" | "is_complete">;
 export type Source = SourceSummary & { data: string };
 export const CALENDAR_VERSION = 5;
 export const EVENT_LIMIT = 600;

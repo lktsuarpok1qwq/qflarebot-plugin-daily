@@ -6,7 +6,7 @@ import { createVariables, type VariableCapability, type VariableAPI } from "./va
 import { validateRoutes } from "./routes.js";
 import type { CardBinding } from "./cards/store.js";
 import { cardAdminRoutes } from "./cards/admin.js";
-import { readAsset } from "./cards/assets.js";
+import { prepareFont, readAsset } from "./cards/assets.js";
 export type ModuleServices = { variables: VariableAPI };
 export type ModuleDefinition = {
     id: string;
@@ -52,6 +52,7 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
         }
     }
 
+    const hasCards = modules.some(module => module.cards);
     const variables = createVariables(modules);
     const services: ModuleServices = { variables };
     const cleanup = modules.filter((module) => module.cleanup);
@@ -80,16 +81,20 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
 
     return {
         variables,
-        permissions: [...new Set(modules.flatMap((module) => [...module.permissions ?? [], ...(module.admin ? ["admin" as const] : [])]))],
+        permissions: [...new Set(modules.flatMap((module) => [...module.permissions ?? [], ...(module.admin || module.cards ? ["admin" as const] : []), ...(module.cards ? ["net" as const] : [])]))],
         get pages() { return modules.flatMap((module) => module.ui ? [{ id: module.id, title: module.title, ...module.ui }] : []); },
         async install(ctx: Ctx) {
             for (const module of modules) { module.copy?.assertDeclaration(); await module.install?.(ctx); }
+
+            if (hasCards) {
+                for (const weight of [400, 700]) { await prepareFont(ctx, weight); }
+            }
         },
         commands(execute: CommandExecutor) {
             return Object.fromEntries(modules.flatMap((module) => module.commands ? Object.entries(registerCommands(module.commands.definitions, execute, (input, name) => module.commands!.render(input, name, services))) : []));
         },
         cron,
-        routes: validateRoutes([...(modules.some(module => module.cards) ? [{ method: "GET" as const, path: "/cards/assets/:asset", auth: "public" as const, handler: readAsset }] : []), ...modules.flatMap((module) => [...module.routes ?? [], ...(module.cards ? cardAdminRoutes(module.id, module.cards) : []), ...(module.admin ? (["GET", "POST"] as const).map((method): Route => ({
+        routes: validateRoutes([...(hasCards ? [{ method: "GET" as const, path: "/cards/assets/:asset", auth: "public" as const, handler: readAsset }] : []), ...modules.flatMap((module) => [...module.routes ?? [], ...(module.cards ? cardAdminRoutes(module.id, module.cards) : []), ...(module.admin ? (["GET", "POST"] as const).map((method): Route => ({
             method, path: `/api/${module.id}/:action`, auth: "admin", handler: (input) => module.admin!(input, services),
         })) : [])])]),
     };

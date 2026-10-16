@@ -1,7 +1,7 @@
 import { AdminError, validateInput } from "../../shared/admin-errors.js";
 import type { PluginDB, DBStatement } from "@qqbot/sdk";
 import type { Ctx } from "../../shared/types.js";
-import type { CalendarConfig, CalendarSnapshot, Source, SourceSummary } from "./types.js";
+import type { CalendarConfig, CalendarSnapshot, Source, SourceCoverage } from "./types.js";
 import { CALENDAR_VERSION } from "./types.js";
 import { copyContract } from "./definition.js";
 import { dateAt } from "../../shared/date.js";
@@ -55,10 +55,10 @@ export async function readData(db: PluginDB) {
     return decode(await db.batch(READ_STATEMENTS));
 }
 export async function readQueryData(db: PluginDB) {
-    const rows = await db.batch([READ_STATEMENTS[0]!, { sql: SOURCE_SUMMARY_QUERY }]);
+    const rows = await db.batch([READ_STATEMENTS[0]!, { sql: "SELECT year,is_complete FROM {calendar_sources}" }]);
     return {
         snapshot: parseState(rows[0]?.results[0] as { revision: number; config: string } | undefined),
-        sources: rows[1]!.results as SourceSummary[],
+        sources: rows[1]!.results as SourceCoverage[],
     };
 }
 export async function readHelp(db: PluginDB) {
@@ -67,6 +67,12 @@ export async function readHelp(db: PluginDB) {
     if (!row || typeof row.help !== "string") { throw new Error("日历帮助配置无效"); }
 
     return row.help;
+}
+function sourceStatement(source: Source, condition: string, params: unknown[]): DBStatement {
+    return {
+        sql: "INSERT INTO {calendar_sources}(year,hash,data,has_schedule,is_complete,error,updated_at,checked_at) SELECT ?,?,?,?,?,?,?,? WHERE " + condition + " ON CONFLICT(year) DO UPDATE SET hash=excluded.hash,data=excluded.data,has_schedule=excluded.has_schedule,is_complete=excluded.is_complete,error=excluded.error,updated_at=excluded.updated_at,checked_at=excluded.checked_at",
+        params: [source.year, source.hash, source.data, source.has_schedule, source.is_complete, source.error, source.updated_at, source.checked_at, ...params],
+    };
 }
 export async function saveConfig(
     ctx: Ctx,
@@ -79,30 +85,30 @@ export async function saveConfig(
     const year = +dateAt(now).slice(0, 4);
     config.events = config.events.filter((h) => h.repeat === "yearly" || h.end >= `${year}-01-01`);
     validateInput(() => validateCalendar(config));
+    const serialized = JSON.stringify(config);
+
+    if (published && !prune && serialized === JSON.stringify(old.config)) {
+        const statement = sourceStatement(published,
+            "EXISTS(SELECT 1 FROM {calendar_state} WHERE id=1 AND revision=?) AND NOT EXISTS(SELECT 1 FROM {calendar_sources} WHERE year=? AND (checked_at>? OR updated_at>?))",
+            [old.revision, published.year, published.checked_at, published.updated_at]);
+        const result = await ctx.db.run(statement.sql, ...statement.params!);
+
+        if (!result.changes) { throw new AdminError("conflict", "日历配置或源数据已变化，请刷新后重试"); }
+
+        return old.revision;
+    }
+
     const token = crypto.randomUUID();
     const statements: DBStatement[] = [
         {
             sql: "UPDATE {calendar_state} SET revision=revision+1,config=?,token=? WHERE id=1 AND revision=?" +
                 (published ? " AND NOT EXISTS(SELECT 1 FROM {calendar_sources} WHERE year=? AND (checked_at>? OR updated_at>?))" : ""),
-            params: [JSON.stringify(config), token, old.revision, ...(published ? [published.year, published.checked_at, published.updated_at] : [])],
+            params: [serialized, token, old.revision, ...(published ? [published.year, published.checked_at, published.updated_at] : [])],
         },
     ];
 
     if (published) {
-        statements.push({
-            sql: "INSERT INTO {calendar_sources}(year,hash,data,has_schedule,is_complete,error,updated_at,checked_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM {calendar_state} WHERE token=?) ON CONFLICT(year) DO UPDATE SET hash=excluded.hash,data=excluded.data,has_schedule=excluded.has_schedule,is_complete=excluded.is_complete,error=excluded.error,updated_at=excluded.updated_at,checked_at=excluded.checked_at",
-            params: [
-                published.year,
-                published.hash,
-                published.data,
-                published.has_schedule,
-                published.is_complete,
-                published.error,
-                published.updated_at,
-                published.checked_at,
-                token,
-            ],
-        });
+        statements.push(sourceStatement(published, "EXISTS(SELECT 1 FROM {calendar_state} WHERE token=?)", [token]));
     }
 
     if (prune) {

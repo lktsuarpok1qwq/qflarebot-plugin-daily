@@ -1,6 +1,7 @@
+import { cleanupDatedObjects } from "../../../shared/dated-objects.js";
 import { backgrounds } from "./backgrounds/index.js";
 import type { CardState } from "../../../shared/cards/types.js";
-import { renderLayers } from "../../../shared/cards/render.js";
+import { CardImageError, renderLayers } from "../../../shared/cards/render.js";
 import { cardLayout } from "../../../shared/cards/layout.js";
 import { fortuneDesignValues } from "./design.js";
 import type { Route, RouteInput } from "@qqbot/sdk";
@@ -13,12 +14,6 @@ import { errorDetails, type Diagnostics } from "../../../shared/diagnostics.js";
 const PREFIX = "fortune/cards/";
 const key = (day: string, token: string, view: string) => `${PREFIX}${day}/${token}/${view}.png`;
 type ImageStage = "public_address" | "cache_check" | "snapshot_parse" | "layout" | "images_request" | "image_save";
-export class CardImageError extends Error {
-    constructor(readonly stage: ImageStage, cause: unknown, readonly diagnostics: Diagnostics) {
-        super(String(cause), { cause });
-        this.name = "CardImageError";
-    }
-}
 export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", state?: CardState, fresh?: CardSnapshot) {
     const deadline = Date.now() + 10_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -31,7 +26,7 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
     const prepare = async () => {
         const design = state?.config[view];
         const custom = design?.enabled ? design : null;
-        const imageView = `${view}-i1-r${custom ? state!.revision : 0}`;
+        const imageView = `${view}-i${custom ? 1 : 2}-r${custom ? state!.revision : 0}`;
         const path = key(row.day, row.token, imageView);
         diagnostics.imageKey = path;
         diagnostics.customDesign = Boolean(custom);
@@ -83,7 +78,7 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
 async function readImage({ ctx, params }: RouteInput) {
     const { day = "", token = "", view = "" } = params, today = dateAt(Date.now());
 
-    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token) || !/^(small|detail)-i1-r[0-9]{1,10}$/.test(view)) {
+    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token) || !/^(small|detail)-i[1-9][0-9]{0,2}-r[0-9]{1,10}$/.test(view)) {
         return new Response(null, { status: 404 });
     }
 
@@ -103,16 +98,6 @@ async function readImage({ ctx, params }: RouteInput) {
 export const cardRoutes: Route[] = [{ method: "GET", path: "/fortune/cards/:day/:token/:view", auth: "public", handler: readImage }];
 export async function cleanupCards(ctx: Ctx, now: number) {
     const cutoff = dateAt(now);
-
-    for (; ;) {
-        const objects = await ctx.r2.list(PREFIX, { limit: 1000 });
-        const expired = objects.filter(object => object.key.slice(PREFIX.length, PREFIX.length + 10) < cutoff).map(object => object.key);
-
-        if (expired.length) { await ctx.r2.delete(expired); }
-
-        // SDK lists keys in order; after deleting a full expired page, read the next one.
-        if (objects.length < 1000 || expired.length < objects.length) { break; }
-    }
-
+    await cleanupDatedObjects(ctx.r2, PREFIX, cutoff);
     await ctx.db.run("DELETE FROM {fortune_cards} WHERE day<?", cutoff);
 }

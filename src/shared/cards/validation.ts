@@ -1,3 +1,4 @@
+import { analyzeTemplate } from "../templates.js";
 import type { CardDefinition, CardDesign, CardRegion, CardState } from "./types.js";
 const object = (value: unknown): Record<string, unknown> => {
     if (!value || typeof value !== "object" || Array.isArray(value)) { throw new Error("卡面配置无效"); }
@@ -18,9 +19,9 @@ export function validateRegionContent(region: { field: string; text?: string }, 
 
     if (typeof region.text !== "string" || region.text.length > 1000) { throw new Error("区域文案最多 1000 个字符"); }
 
-    for (const match of region.text.matchAll(/\{\{([^{}]+)\}\}/g)) {
-        if (!fields.some(field => field.key === match[1])) { throw new Error("当前卡面没有变量：" + match[0]); }
-    }
+    const analysis = analyzeTemplate(region.text, fields.map(field => field.key));
+
+    if (analysis.error) { throw Object.assign(new Error(analysis.error.message), analysis.error); }
 
     if (/[{}]/.test(region.text.replace(/\{\{[^{}]+\}\}/g, ""))) { throw new Error("变量请写为 {{变量名}}"); }
 }

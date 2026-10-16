@@ -1,8 +1,7 @@
 import { validDate } from "../../../shared/date.js";
 import { corpus, readStory, readEgg } from "../corpus.js";
 import { choose, random } from "../random.js";
-import { LEVELS, RARITIES, type DrawSettings } from "../types.js";
-import { CARD_THEMES, type CardTheme } from "./layout.js";
+import { LEVELS, RARITIES, THEMES, type Theme, type DrawSettings } from "../types.js";
 import type { CardPhrase, FortuneCardContent, FortuneHoliday } from "./types.js";
 
 export function holidayWindow(date: string): { holidays: FortuneHoliday[]; chance: number } {
@@ -25,7 +24,7 @@ export function holidayWindow(date: string): { holidays: FortuneHoliday[]; chanc
     return { holidays, chance: holidays.length ? (8 - nearest) / 20 : 0 };
 }
 
-export function selectEgg(theme: CardTheme, date: string, chance: number, pick: () => number): CardPhrase | undefined {
+export function selectEgg(theme: Theme, date: string, chance: number, pick: () => number): CardPhrase | undefined {
     const window = holidayWindow(date);
     const holiday = choose(window.holidays, () => 1, pick);
 
@@ -40,7 +39,7 @@ export function drawCard(user: string, date: string, config: DrawSettings): Fort
     if (!user.trim() || !validDate(date)) { throw new Error("用户标识或日期无效"); }
 
     const seed = user + ":" + date;
-    const theme = choose(CARD_THEMES.filter(theme => config[`theme_${theme}`]), () => 1, random(seed + ":theme"));
+    const theme = choose(THEMES.filter(theme => config[`theme_${theme}`]), () => 1, random(seed + ":theme"));
 
     if (!theme) { throw new Error("没有启用可用的卡面主题"); }
 

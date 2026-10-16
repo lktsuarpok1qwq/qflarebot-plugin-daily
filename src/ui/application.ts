@@ -72,6 +72,17 @@ function createApp(bridge, ui, factories) {
     function updateDirty() {
         $("dirty").hidden = !app.dirty;
     }
+    function lockControls() {
+        document.querySelectorAll("button,input,select,textarea").forEach((el) => {
+            if (!el.closest("dialog[open]")) { el.disabled = running || el.hasAttribute("data-locked"); }
+        });
+    }
+    function refresh() {
+        selectPicker.refresh();
+        markdownPreview.refresh();
+        page().refresh?.();
+        lockControls();
+    }
     async function run(fn) {
         if (running) {
             return;
@@ -81,7 +92,7 @@ function createApp(bridge, ui, factories) {
         running = true;
         $("app").setAttribute("aria-busy", "true");
         document.body.classList.add("busy");
-        document.querySelectorAll("button,input,select,textarea").forEach((b) => (b.disabled = true));
+        lockControls();
 
         try {
             await fn();
@@ -91,9 +102,7 @@ function createApp(bridge, ui, factories) {
             running = false;
             document.body.classList.remove("busy");
             $("app").setAttribute("aria-busy", "false");
-            document
-                .querySelectorAll("button,input,select,textarea")
-                .forEach((b) => (b.disabled = b.hasAttribute("data-locked")));
+            lockControls();
             updateDirty();
 
             if (pendingFocus && $(pendingFocus)) {
@@ -138,17 +147,11 @@ function createApp(bridge, ui, factories) {
         store.config = structuredClone(store.state.config);
 
         try {
-            const { refresh, ...saved } = await store.api("config", { revision: store.state.revision, config: candidate });
-            store.synchronized = false;
-
-            if (refresh) {
-                await load(store, false);
-            } else {
-                store.state = { ...store.state, ...saved };
-                store.config = structuredClone(saved.config);
-                store.synchronized = true;
-                app.dirty = false;
-            }
+            const saved = await store.api("config", { revision: store.state.revision, config: candidate });
+            store.state = { ...store.state, ...saved };
+            store.config = structuredClone(saved.config);
+            store.synchronized = true;
+            app.dirty = false;
 
             afterSave?.();
             app.render();
@@ -218,7 +221,6 @@ function createApp(bridge, ui, factories) {
         }
 
         $("app").innerHTML = html + (current().state ? page().render() : "");
-        selectPicker.refresh();
 
         for (const id of expanded) {
             if ($(id)) {
@@ -227,8 +229,7 @@ function createApp(bridge, ui, factories) {
         }
 
         updateDirty();
-        markdownPreview.refresh();
-        page().refresh?.();
+        refresh();
         restoreFocus(previousFocus);
         const nextEditor = document.querySelector(".markdown-editor");
 
@@ -331,7 +332,7 @@ function createApp(bridge, ui, factories) {
         bridge.resize();
         return run(load);
     }
-    Object.assign(app, { resource: (path, init) => bridge.fetch(path, init), api, status, confirmAction, run, load, save, render, focus, resetDrafts, start });
+    Object.assign(app, { resource: (path, init) => bridge.fetch(path, init), api, status, confirmAction, run, load, save, render, refresh, focus, resetDrafts, start });
     return app;
 }
 `;

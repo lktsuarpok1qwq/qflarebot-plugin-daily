@@ -1,6 +1,6 @@
 export const messageEditor = String.raw`
 function messageSamples(samples, body) {
-    const keys = [...body.matchAll(/\{\{([^{}]+)\}\}/g)].map((match) => match[1]);
+    const keys = [...analyzeTemplate(body).keys];
     const differs = keys.some((key) => samples.some((sample) => (sample.values[key] || '') !== (samples[0].values[key] || '')));
     return differs ? samples : [{ ...samples[0], name: '无特殊情景' }];
 }
@@ -47,7 +47,14 @@ function createMessageEditor(app, ui, settings) {
 
             try {
                 validateCopyText(input.value, { ...field, variables: Object.keys(field.variables) });
-            } catch (e) { message = e.message; }
+            } catch (e) {
+                message = e.message;
+
+                if (Number.isInteger(e.start)) {
+                    const before = input.value.slice(0, e.start);
+                    message += '（第 ' + before.split('\n').length + ' 行，第 ' + (e.start - before.lastIndexOf('\n')) + ' 列）';
+                }
+            }
 
             error.textContent = message;
             error.hidden = !message;

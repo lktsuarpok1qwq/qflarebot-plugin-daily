@@ -221,10 +221,11 @@ function createCalendarEntries(app, ui) {
             }
 
             try {
-                await app.api("event-reset", { id, revision: app.state.revision });
+                const saved = await app.api("event-reset", { id, revision: app.state.revision });
+                app.state = { ...app.state, ...saved };
+                app.config = structuredClone(saved.config);
                 editingEvent = null;
-                app.synchronized = false;
-                await app.load();
+                app.render();
                 app.status("已恢复默认，后续跟随接口更新");
             } catch (error) {
                 if (error.kind === "validation") { throw error; }

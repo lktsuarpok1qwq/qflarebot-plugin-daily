@@ -82,54 +82,6 @@
         "group",
         "c2c"
       ]
-    },
-    {
-      "name": "新闻",
-      "description": "新闻帮助",
-      "scenes": [
-        "group",
-        "c2c"
-      ]
-    },
-    {
-      "name": "新闻 搜",
-      "description": "搜索中文新闻",
-      "scenes": [
-        "group",
-        "c2c"
-      ]
-    },
-    {
-      "name": "新闻 游戏",
-      "description": "今日游戏简报，可加页码",
-      "scenes": [
-        "group",
-        "c2c"
-      ]
-    },
-    {
-      "name": "新闻 游戏 订阅",
-      "description": "查看订阅游戏新闻，可加页码",
-      "scenes": [
-        "group",
-        "c2c"
-      ]
-    },
-    {
-      "name": "新闻 游戏 发现",
-      "description": "查看发现游戏新闻，可加页码",
-      "scenes": [
-        "group",
-        "c2c"
-      ]
-    },
-    {
-      "name": "新闻 游戏 最新",
-      "description": "查看最新游戏新闻，可加页码",
-      "scenes": [
-        "group",
-        "c2c"
-      ]
     }
   ],
   "regex": [],
@@ -143,10 +95,6 @@
     {
       "name": "calendar_sync",
       "cron": "0,1 16 * * *"
-    },
-    {
-      "name": "game_news_sync",
-      "cron": "0 * * * *"
     },
     {
       "name": "cleanup",
@@ -241,16 +189,6 @@
     },
     {
       "method": "GET",
-      "path": "/api/news/:action",
-      "auth": "admin"
-    },
-    {
-      "method": "POST",
-      "path": "/api/news/:action",
-      "auth": "admin"
-    },
-    {
-      "method": "GET",
       "path": "/ui/*",
       "auth": "admin"
     },
@@ -269,7 +207,7 @@
   "services": [],
   "durableObjects": [],
   "displayName": "每日助手",
-  "description": "定时通知、日历、天气、一言、运势、新闻搜索与游戏资讯",
+  "description": "定时通知、日历、天气、一言与运势",
   "configSchema": {
     "type": "object",
     "properties": {

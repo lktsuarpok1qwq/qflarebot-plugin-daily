@@ -6,7 +6,7 @@ import { defaults } from "../content/templates.js";
 import { SCHEMA_VERSION } from "../types.js";
 import { nextPlan } from "../scheduler/planner.js";
 import { jsonRows, jx, jsonChunks } from "./sql.js";
-const schedules = new WeakMap<Snapshot, { key: string; tasks: Map<string, string> }>();
+const originals = new WeakMap<Snapshot, string>();
 function scheduleKey(config: Config) {
     return JSON.stringify({
         paused: config.paused,
@@ -40,13 +40,14 @@ export async function snapshot(db: PluginDB): Promise<Snapshot> {
     if (config.schemaVersion !== SCHEMA_VERSION) { throw new Error("配置格式不受支持"); }
 
     const state = { revision: row.revision, botId: row.bot_id, config };
-    schedules.set(state, { key: scheduleKey(config), tasks: new Map(config.tasks.map((task) => [task.id, JSON.stringify(task.schedule)])) });
+    originals.set(state, row.config);
     return state;
 }
 export async function saveConfig(ctx: Ctx, old: Snapshot, config: Config, now: number) {
-    const rev = old.revision + 1, token = crypto.randomUUID(), original = schedules.get(old);
+    const rev = old.revision + 1, token = crypto.randomUUID(), raw = originals.get(old);
+    const original = raw === undefined ? undefined : JSON.parse(raw) as Config;
 
-    if (old.botId === ctx.botId && original?.key === scheduleKey(config)) {
+    if (old.botId === ctx.botId && original && scheduleKey(original) === scheduleKey(config)) {
         const result = await ctx.db.run("UPDATE {notification_state} SET revision=?,config=?,token=? WHERE id=1 AND revision=?", rev, JSON.stringify(config), token, old.revision);
 
         if (!result.changes) { throw new AdminError("conflict", "配置已变化，请刷新后重试"); }
@@ -54,6 +55,7 @@ export async function saveConfig(ctx: Ctx, old: Snapshot, config: Config, now: n
         return rev;
     }
 
+    const schedules = new Map(original?.tasks.map((task) => [task.id, JSON.stringify(task.schedule)]));
     const cursors = config.bindings.length ? await ctx.db.all<{
         id: string;
         enabled: number;
@@ -73,7 +75,7 @@ export async function saveConfig(ctx: Ctx, old: Snapshot, config: Config, now: n
             r = config.recipients.find((r) => r.id === b.recipientId)!,
             previous = byId.get(id);
         const enabled = !config.paused && task.enabled && r.enabled && r.botId === ctx.botId;
-        const sameSchedule = previous !== undefined && original?.tasks.get(previous.task_id) === JSON.stringify(task.schedule);
+        const sameSchedule = previous !== undefined && schedules.get(previous.task_id) === JSON.stringify(task.schedule);
         const preserve =
             enabled &&
             previous?.enabled &&

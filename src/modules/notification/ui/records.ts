@@ -3,7 +3,7 @@ function createNotificationRecords(app, ui) {
     const { $, esc, time, options, btn, table } = ui;
     const settings = createSettingsEditor(app, ui);
     const jobs = createLazySection(app, ui, "jobs", "维护详情", {
-        render: () => '<details id="maintenanceDetails"><summary>维护任务详情</summary><pre>' + esc(JSON.stringify(app.state.jobs, null, 2)) + '</pre></details>',
+        render: () => '<pre>' + esc(JSON.stringify(app.state.jobs, null, 2)) + '</pre>',
     });
     const statusLabels = {
         sending: "发送中",
@@ -26,7 +26,7 @@ function createNotificationRecords(app, ui) {
             '<section><h2>运行控制</h2><div class="actions">' +
             btn(app.config.paused ? "恢复通知" : "暂停通知", "pause", "", "danger") +
             btn("立即清理过期日志", "cleanup") +
-            '</div><p>暂停只停止发送，查询和维护照常运行；过期计划跳过</p>' + jobs.render() +
+            '</div><p>暂停只停止发送，查询和维护照常运行；过期计划跳过</p><details id="maintenanceDetails"><summary>维护任务详情</summary>' + jobs.render() + '</details>' +
             '<p class="muted">同一时间发送过多，可能无法全部完成，建议错开时间</p></section>';
         html += settings.render();
         html +=
@@ -138,7 +138,16 @@ function createNotificationRecords(app, ui) {
         await settings.action(a);
 
     }
+    function refresh() {
+        const details = $("maintenanceDetails");
+
+        if (!details) { return; }
+
+        details.ontoggle = () => { if (details.open) { jobs.refresh(); } };
+
+        if (details.open) { jobs.refresh(); }
+    }
     function reset() { logCursors = [null]; logPage = 0; logNext = null; logFilter = ""; details.clear(); settings.reset(); }
-    return { render, action, reset, refresh: jobs.refresh, input: settings.input, change: settings.change, transientInputs: ["logTask", "logRecipient", "logStatus"], get discardActions() { return ["pause", "cleanup", ...settings.discardActions]; } };
+    return { render, action, reset, refresh, input: settings.input, change: settings.change, transientInputs: ["logTask", "logRecipient", "logStatus"], get discardActions() { return ["pause", "cleanup", ...settings.discardActions]; } };
 }
 `;

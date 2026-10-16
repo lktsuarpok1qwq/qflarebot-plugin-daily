@@ -11,12 +11,12 @@ function createScope(app, id) {
         });
     }
 
-    for (const key of ["resource", "status", "confirmAction", "run", "render", "focus", "resetDrafts"]) {
+    for (const key of ["resource", "status", "confirmAction", "run", "render", "refresh", "focus", "resetDrafts"]) {
         scope[key] = (...args) => app[key](...args);
     }
 
     scope.api = (action, data) => app.api(id + "/" + action, data);
-    scope.load = () => app.load(scope);
+    scope.load = (redraw = true) => app.load(scope, redraw);
     scope.save = (message, afterSave) => app.save(message, afterSave, scope);
     return scope;
 }

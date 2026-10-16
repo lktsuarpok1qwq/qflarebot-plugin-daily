@@ -7,7 +7,7 @@ import { AdminError, validateInput } from "../admin-errors.js";
 import { body } from "../request.js";
 import { validateDesign, validateDesigns } from "./validation.js";
 import { prepareFont, uploadBackground } from "./assets.js";
-import { publicOrigin } from "../public-origin.js";
+import { storedImageUrl } from "../public-origin.js";
 import { renderDesign } from "./render.js";
 export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
     const definitions = binding.definitions;
@@ -16,7 +16,7 @@ export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
             const [state, regular, bold] = await Promise.all([binding.read(ctx), ctx.r2.head(ASSET_PREFIX + fontAsset(400)), ctx.r2.head(ASSET_PREFIX + fontAsset(700))]);
             let realPreview = false;
 
-            try { publicOrigin(ctx); realPreview = true; } catch { /* Local editing remains available without a public address. */ }
+            try { storedImageUrl(ctx, ASSET_PREFIX, "cards/assets/"); realPreview = true; } catch { /* Local editing remains available without a public address. */ }
 
             return Response.json({ ...state, definitions, assets: binding.assets, realPreview, fonts: { regular: !!regular, bold: !!bold } });
         }

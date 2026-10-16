@@ -1,10 +1,9 @@
-import type { Level, Rarity } from "../types.js";
-import type { CardTheme } from "./layout.js";
+import type { Level, Rarity, Theme } from "../types.js";
 
 export type CardPhrase = { text: string; emphasis?: readonly string[] };
-export type CardDetail = { name: string; description: CardPhrase };
+type CardDetail = { name: string; description: CardPhrase };
 export interface FortuneCardContent {
-    theme: CardTheme;
+    theme: Theme;
     date: string;
     level: Level;
     score: number;
@@ -26,12 +25,12 @@ export interface FortuneCardLabels {
 }
 
 export type FortuneCardEntry = Omit<FortuneCardContent, "date" | "score" | "rarity" | "egg"> & { id: string };
-export type FortuneEgg = CardPhrase & { id: string; theme?: CardTheme };
+export type FortuneEgg = CardPhrase & { id: string; theme?: Theme };
 export type CorpusRange = readonly [pool: number, count: number];
 export type FortuneHoliday = { id: string; name: string; date: string; eggs: CorpusRange };
 export type FortuneCorpusIndex = {
-    cards: Record<CardTheme, Record<Level, CorpusRange>>;
-    ordinaryEggs: Record<CardTheme, CorpusRange>;
+    cards: Record<Theme, Record<Level, CorpusRange>>;
+    ordinaryEggs: Record<Theme, CorpusRange>;
     holidays: FortuneHoliday[];
     sampleCard: readonly [pool: number, position: number];
     sampleEgg: readonly [pool: number, position: number];

@@ -1,3 +1,4 @@
+import { analyzeTemplate } from "../../shared/templates.js";
 import { copyContract, commands, sayingSample } from "./definition.js";
 import type { ModuleDefinition } from "../../shared/modules.js";
 import { install, snapshot } from "./repository.js";
@@ -19,7 +20,7 @@ export const saying: ModuleDefinition = {
     commands: {
         definitions: commands, render: async (input) => {
             const state = await snapshot(input.ctx.db);
-            return { text: state.config.copy.body.includes("{{text}}") ? render(state.config, "body", await randomSaying()) : state.config.copy.body };
+            return { text: analyzeTemplate(state.config.copy.body).keys.has("text") ? render(state.config, "body", await randomSaying()) : state.config.copy.body };
         }
     },
     admin: api,

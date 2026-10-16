@@ -5,7 +5,7 @@ import { fontAsset } from "../../cards/types.js";
 export const cardEditor = `const cardWidths = ${JSON.stringify(metrics)};\nconst validateRegionContent = ${validateRegionContent.toString()};\nconst createTextLayout = ${createTextLayout.toString()};
 const layoutCard = ${layoutCard.toString()};\nconst cardEmojiURL = ${emojiURL.toString()};\nconst cardFontNames = ${JSON.stringify({ 400: fontAsset(400), 700: fontAsset(700) })};\n` + String.raw`
 function createCardEditor(app, ui) {
-    let state = null, draft = null, selected = '', regionId = '', loading = false, failure = '', generation = 0;
+    let state = null, draft = null, selected = '', regionId = '', loading = false, failure = '', generation = 0, loadedRevision;
     let realURL = '', realStale = false, background = null, backgroundAsset = '', backgroundPending = null, imageToken = 0, synchronized = true;
     const sprites = new Map(), fontLoads = new Map(), fonts = new Set(), samples = {}, sampleIds = {}, pending = new Map();
     const assetURL = asset => state.assets[asset]?.url || new URL('../cards/assets/' + asset, location.href).href;
@@ -21,12 +21,15 @@ function createCardEditor(app, ui) {
     }
     async function load() {
         if (loading || state) { return; }
+
         loading = true;
-        const current = generation;
+        const current = generation, revision = app.state.revision;
+
         try {
             const result = await (await request('state')).json();
             if (current !== generation) { return; }
-            state = result; draft = structuredClone(result.config); selected ||= result.definitions[0].id;
+
+            state = result; loadedRevision = revision; draft = structuredClone(result.config); selected ||= result.definitions[0].id;
             regionId = draft[selected].regions[0]?.id || ''; failure = ''; synchronized = true;
         } catch (error) { if (current === generation) { failure = error.message; } }
         finally { if (current === generation) { loading = false; if (ui.$('card-editor')) { app.render(); } } }
@@ -116,7 +119,10 @@ function createCardEditor(app, ui) {
         }
     }
     function refresh() {
+        if (state && loadedRevision !== app.state.revision) { reset(); app.render(); return; }
+
         if (!state) { if (!failure) { void load(); } return; }
+
         boxes(); void paint();
         const stage = ui.$('card-stage');
         let drag = null;
@@ -135,7 +141,7 @@ function createCardEditor(app, ui) {
             stage.setPointerCapture(event.pointerId); event.preventDefault(); boxes();
         };
         stage.onpointermove = event => {
-            if (!drag) { return; }
+            if (!drag || document.body.classList.contains('busy')) { return; }
             const p = point(event), r = region(), dx = Math.round(p.x - drag.start.x), dy = Math.round(p.y - drag.start.y);
             if (drag.mode === 'move') { r.x = drag.original.x + dx; r.y = drag.original.y + dy; }
             else if (drag.mode === 'resize') { r.width = Math.min(540 - r.x, drag.original.width + dx); r.height = Math.min(definition().height - r.y, drag.original.height + dy); }
@@ -145,7 +151,7 @@ function createCardEditor(app, ui) {
         stage.onpointerup = stage.onpointercancel = () => { if (drag) { drag = null; app.render(); } };
         stage.onkeydown = event => {
             const box = event.target.closest('[data-region]');
-            if (!box || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) { return; }
+            if (document.body.classList.contains('busy') || !box || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) { return; }
             event.preventDefault(); const selectionChanged = regionId !== box.dataset.region; regionId = box.dataset.region; const r = region(), step = event.shiftKey ? 10 : 1;
             r.x += event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
             r.y += event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
@@ -166,7 +172,7 @@ function createCardEditor(app, ui) {
         else if (el.id === 'card-enabled') { design().enabled = el.checked; changed(false); }
         else if (el.id === 'card-preset' && el.value) { clearPending(selected); draft[selected] = structuredClone(definition().presets.find(p => p.id === el.value).design); regionId = design().regions[0]?.id || ''; changed(); app.render(); }
         else if (el.id === 'card-scenario') { sampleIds[selected] = el.value; delete samples[selected]; realStale = !!realURL; app.render(); }
-        else if (el.id === 'card-background') { void localBackground(el.files[0]).catch(error => app.status(error.message, true)); }
+        else if (el.id === 'card-background') { void app.run(() => localBackground(el.files[0])); }
         else if (el.id === 'card-field') { const r = region(); r.field = el.value; if (el.value) { delete r.text; } else { r.text = ''; } changed(); app.render(); }
         else if (['card-weight','card-align'].includes(el.id)) { region()[el.id.slice(5)] = el.id === 'card-weight' ? Number(el.value) : el.value; changed(); app.render(); }
         else { syncNumbers(); }
@@ -224,7 +230,12 @@ function createCardEditor(app, ui) {
             for (const id of [...pending.keys()]) { await uploadPending(id); }
             try {
                 const result = await (await request('save',{revision:state.revision,config:draft})).json();
-                state = { ...state, ...result }; draft = structuredClone(result.config); app.dirty = false; await app.load(); app.status('卡面已保存');
+                state = { ...state, ...result }; draft = structuredClone(result.config); app.dirty = false;
+                await app.load(false);
+
+                if (app.state.config.cardDesigns?.revision === result.revision) { loadedRevision = app.state.revision; }
+
+                app.render(); app.status('卡面已保存');
             } catch(error) { if(error.kind !== 'validation') { synchronized = false; error.message += '，当前草稿仍保留，请刷新配置后继续'; } throw error; }
         } else if (a === 'card-real') {
             if (!state.realPreview) { throw Error('真实预览需要公开 HTTPS 地址和 Images，本地排版无需请求'); }
@@ -235,7 +246,17 @@ function createCardEditor(app, ui) {
             const blob = await response.blob(); revokePreview(); realURL = URL.createObjectURL(blob); app.render(); app.status('真实预览已生成');
         }
     }
-    function reset() { for (const id of pending.keys()) { clearPending(id); } generation++; loading = false; state = null; draft = null; failure = ''; imageToken++; background = null; backgroundAsset = ''; backgroundPending = null; revokePreview(); }
+    function reset(invalidate = true) {
+        for (const id of pending.keys()) { clearPending(id); }
+
+        generation++; loading = false;
+
+        if (invalidate) { state = null; }
+
+        draft = state ? structuredClone(state.config) : null;
+        regionId = draft?.[selected]?.regions[0]?.id || ''; failure = ''; imageToken++;
+        background = null; backgroundAsset = ''; backgroundPending = null; revokePreview();
+    }
     return { render,refresh,action,input,change,reset,transientInputs:['card-kind','card-region','card-sample','card-background','card-scenario'] };
 }
 `;

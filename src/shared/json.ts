@@ -1,4 +1,4 @@
-export async function readText(input: Request | Response, maxBytes = 256_000, label = "响应"): Promise<string> {
+async function readText(input: Request | Response, maxBytes = 256_000, label = "响应"): Promise<string> {
     if (Number(input.headers.get("content-length") ?? 0) > maxBytes) {
         await input.body?.cancel().catch(() => { });
         throw new Error(label + "过大");

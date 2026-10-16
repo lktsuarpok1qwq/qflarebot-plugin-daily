@@ -1,3 +1,4 @@
+import { CardImageError } from "../../../shared/cards/render.js";
 import type { CommandInput } from "@qqbot/sdk";
 import type { Rendered } from "../../../shared/types.js";
 import { expand } from "../../../shared/interpolation.js";
@@ -8,7 +9,7 @@ import { readCommandState } from "../repository.js";
 import { cardLabels } from "./labels.js";
 import { drawCard } from "./draw.js";
 import { userKey, claimCard, markDrawn } from "./store.js";
-import { CardImageError, cardImage } from "./media.js";
+import { cardImage } from "./media.js";
 import { errorDetails } from "../../../shared/diagnostics.js";
 export async function renderCardCommand({ ctx, session }: CommandInput, name: string): Promise<Rendered> {
     const day = dateAt(Date.now()), id = await userKey(ctx.botId, session.userId);

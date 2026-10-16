@@ -17,8 +17,7 @@ export async function renderMessage(
     }
 
     const body = template.body;
-    validateTemplate(body, keysAllowed);
-    const keys = [...body.matchAll(/\{\{([^{}]+)\}\}/g)].map((m) => m[1]!);
+    const keys = [...validateTemplate(body, keysAllowed)];
     const values = await resolve(keys, due);
     const text = expand(body, {}, values);
     return { text: text.trim() ? text : "" };

@@ -1,5 +1,6 @@
+import { analyzeTemplate } from "../../shared/templates.js";
 import { renderWeather } from "./rendering.js";
-import { WEATHER_CARD_COPY, type WeatherCardData } from "./cards/copy.js";
+import type { WeatherCardData } from "./cards/copy.js";
 import type { Forecast, Current } from "./types.js";
 import type { WeatherConfig } from "./types.js";
 import { lookup, request, parseCurrent, parseForecast, CURRENT_FIELDS, FORECAST_FIELDS, NoWeatherData } from "./provider.js";
@@ -32,7 +33,9 @@ export async function queryWeather(
 
     const body = tomorrow ? copy.tomorrow : copy.current;
 
-    if (!/\{\{[^{}]+\}\}/.test(body)) { return { text: body }; }
+    const needed = analyzeTemplate(body).keys;
+
+    if (!image && !needed.size) { return { text: body }; }
 
     if (!config.host || !config.apiKey) {
         throw new Error("天气 API 尚未配置");
@@ -62,20 +65,22 @@ export async function queryWeather(
 
     const day = localDay(now, city.utcOffset, tomorrow ? 1 : 0);
     const suffix = "/" + city.lat + "/" + city.lon;
-    const cardCopy = config.cardCopy ?? WEATHER_CARD_COPY;
+    const cardCopy = config.cardCopy;
     const custom = image && config.cardDesigns?.config.weather?.enabled ? config.cardDesigns.config.weather : undefined;
-    const selected = new Set(custom?.regions.flatMap(region => region.text === undefined ? [region.field] : [...region.text.matchAll(/\{\{([^{}]+)\}\}/g)].map(match => match[1]!)));
+    const selected = new Set(custom?.regions.flatMap(region => region.text === undefined ? [region.field] : [...analyzeTemplate(region.text).keys]));
     const cardFields = custom ? new Set([...selected, "caption", ...(selected.has("temperature") ? [tomorrow ? "tomorrow" : "current"] : []), ...(selected.has("first") ? [tomorrow ? "minimum" : "feels"] : [])]) : null;
     const imageBody = image ? Object.entries(cardCopy).filter(([key]) => cardFields ? cardFields.has(key) : tomorrow ? !["current", "feels"].includes(key) : !["tomorrow", "minimum"].includes(key)).map(([, value]) => value).join("") : "";
-    const needed = body + imageBody;
-    const forecastFields = new Set<Exclude<keyof Forecast["days"][number], "date">>(FORECAST_FIELDS.filter(key => needed.includes("{{" + key + "}}")));
-    const currentFields: (keyof Current)[] = tomorrow ? [] : CURRENT_FIELDS.filter(key => needed.includes("{{" + key + "}}"));
+
+    for (const key of analyzeTemplate(imageBody).keys) { needed.add(key); }
+
+    const forecastFields = new Set<Exclude<keyof Forecast["days"][number], "date">>(FORECAST_FIELDS.filter(key => needed.has(key)));
+    const currentFields: (keyof Current)[] = tomorrow ? [] : CURRENT_FIELDS.filter(key => needed.has(key));
 
     if (tomorrow) {
-        if (needed.includes("{{condition}}")) { forecastFields.add("day"); }
+        if (needed.has("condition")) { forecastFields.add("day"); }
 
         for (const key of ["humidity", "wind"] as const) {
-            if (needed.includes("{{" + key + "}}")) { forecastFields.add(key); }
+            if (needed.has(key)) { forecastFields.add(key); }
         }
     }
 

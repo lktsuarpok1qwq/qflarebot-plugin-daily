@@ -3,7 +3,7 @@ import { adminHandler, stateResponse } from "../../shared/admin.js";
 import { settings } from "./definition.js";
 import type { VariableAPI } from "../../shared/variables.js";
 import type { PluginDB, RouteInput } from "@qqbot/sdk";
-import { LIMITS } from "./types.js";
+import { LIMITS, type Snapshot } from "./types.js";
 import { COPY } from "./copy.js";
 import { snapshot, saveConfig, bindingId } from "./data/repository.js";
 import { validateConfig } from "./data/validation.js";
@@ -37,6 +37,10 @@ async function testResult(db: PluginDB, key: string, taskId: string, recipientId
         text: prior.details ? (JSON.parse(prior.details) as { text?: string }).text : undefined,
     });
 }
+function present(state: Snapshot, botId: string) {
+    const needsCursors = state.config.bindings.length && state.config.tasks.some((t) => t.enabled && t.schedule.kind === "once" && at(t.schedule.date, t.schedule.time) <= Date.now());
+    return { ...state, currentBotId: botId, cursors: needsCursors ? null : [] };
+}
 // All callers enter through the host's auth: "admin" routes.
 export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log"], POST: ["config", "maintenance", "test"] }, async ({ ctx, request, params }: RouteInput, variables: VariableAPI): Promise<Response> => {
     const action = params.action ?? "",
@@ -66,8 +70,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
 
         if (action === "state") {
             const s = await snapshot(ctx.db);
-            const needsCursors = s.config.bindings.length && s.config.tasks.some((t) => t.enabled && t.schedule.kind === "once" && at(t.schedule.date!, t.schedule.time) <= Date.now());
-            return stateResponse(request, { ...s, currentBotId: ctx.botId, cursors: needsCursors ? null : [], jobs: null }, () => ({
+            return stateResponse(request, { ...present(s, ctx.botId), jobs: null }, () => ({
                 draftDefaults: COPY.drafts,
                 settings,
                 variables: variables.keys,
@@ -176,13 +179,13 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
             return c;
         });
 
-        return Response.json({
+        return Response.json(present({
+            config: c, botId: ctx.botId,
             revision:
                 s.botId === ctx.botId && JSON.stringify(c) === JSON.stringify(s.config)
                     ? s.revision
                     : await saveConfig(ctx, s, c, Date.now()),
-            refresh: true,
-        });
+        }, ctx.botId));
     }
 
     if (action === "test") {
