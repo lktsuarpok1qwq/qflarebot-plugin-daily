@@ -4,6 +4,7 @@ import { install } from "./data/repository.js";
 import { coreCommands, moduleCommands } from "./commands.js";
 import { registry } from "./modules/index.js";
 import { api } from "./admin.js";
+import { prepareFont } from "./shared/cards/assets.js";
 export default definePlugin({
     name: "daily",
     displayName: "每日助手",
@@ -14,6 +15,8 @@ export default definePlugin({
         onInstall: async (ctx) => {
             await install(ctx);
             await registry.install(ctx);
+
+            for (const weight of [400, 700]) { await prepareFont(ctx, weight); }
         },
     },
     commands: {

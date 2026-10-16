@@ -29,16 +29,17 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
     const view = name === "运势 抽" ? "small" : "detail", height = view === "small" ? 300 : 850;
     const selected = row;
     const afterSend = view === "small" && !row.drawn ? () => markDrawn(ctx.db, selected) : undefined;
+    const textFallback = () => renderFortuneText(config.copy, view, fresh ?? JSON.parse(row.snapshot) as CardSnapshot, expand);
 
     if (config.imageEnabled) {
         try {
             const image = await cardImage(ctx, row, view, publicOrigin(ctx), config.cardDesigns, fresh);
             const text = `![运势 #540px #${height}px](${image.url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
-            return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, diagnostics: { view, imageCache: image.cache }, afterSend };
+            return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, imageFallback: textFallback, diagnostics: { view, imageCache: image.cache }, afterSend };
         } catch (error) {
             ctx.logger.warn("运势图片准备失败，使用文字回复", { stage: error instanceof CardImageError ? error.stage : "public_address", view, error: String(error) });
         }
     }
 
-    return { text: renderFortuneText(config.copy, view, fresh ?? JSON.parse(row.snapshot) as CardSnapshot, expand), afterSend };
+    return { text: textFallback(), afterSend };
 }

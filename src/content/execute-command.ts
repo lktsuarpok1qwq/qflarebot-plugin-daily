@@ -1,4 +1,5 @@
 import { deliverReply } from "@qqbot/sdk";
+import type { SendResult } from "@qqbot/sdk";
 import type { CommandExecutor, CommandFeedback, Ctx, Rendered } from "../shared/types.js";
 import { readConfig } from "../data/repository.js";
 import { COPY } from "../copy.js";
@@ -20,6 +21,9 @@ async function feedback(ctx: Ctx, key: keyof CommandFeedback) {
 
     return message(feedbackText(copy, key));
 }
+function imageTransferRejected(sent: SendResult | undefined) {
+    return sent && !sent.ok && sent.status === 400 && sent.code === 40034141;
+}
 export const executeCommand: CommandExecutor = async (input, name, render) => {
     let result: Rendered;
 
@@ -36,16 +40,35 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
         return feedback(input.ctx, "error");
     }
 
-    try {
-        const [sent] = await deliverReply(input.session, result.reply ?? message(result.text));
+    let stage = "send";
+    const send = async (reply: NonNullable<Rendered["reply"]>) => {
+        const [sent] = await deliverReply(input.session, reply);
 
         if (sent && !sent.ok) {
-            input.ctx.logger.warn("命令回复失败", { ...result.diagnostics, command: name, stage: "send", status: sent.status, code: sent.code, traceId: sent.traceId, error: sent.error });
-
-            if (sent.code === 40054007) {
-                return feedback(input.ctx, "tooLong");
-            }
+            input.ctx.logger.warn("命令回复失败", { ...result.diagnostics, command: name, stage, status: sent.status, code: sent.code, traceId: sent.traceId, error: sent.error });
         }
+
+        return sent;
+    };
+
+    try {
+        let sent = await send(result.reply ?? message(result.text));
+
+        if (imageTransferRejected(sent) && typeof result.reply === "object" && result.reply.markdown?.forceVerifyImage) {
+            stage = "send_image_retry";
+            sent = await send(result.reply);
+        }
+
+        if (imageTransferRejected(sent) && result.imageFallback) {
+            stage = "send_text_fallback";
+            const text = result.imageFallback();
+
+            if (!text.trim()) { return feedback(input.ctx, "error"); }
+
+            sent = await send(message(text));
+        }
+
+        if (sent && !sent.ok && sent.code === 40054007) { return feedback(input.ctx, "tooLong"); }
 
         if (sent?.ok && result.afterSend) {
             try { await result.afterSend(); } catch (error) {
@@ -53,6 +76,6 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
             }
         }
     } catch (error) {
-        input.ctx.logger.warn("命令回复状态不确定", { ...result.diagnostics, command: name, stage: "send_unknown", error: String(error) });
+        input.ctx.logger.warn("命令回复状态不确定", { ...result.diagnostics, command: name, stage: stage + "_unknown", error: String(error) });
     }
 };
