@@ -35,6 +35,14 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
     if (config.imageEnabled) {
         try {
             const image = await cardImage(ctx, session.userId, row, view, config.cardDesigns, fresh);
+
+            try {
+                await ctx.api.uploadMedia({ scene: session.scene, id: session.targetId }, { type: "image", url: image.url });
+            } catch (error) {
+                throw new CardImageError("image_upload", error, { ...image.diagnostics, ...errorDetails(error) });
+            }
+
+            image.diagnostics.imageUpload = "complete";
             const text = `![运势 #540px #${height}px](${image.url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
             return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, imageFallback: textFallback, diagnostics: image.diagnostics, afterSend };
         } catch (error) {
