@@ -24,9 +24,8 @@ export async function install(ctx: Ctx) {
     CREATE TABLE IF NOT EXISTS {deliveries}(key TEXT PRIMARY KEY, task_id TEXT NOT NULL, recipient_id TEXT NOT NULL, due_at INTEGER NOT NULL, revision INTEGER NOT NULL, status TEXT NOT NULL, claimed_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, message_id TEXT, error TEXT, details TEXT) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS {logs_pending} ON {deliveries}(claimed_at) WHERE status='sending';
     CREATE INDEX IF NOT EXISTS {logs_time} ON {deliveries}(updated_at);
-    CREATE INDEX IF NOT EXISTS {logs_task} ON {deliveries}(task_id,due_at);
-    CREATE INDEX IF NOT EXISTS {logs_target} ON {deliveries}(recipient_id,due_at);
-    CREATE TABLE IF NOT EXISTS {maintenance}(job TEXT PRIMARY KEY, day TEXT NOT NULL, error TEXT) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS {logs_task} ON {deliveries}(task_id,updated_at);
+    CREATE INDEX IF NOT EXISTS {logs_target} ON {deliveries}(recipient_id,updated_at);
   `);
     await ctx.db.run("INSERT OR IGNORE INTO {notification_state}(id,revision,bot_id,config,token) VALUES (1,1,?,?, 'initial')", ctx.botId, JSON.stringify(defaults()));
 }

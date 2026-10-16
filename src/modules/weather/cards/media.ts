@@ -12,7 +12,7 @@ import { storedImageUrl } from "../../../shared/public-origin.js";
 import { dateAt, addDays, validDate } from "../../../shared/date.js";
 import type { WeatherCardCopy, WeatherCardData } from "./copy.js";
 const PREFIX = "weather/cards/";
-export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: WeatherCardCopy, state?: CardState) {
+export async function weatherImage(ctx: Ctx, userId: string, data: WeatherCardData, copy: WeatherCardCopy, state?: CardState) {
     const day = dateAt(Date.now()), token = crypto.randomUUID();
     const deadline = Date.now() + 10_000;
     const diagnostics: Diagnostics = { imageFormat: "jpeg", imageCache: "disabled", imageSaved: false };
@@ -22,7 +22,7 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
         if (expired || Date.now() >= deadline) { throw new DOMException("天气图片准备超时", "TimeoutError"); }
     };
     const prepare = async () => {
-        const path = `${PREFIX}${day}/${token}.jpg`;
+        const path = `${PREFIX}${day}/${encodeURIComponent(userId)}-${token}.jpg`;
         diagnostics.imageKey = path;
         const url = storedImageUrl(ctx, path);
         diagnostics.imageHost = new URL(url).hostname;
@@ -62,17 +62,17 @@ export async function weatherImage(ctx: Ctx, data: WeatherCardData, copy: Weathe
     }
 }
 async function readImage({ ctx, params }: RouteInput) {
-    const { day = "", token = "" } = params, today = dateAt(Date.now());
+    const { day = "", file = "" } = params, today = dateAt(Date.now());
 
-    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/.test(token)) {
+    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^(?:[A-Za-z0-9_.!~*'()-]|%[0-9A-F]{2})+-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/.test(file)) {
         return new Response(null, { status: 404 });
     }
 
-    const stream = await ctx.r2.getStream(`${PREFIX}${day}/${token}`);
+    const stream = await ctx.r2.getStream(`${PREFIX}${day}/${file}`);
     return stream ? new Response(stream, { headers: { "content-type": "image/jpeg", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } }) : new Response(null, { status: 404 });
 }
-export const weatherCardRoutes: Route[] = [{ method: "GET", path: "/weather/cards/:day/:token", auth: "public", handler: readImage }];
+export const weatherCardRoutes: Route[] = [{ method: "GET", path: "/weather/cards/:day/:file", auth: "public", handler: readImage }];
 export async function cleanupWeatherImages(ctx: Ctx, now: number) {
     const cutoff = dateAt(now);
-    await cleanupDatedObjects(ctx.r2, PREFIX, cutoff);
+    return cleanupDatedObjects(ctx.r2, PREFIX, cutoff);
 }

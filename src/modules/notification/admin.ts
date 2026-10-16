@@ -48,7 +48,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
 
     if (request.method === "GET") {
         if (action === "jobs") {
-            return Response.json(await ctx.db.all("SELECT * FROM {maintenance}"));
+            return Response.json(await ctx.db.all("SELECT * FROM {maintenance} WHERE job='cleanup'"));
         }
 
         if (action === "log") {

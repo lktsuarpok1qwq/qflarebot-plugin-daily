@@ -12,9 +12,9 @@ import type { CardRow, CardSnapshot } from "./store.js";
 import { storedImageUrl } from "../../../shared/public-origin.js";
 import { errorDetails, type Diagnostics } from "../../../shared/diagnostics.js";
 const PREFIX = "fortune/cards/";
-const key = (day: string, token: string, view: string) => `${PREFIX}${day}/${token}/${view}.png`;
+const key = (day: string, file: string) => `${PREFIX}${day}/${file}`;
 type ImageStage = "public_address" | "cache_check" | "snapshot_parse" | "layout" | "images_request" | "image_save";
-export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail", state?: CardState, fresh?: CardSnapshot) {
+export async function cardImage(ctx: Ctx, userId: string, row: CardRow, view: "small" | "detail", state?: CardState, fresh?: CardSnapshot) {
     const deadline = Date.now() + 10_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let expired = false;
@@ -27,10 +27,11 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
         const design = state?.config[view];
         const custom = design?.enabled ? design : null;
         const imageView = `${view}-i${custom ? 1 : 2}-r${custom ? state!.revision : 0}`;
-        const path = key(row.day, row.token, imageView);
+        const file = `${encodeURIComponent(userId)}-${row.token}-${imageView}.png`;
+        const path = key(row.day, file);
         diagnostics.imageKey = path;
         diagnostics.customDesign = Boolean(custom);
-        const url = storedImageUrl(ctx, path, `${PREFIX}${row.day}/${row.token}/${imageView}`);
+        const url = storedImageUrl(ctx, path);
         diagnostics.imageHost = new URL(url).hostname;
         stage = "cache_check";
         // A successful claim creates a new token; only an existing snapshot can have a cached image.
@@ -76,28 +77,29 @@ export async function cardImage(ctx: Ctx, row: CardRow, view: "small" | "detail"
 }
 
 async function readImage({ ctx, params }: RouteInput) {
-    const { day = "", token = "", view = "" } = params, today = dateAt(Date.now());
+    const { day = "", file = "" } = params, today = dateAt(Date.now());
 
-    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token) || !/^(small|detail)-i[1-9][0-9]{0,2}-r[0-9]{1,10}$/.test(view)) {
+    if (!validDate(day) || day < addDays(today, -1) || day > today || !/^(?:[A-Za-z0-9_.!~*'()-]|%[0-9A-F]{2})+-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-(small|detail)-i[1-9][0-9]{0,2}-r[0-9]{1,10}\.png$/.test(file)) {
         return new Response(null, { status: 404 });
     }
 
     let stream;
 
     try {
-        stream = await ctx.r2.getStream(key(day, token, view));
+        stream = await ctx.r2.getStream(key(day, file));
     } catch (error) {
-        ctx.logger.warn("运势图片读取失败", { stage: "image_read", view, imageKey: key(day, token, view), ...errorDetails(error) });
+        ctx.logger.warn("运势图片读取失败", { stage: "image_read", imageKey: key(day, file), ...errorDetails(error) });
         throw error;
     }
 
-    if (!stream) { ctx.logger.warn("运势图片不存在", { stage: "image_read", view, imageKey: key(day, token, view), status: 404 }); }
+    if (!stream) { ctx.logger.warn("运势图片不存在", { stage: "image_read", imageKey: key(day, file), status: 404 }); }
 
     return stream ? new Response(stream, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } }) : new Response(null, { status: 404 });
 }
-export const cardRoutes: Route[] = [{ method: "GET", path: "/fortune/cards/:day/:token/:view", auth: "public", handler: readImage }];
+export const cardRoutes: Route[] = [{ method: "GET", path: "/fortune/cards/:day/:file", auth: "public", handler: readImage }];
+export async function cleanupCardImages(ctx: Ctx, now: number) {
+    return cleanupDatedObjects(ctx.r2, PREFIX, dateAt(now));
+}
 export async function cleanupCards(ctx: Ctx, now: number) {
-    const cutoff = dateAt(now);
-    await cleanupDatedObjects(ctx.r2, PREFIX, cutoff);
-    await ctx.db.run("DELETE FROM {fortune_cards} WHERE day<?", cutoff);
+    await ctx.db.run("DELETE FROM {fortune_cards} WHERE day<?", dateAt(now));
 }

@@ -17,7 +17,7 @@ export async function maintenance(
 
     if (!manual) {
         const r = await ctx.db.run(
-            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,NULL) ON CONFLICT(job) DO UPDATE SET day=excluded.day WHERE day<excluded.day",
+            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,NULL) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<excluded.day",
             jobKey,
             day,
         );
@@ -57,12 +57,16 @@ export async function maintenance(
         const describe = (r: SyncResult) => `${r.year} 假期数据：${labels[r.status]}${r.error ? `（${r.error}）` : ""}`;
         const failures = results.filter((r) => r.status === "error").map(describe);
         const error = failures.length ? failures.join("；") : null;
-        await ctx.db.run(
-            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<excluded.day OR (day=excluded.day AND error IS NOT excluded.error)",
-            jobKey,
-            day,
-            error,
-        );
+
+        if (manual || error !== null) {
+            await ctx.db.run(
+                "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,?) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<excluded.day OR (day=excluded.day AND error IS NOT excluded.error)",
+                jobKey,
+                day,
+                error,
+            );
+        }
+
         return {
             ok: !error,
             message: job === "cleanup" ? "清理完成" : results.map(describe).join("；"),

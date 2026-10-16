@@ -8,12 +8,12 @@ import { install, snapshot, save, readPrompt } from "./repository.js";
 import { corpus } from "./corpus.js";
 import { renderCardCommand } from "./cards/command.js";
 import { installCards } from "./cards/store.js";
-import { cardRoutes, cleanupCards } from "./cards/media.js";
+import { cardRoutes, cleanupCards, cleanupCardImages } from "./cards/media.js";
 import { renderFortuneText } from "./cards/text.js";
 import { fortunePage } from "./ui/page.js";
 export const fortune: ModuleDefinition = {
     id: "fortune", cards: bindCards(fortuneDesigns, { snapshot, save }, backgrounds), title: "运势", permissions: ["db", "net"], install: async (ctx) => { await install(ctx); await installCards(ctx.db); }, routes: cardRoutes,
-    cleanup: cleanupCards, copy: copyContract,
+    cleanup: cleanupCards, cleanupImages: cleanupCardImages, copy: copyContract,
     commands: {
         definitions: commands, render: async (input, name) => {
             const { ctx, session } = input;

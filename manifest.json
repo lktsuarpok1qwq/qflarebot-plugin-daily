@@ -99,6 +99,10 @@
     {
       "name": "cleanup",
       "cron": "10 16 * * *"
+    },
+    {
+      "name": "image_cleanup",
+      "cron": "* * * * *"
     }
   ],
   "routes": [
@@ -129,7 +133,7 @@
     },
     {
       "method": "GET",
-      "path": "/weather/cards/:day/:token",
+      "path": "/weather/cards/:day/:file",
       "auth": "public"
     },
     {
@@ -164,7 +168,7 @@
     },
     {
       "method": "GET",
-      "path": "/fortune/cards/:day/:token/:view",
+      "path": "/fortune/cards/:day/:file",
       "auth": "public"
     },
     {

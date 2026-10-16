@@ -14,7 +14,7 @@ export function storedImageUrl(ctx: Ctx, key: string, route = key): string {
     const configured = (ctx.config as { imagePublicUrl?: unknown } | null)?.imagePublicUrl;
     const prefix = `/p/${encodeURIComponent(ctx.plugin.name)}/`;
 
-    if (configured === undefined || configured === "") { return publicOrigin(ctx) + prefix + route; }
+    if (configured === undefined || configured === "") { return publicOrigin(ctx) + prefix + route.split("/").map(encodeURIComponent).join("/"); }
 
     if (typeof configured !== "string") { throw new Error("图片公开地址须为 HTTPS 域名"); }
 

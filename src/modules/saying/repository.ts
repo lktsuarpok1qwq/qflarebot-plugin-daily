@@ -16,9 +16,12 @@ export async function dailyState(db: PluginDB, day: string) {
 }
 export async function publish(db: PluginDB, day: string, text: string) {
     // Concurrent first requests all use the first committed result; older dates cannot replace newer ones.
-    const rows = await db.batch<{ text: string }>([
-        { sql: "INSERT INTO {saying_cache}(id,day,text) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET day=excluded.day,text=excluded.text WHERE day<excluded.day", params: [day, text] },
-        { sql: "SELECT text FROM {saying_cache} WHERE id=1 AND day=?", params: [day] },
-    ]);
-    return rows[1]!.results[0]?.text ?? "";
+    const inserted = await db.first<{ text: string }>(
+        "INSERT INTO {saying_cache}(id,day,text) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET day=excluded.day,text=excluded.text WHERE day<excluded.day RETURNING text", day, text,
+    );
+
+    if (inserted) { return inserted.text; }
+
+    const existing = await db.first<{ text: string }>("SELECT text FROM {saying_cache} WHERE id=1 AND day=?", day);
+    return existing?.text ?? "";
 }

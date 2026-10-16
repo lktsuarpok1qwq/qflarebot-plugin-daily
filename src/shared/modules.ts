@@ -1,3 +1,5 @@
+import { imageCleanupJobs } from "./image-cleanup.js";
+import { installMaintenance } from "./maintenance.js";
 import type { CopyContract } from "./copy-contract.js";
 import type { CommandInput, CronJob, CronMap, Route, RouteInput, Permission } from "@qqbot/sdk";
 import type { CommandExecutor, Ctx, Rendered } from "./types.js";
@@ -14,6 +16,7 @@ export type ModuleDefinition = {
     permissions?: readonly Permission[];
     install?: (ctx: Ctx) => Promise<void>;
     cleanup?: (ctx: Ctx, scheduledAt: number) => Promise<void | { ok: boolean; message: string }>;
+    cleanupImages?: (ctx: Ctx, scheduledAt: number) => Promise<boolean>;
     variables?: VariableCapability;
     copy?: CopyContract;
     cards?: CardBinding;
@@ -55,10 +58,12 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
     const hasCards = modules.some(module => module.cards);
     const variables = createVariables(modules);
     const services: ModuleServices = { variables };
+    const imageModules = modules.filter(module => module.cleanupImages).map(module => ({ id: module.id, run: module.cleanupImages! }));
+    const images = imageModules.length ? imageCleanupJobs(imageModules) : undefined;
     const cleanup = modules.filter((module) => module.cleanup);
     const cron: CronMap = Object.fromEntries(modules.flatMap((module) => Object.entries(module.cron ?? {}).map(([name, job]) => [name, { ...job, handler: (input: Parameters<CronJob["handler"]>[0]) => job.handler(input, services) }])));
 
-    if (cleanup.length) {
+    if (cleanup.length || images) {
         unique(jobs, "cleanup", "定时任务");
         cron.cleanup = {
             cron: "10 16 * * *", handler: async ({ ctx, scheduledAt }) => {
@@ -74,9 +79,18 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
                     }
                 }
 
+                if (images) {
+                    try { await images.daily(ctx, scheduledAt); } catch (error) { failures.push(error instanceof Error ? error.message : String(error)); }
+                }
+
                 if (failures.length) { throw new Error(`模块清理失败：${failures.join("；")}`); }
             },
         };
+    }
+
+    if (images) {
+        unique(jobs, "image_cleanup", "定时任务");
+        cron.image_cleanup = { cron: "* * * * *", handler: ({ ctx, scheduledAt }) => images.resume(ctx, scheduledAt) };
     }
 
     return {
@@ -84,6 +98,8 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
         permissions: [...new Set(modules.flatMap((module) => [...module.permissions ?? [], ...(module.admin || module.cards ? ["admin" as const] : []), ...(module.cards ? ["net" as const] : [])]))],
         get pages() { return modules.flatMap((module) => module.ui ? [{ id: module.id, title: module.title, ...module.ui }] : []); },
         async install(ctx: Ctx) {
+            if (cleanup.length || images) { await installMaintenance(ctx.db); }
+
             for (const module of modules) { module.copy?.assertDeclaration(); await module.install?.(ctx); }
 
             if (hasCards) {

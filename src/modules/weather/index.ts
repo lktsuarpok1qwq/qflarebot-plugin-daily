@@ -15,7 +15,7 @@ export const weather: ModuleDefinition = {
     permissions: ["db", "net"],
     install,
     routes: weatherCardRoutes,
-    cleanup: cleanupWeatherImages,
+    cleanupImages: cleanupWeatherImages,
     copy: copyContract,
     commands: {
         definitions: commands, render: async (input) => {
