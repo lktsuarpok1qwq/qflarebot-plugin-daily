@@ -35,7 +35,7 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
         try {
             const image = await cardImage(ctx, row, view, publicOrigin(ctx), config.cardDesigns, fresh);
             const text = `![运势 #540px #${height}px](${image.url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
-            return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, imageFallback: textFallback, diagnostics: { view, imageCache: image.cache }, afterSend };
+            return { text, reply: { markdown: { content: text } }, imageFallback: textFallback, diagnostics: { view, imageCache: image.cache }, afterSend };
         } catch (error) {
             ctx.logger.warn("运势图片准备失败，使用文字回复", { stage: error instanceof CardImageError ? error.stage : "public_address", view, error: String(error) });
         }

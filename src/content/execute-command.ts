@@ -54,11 +54,6 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
     try {
         let sent = await send(result.reply ?? message(result.text));
 
-        if (imageTransferRejected(sent) && typeof result.reply === "object" && result.reply.markdown?.forceVerifyImage) {
-            stage = "send_image_retry";
-            sent = await send(result.reply);
-        }
-
         if (imageTransferRejected(sent) && result.imageFallback) {
             stage = "send_text_fallback";
             const text = result.imageFallback();
