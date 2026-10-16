@@ -30,7 +30,7 @@ const declaration: CopyDeclaration = {
 };
 export const copyContract = createCopyContract<{ copy: FortuneCopy }>(declaration);
 export const settings: SettingsDeclaration = {
-    id: "fortune-settings", title: "运势设置", description: "图片开关保存后生效，准备超过 10 秒改发文字；抽取设置次日生效",
+    id: "fortune-settings", title: "运势设置", description: "图片开关保存后生效，准备超过 10 秒改发文字；抽取设置对新签文生效",
     fields: [
         { key: "imageEnabled", id: "fortune-image-enabled", label: "启用图片卡片", group: "功能开关", type: "checkbox" },
         { key: "eggs", id: "fortune-eggs", label: "参与彩蛋抽取", group: "功能开关", type: "checkbox" },

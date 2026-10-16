@@ -9,6 +9,7 @@ import { cardLabels } from "./labels.js";
 import { drawCard } from "./draw.js";
 import { userKey, claimCard, markDrawn } from "./store.js";
 import { CardImageError, cardImage } from "./media.js";
+import { errorDetails } from "../../../shared/diagnostics.js";
 export async function renderCardCommand({ ctx, session }: CommandInput, name: string): Promise<Rendered> {
     const day = dateAt(Date.now()), id = await userKey(ctx.botId, session.userId);
     const { config, card } = await readCommandState(ctx.db, id);
@@ -34,9 +35,12 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
         try {
             const image = await cardImage(ctx, row, view, config.cardDesigns, fresh);
             const text = `![运势 #540px #${height}px](${image.url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
-            return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, imageFallback: textFallback, diagnostics: { view, imageCache: image.cache }, afterSend };
+            return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, imageFallback: textFallback, diagnostics: image.diagnostics, afterSend };
         } catch (error) {
-            ctx.logger.warn("运势图片准备失败，使用文字回复", { stage: error instanceof CardImageError ? error.stage : "public_address", view, error: String(error) });
+            const diagnostics = error instanceof CardImageError ? error.diagnostics : errorDetails(error);
+            const stage = error instanceof CardImageError ? error.stage : "public_address";
+            ctx.logger.warn("运势图片准备失败，使用文字回复", { ...diagnostics, command: name, stage, view });
+            return { text: textFallback(), diagnostics: { ...diagnostics, imagePrepareFailed: true, imagePrepareStage: stage }, afterSend };
         }
     }
 

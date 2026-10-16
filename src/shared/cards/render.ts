@@ -22,15 +22,18 @@ export async function renderLayers(ctx: Ctx, background: string, { layers, overf
     const response = await fetch(assets[background]?.url ?? base + background, options as RequestInit);
 
     if (!response.ok || !response.body || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== `image/${format}` || /\berr=/.test(response.headers.get("cf-resized") ?? "")) {
-        await response.body?.cancel();
+        await response.body?.cancel().catch(() => { });
         const code = /\berr=(\d+)/.exec(response.headers.get("cf-resized") ?? "")?.[1];
         const ray = response.headers.get("cf-ray");
-        throw new Error(`Images 渲染失败（HTTP ${response.status}${code ? ", err=" + code : ""}${ray && /^[\w-]{1,80}$/.test(ray) ? ", Ray " + ray : ""}）`);
+        const cfRay = ray && /^[\w-]{1,80}$/.test(ray) ? ray : null;
+        throw Object.assign(new Error(`Images 渲染失败（HTTP ${response.status}${code ? ", err=" + code : ""}${cfRay ? ", Ray " + cfRay : ""}）`), {
+            status: response.status, code: code ? Number(code) : null, cfRay,
+        });
     }
     // A plain fetch on a local runtime can return the original image while ignoring cf.image.
     if (!response.headers.has("cf-resized")) {
-        await response.body.cancel();
-        throw new Error("当前环境未执行 Images 转换，请在已启用 Images 的公开 HTTPS 环境预览");
+        await response.body.cancel().catch(() => { });
+        throw Object.assign(new Error("当前环境未执行 Images 转换，请在已启用 Images 的公开 HTTPS 环境预览"), { status: response.status, code: "IMAGES_TRANSFORM_MISSING" });
     }
 
     return response.body;
