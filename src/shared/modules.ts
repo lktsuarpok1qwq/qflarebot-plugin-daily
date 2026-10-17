@@ -16,6 +16,7 @@ export type ModuleDefinition = {
     permissions?: readonly Permission[];
     install?: (ctx: Ctx) => Promise<void>;
     cleanup?: (ctx: Ctx, scheduledAt: number) => Promise<void | { ok: boolean; message: string }>;
+    maintenance?: Record<string, { utcMinutes: readonly number[]; handler: CronJob["handler"] }>;
     cleanupImages?: (ctx: Ctx, scheduledAt: number) => Promise<boolean>;
     variables?: VariableCapability;
     copy?: CopyContract;
@@ -44,7 +45,15 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
 
         for (const key of module.variables?.variables ?? []) { unique(keys, key, "变量"); }
 
-        for (const job of Object.keys(module.cron ?? {})) { unique(jobs, job, "定时任务"); }
+        for (const name of Object.keys(module.cron ?? {})) { unique(jobs, name, "定时任务"); }
+
+        for (const [name, job] of Object.entries(module.maintenance ?? {})) {
+            unique(jobs, name, "定时任务");
+
+            if (!job.utcMinutes.length || job.utcMinutes.some(minute => !Number.isInteger(minute) || minute < 0 || minute >= 1440)) {
+                throw new Error("维护时间无效：" + name);
+            }
+        }
 
         if (module.ui?.sections) {
             if (!module.ui.sections.length) { throw new Error("模块页面不能为空：" + module.id); }
@@ -61,36 +70,46 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
     const imageModules = modules.filter(module => module.cleanupImages).map(module => ({ id: module.id, run: module.cleanupImages! }));
     const images = imageModules.length ? imageCleanupJobs(imageModules) : undefined;
     const cleanup = modules.filter((module) => module.cleanup);
+    const maintenance = modules.flatMap(module => Object.entries(module.maintenance ?? {}));
     const cron: CronMap = Object.fromEntries(modules.flatMap((module) => Object.entries(module.cron ?? {}).map(([name, job]) => [name, { ...job, handler: (input: Parameters<CronJob["handler"]>[0]) => job.handler(input, services) }])));
 
-    if (cleanup.length || images) {
-        unique(jobs, "cleanup", "定时任务");
-        cron.cleanup = {
-            cron: "10 16 * * *", handler: async ({ ctx, scheduledAt }) => {
+    if (maintenance.length || cleanup.length || images) {
+        unique(jobs, "maintenance", "定时任务");
+        cron.maintenance = {
+            cron: "* * * * *", handler: async (input) => {
+                const { ctx, scheduledAt } = input, time = new Date(scheduledAt);
+                const minute = time.getUTCHours() * 60 + time.getUTCMinutes(), daily = minute === 16 * 60 + 10;
                 const failures: string[] = [];
 
-                for (const module of cleanup) {
-                    try {
-                        const result = await module.cleanup!(ctx, scheduledAt);
+                for (const [name, job] of maintenance) {
+                    if (!job.utcMinutes.includes(minute)) { continue; }
 
-                        if (result && !result.ok) { throw new Error(result.message); }
-                    } catch (error) {
-                        failures.push(`${module.id}: ${error instanceof Error ? error.message : String(error)}`);
+                    try { await job.handler({ ...input, job: name }); } catch (error) {
+                        failures.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
+                    }
+                }
+
+                if (daily) {
+                    for (const module of cleanup) {
+                        try {
+                            const result = await module.cleanup!(ctx, scheduledAt);
+
+                            if (result && !result.ok) { throw new Error(result.message); }
+                        } catch (error) {
+                            failures.push(`${module.id}: ${error instanceof Error ? error.message : String(error)}`);
+                        }
                     }
                 }
 
                 if (images) {
-                    try { await images.daily(ctx, scheduledAt); } catch (error) { failures.push(error instanceof Error ? error.message : String(error)); }
+                    try { await (daily ? images.daily(ctx, scheduledAt) : images.resume(ctx, scheduledAt)); } catch (error) {
+                        failures.push(error instanceof Error ? error.message : String(error));
+                    }
                 }
 
-                if (failures.length) { throw new Error(`模块清理失败：${failures.join("；")}`); }
+                if (failures.length) { throw new Error(`模块维护失败：${failures.join("；")}`); }
             },
         };
-    }
-
-    if (images) {
-        unique(jobs, "image_cleanup", "定时任务");
-        cron.image_cleanup = { cron: "* * * * *", handler: ({ ctx, scheduledAt }) => images.resume(ctx, scheduledAt) };
     }
 
     return {

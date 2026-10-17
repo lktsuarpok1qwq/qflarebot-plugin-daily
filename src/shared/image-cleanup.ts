@@ -44,9 +44,6 @@ export function imageCleanupJobs(modules: readonly ImageCleanup[]) {
         async resume(ctx: Ctx, scheduledAt: number) {
             const time = new Date(scheduledAt);
 
-            // The daily invocation owns this minute, including any pending work.
-            if (time.getUTCHours() === 16 && time.getUTCMinutes() === 10) { return; }
-
             const pending = await ctx.db.all<{ job: string; epoch: string }>(
                 `DELETE FROM {maintenance} WHERE job IN (${placeholders}) AND day<=? RETURNING job,(SELECT day FROM {maintenance} WHERE job=?) AS epoch`,
                 ...jobs, time.toISOString(), START,

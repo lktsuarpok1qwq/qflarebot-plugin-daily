@@ -30,11 +30,13 @@ export const calendar: ModuleDefinition = {
         },
     },
     commands: calendarCommands,
-    cron: {
+    maintenance: {
         calendar_sync: {
-            cron: "0,1 16 * * *",
+            utcMinutes: [16 * 60, 16 * 60 + 1],
             handler: async ({ ctx, scheduledAt }) => {
-                await maintenance(ctx, "sync", scheduledAt, false, new Date(scheduledAt).getUTCMinutes() as 0 | 1);
+                const result = await maintenance(ctx, "sync", scheduledAt, false, new Date(scheduledAt).getUTCMinutes() as 0 | 1);
+
+                if (!result.ok) { throw new Error(result.message); }
             },
         },
     },

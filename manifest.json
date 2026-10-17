@@ -93,15 +93,7 @@
       "cron": "* * * * *"
     },
     {
-      "name": "calendar_sync",
-      "cron": "0,1 16 * * *"
-    },
-    {
-      "name": "cleanup",
-      "cron": "10 16 * * *"
-    },
-    {
-      "name": "image_cleanup",
+      "name": "maintenance",
       "cron": "* * * * *"
     }
   ],
