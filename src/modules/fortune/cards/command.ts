@@ -1,3 +1,4 @@
+import { imageReply } from "../../../shared/cards/reply.js";
 import { CardImageError } from "../../../shared/cards/render.js";
 import type { CommandInput } from "@qqbot/sdk";
 import type { Rendered } from "../../../shared/types.js";
@@ -36,15 +37,8 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
         try {
             const image = await cardImage(ctx, session.userId, row, view, config.cardDesigns, fresh);
 
-            try {
-                await ctx.api.uploadMedia({ scene: session.scene, id: session.targetId }, { type: "image", url: image.url });
-            } catch (error) {
-                throw new CardImageError("image_upload", error, { ...image.diagnostics, ...errorDetails(error) });
-            }
-
-            image.diagnostics.imageUpload = "complete";
-            const text = `![运势 #540px #${height}px](${image.url})\n\n${view === "small" ? config.copy.drawCaption : config.copy.detailCaption}`;
-            return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, imageFallback: textFallback, diagnostics: image.diagnostics, afterSend };
+            const reply = imageReply(image.url, "运势", 540, height, view === "small" ? config.copy.drawCaption : config.copy.detailCaption, textFallback);
+            return { ...reply, diagnostics: image.diagnostics, afterSend };
         } catch (error) {
             const diagnostics = error instanceof CardImageError ? error.diagnostics : errorDetails(error);
             const stage = error instanceof CardImageError ? error.stage : "public_address";

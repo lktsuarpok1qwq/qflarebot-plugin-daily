@@ -1,3 +1,4 @@
+import { imageReply } from "../../../shared/cards/reply.js";
 import { CardImageError } from "../../../shared/cards/render.js";
 import { errorDetails } from "../../../shared/diagnostics.js";
 import type { CommandInput } from "@qqbot/sdk";
@@ -16,8 +17,7 @@ export async function renderWeatherCommand(input: CommandInput, config: WeatherC
     try {
         const image = await weatherImage(input.ctx, input.session.userId, result.card, copy, config.cardDesigns);
         const caption = expand(copy.caption, result.card.values, result.card.fragments);
-        const text = `![天气 #540px #850px](${image.url})${caption ? "\n\n" + caption : ""}`;
-        return { text, reply: { markdown: { content: text, forceVerifyImage: true } }, imageFallback: () => result.text, diagnostics: image.diagnostics };
+        return { ...imageReply(image.url, "天气", 540, 850, caption, () => result.text), diagnostics: image.diagnostics };
     } catch (error) {
         const diagnostics = error instanceof CardImageError ? error.diagnostics : errorDetails(error);
         const stage = error instanceof CardImageError ? error.stage : "caption";
