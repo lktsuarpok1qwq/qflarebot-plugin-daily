@@ -1,14 +1,16 @@
 {
   "name": "daily",
   "version": "2.0.0",
-  "apiVersion": 3,
+  "apiVersion": 4,
   "permissions": [
     "db",
     "admin",
     "proactive",
     "net"
   ],
-  "depends": {},
+  "depends": {
+    "points.wallet": "optional"
+  },
   "conflicts": [],
   "commands": [
     {
@@ -78,6 +80,14 @@
     {
       "name": "运势 解",
       "description": "查看今日解签",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "签到",
+      "description": "每日签到",
       "scenes": [
         "group",
         "c2c"
@@ -185,6 +195,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/checkin/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/checkin/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
       "path": "/ui/*",
       "auth": "admin"
     },
@@ -203,7 +223,7 @@
   "services": [],
   "durableObjects": [],
   "displayName": "每日助手",
-  "description": "定时通知、日历、天气、一言与运势",
+  "description": "定时通知、日历、天气、一言、运势与签到",
   "configSchema": {
     "type": "object",
     "properties": {}

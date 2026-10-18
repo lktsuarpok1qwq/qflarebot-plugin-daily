@@ -101,6 +101,3 @@ export const cardRoutes: Route[] = [{ method: "GET", path: "/fortune/cards/:day/
 export async function cleanupCardImages(ctx: Ctx, now: number) {
     return cleanupDatedObjects(ctx.r2, PREFIX, dateAt(now));
 }
-export async function cleanupCards(ctx: Ctx, now: number) {
-    await ctx.db.run("DELETE FROM {fortune_cards} WHERE day<?", dateAt(now));
-}

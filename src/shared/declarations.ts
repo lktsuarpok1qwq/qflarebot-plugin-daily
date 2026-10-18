@@ -63,6 +63,7 @@ export type SettingField = {
     type: "text" | "password" | "number" | "checkbox" | "select";
     hint?: string;
     valueType?: "number";
+    step?: number;
     options?: readonly { id: string; name: string }[];
     secret?: { saved: string };
 };

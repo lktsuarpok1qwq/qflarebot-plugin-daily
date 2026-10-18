@@ -7,8 +7,9 @@ import { api } from "./admin.js";
 export default definePlugin({
     name: "daily",
     displayName: "每日助手",
-    description: "定时通知、日历、天气、一言与运势",
-    apiVersion: 3,
+    description: "定时通知、日历、天气、一言、运势与签到",
+    apiVersion: 4,
+    depends: { "points.wallet": "optional" },
     configSchema: { type: "object", properties: {} },
     permissions: [...new Set(["db", "admin", ...registry.permissions] as const)],
     hooks: {

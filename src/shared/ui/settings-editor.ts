@@ -14,6 +14,7 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
                 input = '<label>' + esc(field.label) + '<select id="' + esc(field.id) + '">' + ui.options(field.options, String(value)) + '</select></label>';
             } else {
                 input = '<label>' + esc(field.label) + '<input id="' + esc(field.id) + '" type="' + field.type + '" value="' + esc(value) + '"' +
+                    (field.type === 'number' && field.step !== undefined ? ' step="' + esc(field.step) + '"' : '') +
                     (field.type === 'password' ? ' autocomplete="new-password"' : '') +
                     (field.secret ? ' placeholder="' + esc(app.state[field.secret.saved] ? '已保存，留空保留' : '填写 ' + field.label) + '"' : '') + '></label>';
             }
