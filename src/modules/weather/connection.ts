@@ -29,7 +29,7 @@ export async function testConnection(config: WeatherConfig, fetcher: typeof fetc
         ),
         check("每日预报", async () => {
             const result = parseForecast(
-                await request(config, "/weather/v1/daily" + suffix + "?days=2&lang=zh&localTime=true", fetcher),
+                await request(config, "/weather/v1/daily" + suffix + "?days=1&lang=zh&localTime=true", fetcher),
             );
 
             if (!result.days.length) {

@@ -171,11 +171,6 @@ export function parseForecast(raw: unknown, fields: readonly Exclude<keyof Forec
             nightCode: () => String(object(nighttime().condition).code ?? "999"),
             sunrise: () => typeof astro().sunrise === "string" ? astro().sunrise : undefined,
             sunset: () => typeof astro().sunset === "string" ? astro().sunset : undefined,
-            humidity: () => daytime().humidity == null ? "—" : percent(daytime().humidity),
-            wind: () => {
-                const speed = daytime().wind && object(daytime().wind).speed;
-                return speed == null ? "—" : measurement(speed, "m/s");
-            },
         };
         return { date: start.slice(0, 10), ...Object.fromEntries(fields.map(key => [key, readers[key]()])) };
     });

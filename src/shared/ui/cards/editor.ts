@@ -19,17 +19,27 @@ function createCardEditor(app, ui) {
         if (!response.ok) { const error = await response.json(); throw Object.assign(Error(error.error || '请求失败'), { kind: error.kind }); }
         return response;
     }
+    function applyModule(module) {
+        const config = { ...module.config };
+        // Revision zero is an unsaved default draft, not module configuration.
+        if (config.cardDesigns.revision === 0) { delete config.cardDesigns; }
+
+        app.state = { ...app.state, ...module, config };
+        app.config = structuredClone(config);
+        app.synchronized = true;
+    }
     async function load() {
         if (loading || state) { return; }
 
         loading = true;
-        const current = generation, revision = app.state.revision;
+        const current = generation;
 
         try {
             const result = await (await request('state')).json();
             if (current !== generation) { return; }
 
-            state = result; loadedRevision = revision; draft = structuredClone(result.config); selected ||= result.definitions[0].id;
+            applyModule(result.module);
+            state = result; loadedRevision = result.module.revision; draft = structuredClone(result.module.config.cardDesigns.config); selected ||= result.definitions[0].id;
             regionId = draft[selected].regions[0]?.id || ''; failure = ''; synchronized = true;
         } catch (error) { if (current === generation) { failure = error.message; } }
         finally { if (current === generation) { loading = false; if (ui.$('card-editor')) { app.render(); } } }
@@ -217,23 +227,22 @@ function createCardEditor(app, ui) {
             const r = { id: crypto.randomUUID(), field: '', text: '✨ {{' + definition().fields[0].key + '}}', x: 30, y: 30, width: 480, height: 60, size: 28, weight: 400, color: '#233447', align: 'left', lineHeight: 36 };
             design().regions.push(r); regionId = r.id; changed(); app.render();
         } else if (a === 'card-delete') { design().regions = design().regions.filter(r => r.id !== regionId); regionId = design().regions[0]?.id || ''; changed(); app.render(); }
-        else if (a === 'card-cancel') { if (app.dirty && !await app.confirmAction('撤销当前所有卡面修改？')) { return; } for (const id of pending.keys()) { clearPending(id); } draft = structuredClone(state.config); app.dirty = false; regionId = design().regions[0]?.id || ''; revokePreview(); app.render(); }
+        else if (a === 'card-cancel') { if (app.dirty && !await app.confirmAction('撤销当前所有卡面修改？')) { return; } for (const id of pending.keys()) { clearPending(id); } draft = structuredClone(state.module.config.cardDesigns.config); app.dirty = false; regionId = design().regions[0]?.id || ''; revokePreview(); app.render(); }
         else if (a === 'card-fonts') {
             for (const weight of [400,700]) { const key = weight === 400 ? 'regular' : 'bold'; if (!state.fonts[key]) { await request('font',{weight}); state.fonts[key] = true; } }
             app.render(); app.status('字体已存入 R2');
         } else if (a === 'card-save') {
             if (!synchronized) { throw Error('配置状态未确认，请刷新配置后继续'); }
             for (const d of state.definitions) { checkDraft(d); }
-            if (!pending.size && JSON.stringify(draft) === JSON.stringify(state.config)) { app.dirty = false; app.status('卡面未变化'); app.render(); return; }
+            if (!pending.size && JSON.stringify(draft) === JSON.stringify(state.module.config.cardDesigns.config)) { app.dirty = false; app.status('卡面未变化'); app.render(); return; }
             if (new TextEncoder().encode(JSON.stringify(draft)).length > 38000) { throw Error("卡面配置过大，请精简区域文案"); }
             if (state.definitions.some(d => draft[d.id].enabled && draft[d.id].regions.some(r => !state.fonts[r.weight === 400 ? "regular" : "bold"]))) { throw Error("请先准备字体"); }
             for (const id of [...pending.keys()]) { await uploadPending(id); }
             try {
-                const result = await (await request('save',{revision:state.revision,config:draft})).json();
-                state = { ...state, ...result }; draft = structuredClone(result.config); app.dirty = false;
-                await app.load(false);
-
-                if (app.state.config.cardDesigns?.revision === result.revision) { loadedRevision = app.state.revision; }
+                const result = await (await request('save',{revision:state.module.config.cardDesigns.revision,config:draft})).json();
+                state = { ...state, ...result }; draft = structuredClone(result.module.config.cardDesigns.config); app.dirty = false;
+                applyModule(result.module);
+                loadedRevision = result.module.revision;
 
                 app.render(); app.status('卡面已保存');
             } catch(error) { if(error.kind !== 'validation') { synchronized = false; error.message += '，当前草稿仍保留，请刷新配置后继续'; } throw error; }
@@ -253,7 +262,7 @@ function createCardEditor(app, ui) {
 
         if (invalidate) { state = null; }
 
-        draft = state ? structuredClone(state.config) : null;
+        draft = state ? structuredClone(state.module.config.cardDesigns.config) : null;
         regionId = draft?.[selected]?.regions[0]?.id || ''; failure = ''; imageToken++;
         background = null; backgroundAsset = ''; backgroundPending = null; revokePreview();
     }

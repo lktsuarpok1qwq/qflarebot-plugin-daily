@@ -15,9 +15,10 @@ function candidate(value: unknown, state: WeatherState) {
     config.apiKey = config.apiKey === null ? "" : config.apiKey === "" ? state.config.apiKey : config.apiKey;
     return config;
 }
+export const present = (state: WeatherState) => ({ revision: state.revision, config: { ...state.config, apiKey: "" }, hasKey: !!state.config.apiKey });
 export const api = configAdmin({
     label: "天气", snapshot, save,
-    present: (state) => ({ revision: state.revision, config: { ...state.config, apiKey: "" }, hasKey: !!state.config.apiKey }),
+    present,
     declaration: () => ({ copyEditor, settings }),
     prepare: candidate,
     actions: {

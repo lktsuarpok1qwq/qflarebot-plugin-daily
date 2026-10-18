@@ -11,8 +11,9 @@ import { installCards } from "./cards/store.js";
 import { cardRoutes, cleanupCards, cleanupCardImages } from "./cards/media.js";
 import { renderFortuneText } from "./cards/text.js";
 import { fortunePage } from "./ui/page.js";
+const present = (state: Awaited<ReturnType<typeof snapshot>>) => ({ ...state, corpusStatus: corpus.status });
 export const fortune: ModuleDefinition = {
-    id: "fortune", cards: bindCards(fortuneDesigns, { snapshot, save }, backgrounds), title: "运势", permissions: ["db", "net"], install: async (ctx) => { await install(ctx); await installCards(ctx.db); }, routes: cardRoutes,
+    id: "fortune", cards: bindCards(fortuneDesigns, { snapshot, save, present }, backgrounds), title: "运势", permissions: ["db", "net"], install: async (ctx) => { await install(ctx); await installCards(ctx.db); }, routes: cardRoutes,
     cleanup: cleanupCards, cleanupImages: cleanupCardImages, copy: copyContract,
     commands: {
         definitions: commands, render: async (input, name) => {
@@ -25,6 +26,6 @@ export const fortune: ModuleDefinition = {
             return renderCardCommand(input, name);
         }
     },
-    admin: configAdmin({ label: "运势", snapshot, save, present: (state) => ({ ...state, corpusStatus: corpus.status }), declaration: () => ({ copyEditor: copyContract.editor, settings }) }),
+    admin: configAdmin({ label: "运势", snapshot, save, present, declaration: () => ({ copyEditor: copyContract.editor, settings }) }),
     ui: { get source() { return `const renderFortuneText = ${renderFortuneText.toString()};` + fortunePage; }, sections: [{ id: "settings", title: "设置", factory: "createFortuneSettings" }, { id: "cards", title: "卡面", factory: "createCardEditor" }, { id: "copy", title: "文案", factory: "createFortuneCopyEditor" }] },
 };

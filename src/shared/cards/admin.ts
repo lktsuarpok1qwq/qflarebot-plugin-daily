@@ -55,11 +55,11 @@ export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
 
         const state = await binding.read(ctx);
 
-        validateCardRevision(data.revision, state);
+        validateCardRevision(data.revision, state.module.config.cardDesigns);
 
         const config = validateInput(() => validateDesigns(data.config, definitions, owner));
 
-        if (JSON.stringify(state.config) === JSON.stringify(config)) { return Response.json(state); }
+        if (JSON.stringify(state.module.config.cardDesigns.config) === JSON.stringify(config)) { return Response.json(state); }
 
         const weights = new Set<number>();
 

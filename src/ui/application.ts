@@ -190,9 +190,9 @@ function createApp(bridge, ui, factories) {
             throw error;
         }
     }
-    function resetDrafts() {
+    function resetDrafts(invalidate = true) {
         for (const page of Object.values(pages)) {
-            page.reset?.();
+            page.reset?.(invalidate);
         }
     }
     function render() {
@@ -256,7 +256,7 @@ function createApp(bridge, ui, factories) {
             }
 
             current().config = structuredClone(current().state.config);
-            resetDrafts();
+            resetDrafts(a === "reload");
             app.dirty = false;
         }
 
@@ -269,7 +269,7 @@ function createApp(bridge, ui, factories) {
         if (a === "page") {
             current().config = structuredClone(current().state.config);
             app.dirty = false;
-            resetDrafts();
+            resetDrafts(false);
             const previousPage = app.page;
             app.page = id;
 

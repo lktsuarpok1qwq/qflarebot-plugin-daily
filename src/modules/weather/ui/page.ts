@@ -1,19 +1,11 @@
 export const weatherPage = String.raw`
 function createWeatherCopyEditor(app, ui) {
     return createCopyEditor(app, ui, app.id, {
-        renderSample(sample, config, key, mark, view) {
+        renderSample(sample, config, key, mark) {
             const data = structuredClone(sample.data);
 
-            if (view.id === 'tomorrow') {
-                if (data.values?.date) { data.values.date = new Date(Date.parse(data.values.date) + 86400000).toISOString().slice(0, 10); }
-
-                if (data.candidates) {
-                    data.candidates = data.candidates.map((candidate) => ({ ...candidate, command: candidate.command + ' 明天', command_link: '[' + inlineCommandTools.expand('{{command}}', { command: candidate.command + ' 明天' }) + '](' + inlineCommandTools.url(candidate.command + ' 明天') + ')', command_url: inlineCommandTools.url(candidate.command + ' 明天') }));
-                }
-            }
-
             if (key.startsWith('image_')) {
-                const variables = { ...data.values, city: '示例城市', area: '示例地区', date: view.id === 'tomorrow' ? '10月4日' : '10月3日' };
+                const variables = { ...data.values, city: '示例城市', area: '示例地区', date: '10月3日' };
                 return [{ text: mark(inlineCommandTools.expand(config.cardCopy[key.slice(6)], variables, data.fragments)) }];
             }
 

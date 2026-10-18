@@ -7,10 +7,10 @@ import type { ModuleDefinition } from "../../shared/modules.js";
 import { install, snapshot, save, readHelp } from "./repository.js";
 import { renderWeatherCommand } from "./cards/command.js";
 import { weatherCardRoutes, cleanupWeatherImages } from "./cards/media.js";
-import { api } from "./admin.js";
+import { api, present } from "./admin.js";
 import { weatherPage } from "./ui/page.js";
 export const weather: ModuleDefinition = {
-    id: "weather", cards: bindCards(weatherDesigns, { snapshot, save }, backgrounds, "jpeg"),
+    id: "weather", cards: bindCards(weatherDesigns, { snapshot, save, present }, backgrounds, "jpeg"),
     title: "天气",
     permissions: ["db", "net"],
     install,
@@ -19,7 +19,7 @@ export const weather: ModuleDefinition = {
     copy: copyContract,
     commands: {
         definitions: commands, render: async (input) => {
-            if (!input.args.length || (input.args.length === 1 && input.args[0] === "明天")) { return { text: await readHelp(input.ctx.db) }; }
+            if (!input.args.length) { return { text: await readHelp(input.ctx.db) }; }
 
             return renderWeatherCommand(input, (await snapshot(input.ctx.db)).config);
         }

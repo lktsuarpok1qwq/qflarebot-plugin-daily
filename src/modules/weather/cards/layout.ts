@@ -16,5 +16,4 @@ export const WEATHER_REGIONS: readonly DefaultRegion[] = [
     { id: "day-icon", field: "day_icon", x: 126, y: 683, width: 32, height: 32, size: 32, lineHeight: 32, weight: 400, color: "panel", align: "left" },
     { id: "night-icon", field: "night_icon", x: 382, y: 683, width: 32, height: 32, size: 32, lineHeight: 32, weight: 400, color: "panel", align: "left" }
 ];
-export const TOMORROW_TEMPERATURE = { ...WEATHER_REGIONS[2]!, size: 40, lineHeight: 46 };
 export const weatherHeaderColor = (theme: string) => ["rainy", "heavy-rain", "thunderstorm", "clear-night", "cloudy-night"].includes(theme) ? "#ffffff" : "#092754";

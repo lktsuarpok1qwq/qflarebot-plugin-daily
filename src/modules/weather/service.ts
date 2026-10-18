@@ -6,9 +6,8 @@ import type { WeatherConfig } from "./types.js";
 import { lookup, request, parseCurrent, parseForecast, CURRENT_FIELDS, FORECAST_FIELDS, NoWeatherData } from "./provider.js";
 import { expand, commandLink, commandUrl } from "../../shared/interpolation.js";
 // GeoAPI supplies the current UTC offset, including daylight saving time.
-export function localDay(now: number, utcOffset: number, offset = 0) {
-    const day = new Date(now + utcOffset * 60_000).toISOString().slice(0, 10);
-    return offset ? new Date(Date.parse(day) + offset * 86_400_000).toISOString().slice(0, 10) : day;
+export function localDay(now: number, utcOffset: number) {
+    return new Date(now + utcOffset * 60_000).toISOString().slice(0, 10);
 }
 export async function queryWeather(
     config: WeatherConfig,
@@ -23,17 +22,13 @@ export async function queryWeather(
         return { text: copy.help };
     }
 
-    const tomorrow = args.at(-1) === "明天",
-        words = tomorrow ? args.slice(0, -1) : args;
-    const query = words.join(" ").trim();
+    const query = args.join(" ").trim();
 
     if (!query) {
         return { text: copy.help };
     }
 
-    const body = tomorrow ? copy.tomorrow : copy.current;
-
-    const needed = analyzeTemplate(body).keys;
+    const body = copy.current, needed = analyzeTemplate(body).keys;
 
     if (!image && !needed.size) { return { text: body }; }
 
@@ -56,39 +51,30 @@ export async function queryWeather(
         return {
             text: renderWeather(copy, "candidate", {
                 candidates: cities.map((c) => {
-                    const command = "/天气 " + c.id + (tomorrow ? " 明天" : "");
+                    const command = "/天气 " + c.id;
                     return { city: c.name, area: c.area, command, command_link: commandLink(command, command), command_url: commandUrl(command) };
                 })
             }, expand),
         };
     }
 
-    const day = localDay(now, city.utcOffset, tomorrow ? 1 : 0);
+    const day = localDay(now, city.utcOffset);
     const suffix = "/" + city.lat + "/" + city.lon;
     const cardCopy = config.cardCopy;
     const custom = image && config.cardDesigns?.config.weather?.enabled ? config.cardDesigns.config.weather : undefined;
     const selected = new Set(custom?.regions.flatMap(region => region.text === undefined ? [region.field] : [...analyzeTemplate(region.text).keys]));
-    const cardFields = custom ? new Set([...selected, "caption", ...(selected.has("temperature") ? [tomorrow ? "tomorrow" : "current"] : []), ...(selected.has("first") ? [tomorrow ? "minimum" : "feels"] : [])]) : null;
-    const imageBody = image ? Object.entries(cardCopy).filter(([key]) => cardFields ? cardFields.has(key) : tomorrow ? !["current", "feels"].includes(key) : !["tomorrow", "minimum"].includes(key)).map(([, value]) => value).join("") : "";
+    const cardFields = custom ? new Set([...selected, "caption", ...(selected.has("temperature") ? ["current"] : []), ...(selected.has("first") ? ["feels"] : [])]) : null;
+    const imageBody = image ? Object.entries(cardCopy).filter(([key]) => !cardFields || cardFields.has(key)).map(([, value]) => value).join("") : "";
 
     for (const key of analyzeTemplate(imageBody).keys) { needed.add(key); }
 
     const forecastFields = new Set<Exclude<keyof Forecast["days"][number], "date">>(FORECAST_FIELDS.filter(key => needed.has(key)));
-    const currentFields: (keyof Current)[] = tomorrow ? [] : CURRENT_FIELDS.filter(key => needed.has(key));
-
-    if (tomorrow) {
-        if (needed.has("condition")) { forecastFields.add("day"); }
-
-        for (const key of ["humidity", "wind"] as const) {
-            if (needed.has(key)) { forecastFields.add(key); }
-        }
-    }
+    const currentFields: (keyof Current)[] = CURRENT_FIELDS.filter(key => needed.has(key));
 
     if (image) {
         // A custom background needs no theme data; each dynamic icon declares its own forecast needs.
         if (!custom || selected.has("icon")) {
-            if (tomorrow) { forecastFields.add("code"); }
-            else { currentFields.push("code"); forecastFields.add("sunrise"); forecastFields.add("sunset"); }
+            currentFields.push("code"); forecastFields.add("sunrise"); forecastFields.add("sunset");
         }
 
         if (!custom || selected.has("day_icon")) { forecastFields.add("code"); }
@@ -99,7 +85,7 @@ export async function queryWeather(
     try {
         const [forecast, current] = await Promise.all([
             forecastFields.size
-                ? request(config, "/weather/v1/daily" + suffix + "?days=2&localTime=true&lang=zh", fetcher).then((data) => parseForecast(data, [...forecastFields]))
+                ? request(config, "/weather/v1/daily" + suffix + "?days=1&localTime=true&lang=zh", fetcher).then((data) => parseForecast(data, [...forecastFields]))
                 : Promise.resolve(null),
             currentFields.length
                 ? request(config, "/weather/v1/current" + suffix + "?localTime=true&lang=zh", fetcher).then(
@@ -124,25 +110,17 @@ export async function queryWeather(
             card = {
                 values: {
                     ...Object.fromEntries(Object.entries(daily).filter((entry): entry is [string, string] => typeof entry[1] === "string")), ...current,
-                    city: city.name, area: city.area, date, condition: tomorrow ? daily.day ?? "" : current?.condition ?? ""
+                    city: city.name, area: city.area, date, condition: current?.condition ?? ""
                 },
-                code: tomorrow ? daily.code ?? "999" : current?.code ?? "999", dayCode: daily.code ?? "999", nightCode: daily.nightCode ?? "999",
-                night: !tomorrow && night, tomorrow,
-                fragments: { current_url: commandUrl("/天气 " + city.id), tomorrow_url: commandUrl("/天气 " + city.id + " 明天") },
-            };
-        }
-
-        if (tomorrow) {
-            return {
-                card,
-                text: renderWeather(copy, "tomorrow", { values: { ...daily, city: cityLabel }, fragments: { current_url: commandUrl("/天气 " + city.id) } }, expand),
+                code: current?.code ?? "999", dayCode: daily.code ?? "999", nightCode: daily.nightCode ?? "999",
+                night,
+                fragments: { current_url: commandUrl("/天气 " + city.id) },
             };
         }
 
         return {
             card,
-            text:
-                renderWeather(copy, "current", { values: { ...daily, ...current!, city: cityLabel, updated: date }, fragments: { tomorrow_url: commandUrl("/天气 " + city.id + " 明天") } }, expand),
+            text: renderWeather(copy, "current", { values: { ...daily, ...current!, city: cityLabel, updated: date } }, expand),
         };
     } catch (error) {
         if (error instanceof NoWeatherData) {

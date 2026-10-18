@@ -1,9 +1,8 @@
 import { commandLink } from "../../shared/interpolation.js";
 export const WEATHER_COPY = {
-    help: "🌤️ **天气查询**\n\n📍 想了解哪里的天气？\n" + commandLink("✏️ 输入城市", "/天气 ", false) + "\n\n💡 试试看：" + commandLink("/天气 北京", "/天气 北京") + " · " + commandLink("/天气 悉尼 明天", "/天气 悉尼 明天") + "\n输入城市名称或地点编号，就能查询\n\n" + commandLink("🏠 每日助手", "/每日"),
+    help: "🌤️ **天气查询**\n\n📍 想了解哪里的天气？\n" + commandLink("✏️ 输入城市", "/天气 ", false) + "\n\n💡 试试看：" + commandLink("/天气 北京", "/天气 北京") + " · " + commandLink("/天气 悉尼", "/天气 悉尼") + "\n输入城市名称或地点编号，就能查询\n\n" + commandLink("🏠 每日助手", "/每日"),
     current:
-        "## 📍 {{city}}\n🌤️ 当前 {{condition}}\n🌡️ {{temp}}℃ · 体感 {{feels}}℃\n💧 湿度 {{humidity}}% · 🍃 风速 {{wind}} m/s\n📊 今天 {{low}}～{{high}}℃\n☀️ 白天 {{day}} · 🌙 夜间 {{night}}\n📅 获取日期 {{updated}}\n\n[📅 查看明天]({{tomorrow_url}}) · " + commandLink("✏️ 换个城市", "/天气 ", false),
-    tomorrow: "## 📍 {{city}} · 明天\n📅 {{date}}\n🌡️ {{low}}～{{high}}℃\n☀️ 白天 {{day}} · 🌙 夜间 {{night}}\n\n[🌤️ 查看当前]({{current_url}}) · " + commandLink("✏️ 换个城市", "/天气 ", false),
+        "## 📍 {{city}}\n🌤️ 当前 {{condition}}\n🌡️ {{temp}}℃ · 体感 {{feels}}℃\n💧 湿度 {{humidity}}% · 🍃 风速 {{wind}} m/s\n📊 今天 {{low}}～{{high}}℃\n☀️ 白天 {{day}} · 🌙 夜间 {{night}}\n📅 获取日期 {{updated}}\n\n" + commandLink("✏️ 换个城市", "/天气 ", false),
     notFound: "🔎 没找到这个地点，试试完整城市名吧\n" + commandLink("✏️ 重新输入城市", "/天气 ", false),
     choose: "📍 找到几个同名地点，点选你想查询的那一个\n\n",
     candidate: "📌 **{{city}}** · {{area}}\n{{command_link}}\n\n",
@@ -26,19 +25,6 @@ export const WEATHER_FIELDS = {
             day: "白天天气",
             night: "夜间天气",
             updated: "当地获取日期，月日",
-            tomorrow_url: "同一地点明天天气的命令链接地址，用于 [文字]({{tomorrow_url}})",
-        },
-    },
-    tomorrow: {
-        label: "明天天气",
-        variables: {
-            city: "地点名称",
-            date: "当地预报日期",
-            low: "最低温度，℃",
-            high: "最高温度，℃",
-            day: "白天天气",
-            night: "夜间天气",
-            current_url: "同一地点当前天气的命令链接地址，用于 [文字]({{current_url}})",
         },
     },
     notFound: { label: "未找到地点", variables: {} },
