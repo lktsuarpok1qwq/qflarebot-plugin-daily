@@ -45,7 +45,7 @@ export const settings: SettingsDeclaration = {
     fields: [
         { key: "imageEnabled", id: "weatherImageEnabled", label: "启用图片卡片（T2I）", group: "功能开关", type: "checkbox", hint: "关闭或图片准备失败时发送文字" },
         { key: "host", id: "weatherHost", label: "API Host", type: "text", hint: "填写账号专属域名，例如 h2a9cf3mhs.xy.qweatherapi.com" },
-        { key: "apiKey", id: "weatherKey", label: "API Key", type: "password", secret: { saved: "hasKey", clearId: "weatherClearKey" }, hint: "密钥不回显" },
+        { key: "apiKey", id: "weatherKey", label: "API Key", type: "password", secret: { saved: "hasKey" }, hint: "密钥不回显" },
     ],
     test: { action: "test-weather-api", endpoint: "test", resultId: "weatherConnectionResult", hint: "使用当前凭证测试城市搜索、实况和预报，不保存、不发送" },
 };

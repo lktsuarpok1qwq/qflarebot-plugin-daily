@@ -64,7 +64,7 @@ export type SettingField = {
     hint?: string;
     valueType?: "number";
     options?: readonly { id: string; name: string }[];
-    secret?: { saved: string; clearId: string };
+    secret?: { saved: string };
 };
 export type SettingsDeclaration = {
     id: string;

@@ -1,7 +1,7 @@
 export const settingsEditor = String.raw`
 function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
     const { $, esc, btn } = ui;
-    let drafts = {}, cleared = new Set();
+    let drafts = {};
     const settings = () => declaration();
     function renderFields(fields) {
         return '<div class="grid">' + fields.map((field) => {
@@ -18,8 +18,7 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
                     (field.secret ? ' placeholder="' + esc(app.state[field.secret.saved] ? '已保存，留空保留' : '填写 ' + field.label) + '"' : '') + '></label>';
             }
 
-            return '<div>' + input + (field.hint ? '<small>' + esc(field.hint) + '</small>' : '') +
-                (field.secret ? ui.check('清除已保存密钥', field.secret.clearId, cleared.has(field.key)) : '') + '</div>';
+            return '<div>' + input + (field.hint ? '<small>' + esc(field.hint) + '</small>' : '') + '</div>';
         }).join('') + '</div>';
     }
     function render() {
@@ -47,7 +46,7 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
 
         for (const field of settings().fields) {
             if (field.secret) {
-                config[field.key] = cleared.has(field.key) ? null : (drafts[field.key] || '').trim();
+                config[field.key] = (drafts[field.key] || '').trim();
             } else if (Object.hasOwn(drafts, field.key)) {
                 config[field.key] = typeof drafts[field.key] === 'string' ? drafts[field.key].trim() : drafts[field.key];
             }
@@ -55,7 +54,7 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
 
         return config;
     }
-    function reset() { drafts = {}; cleared.clear(); }
+    function reset() { drafts = {}; }
     async function action(a) {
         const d = settings();
 
@@ -80,15 +79,11 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
         }
     }
     function input(el) {
-        const d = settings(), field = d.fields.find((field) => field.id === el.id || field.secret?.clearId === el.id);
+        const d = settings(), field = d.fields.find((field) => field.id === el.id);
 
         if (!field) { return; }
 
-        if (el.id === field.secret?.clearId) {
-            if (el.checked) { cleared.add(field.key); } else { cleared.delete(field.key); }
-        } else {
-            drafts[field.key] = field.type === 'checkbox' ? el.checked : field.type === 'number' || field.valueType === 'number' ? Number(el.value) : el.value;
-        }
+        drafts[field.key] = field.type === 'checkbox' ? el.checked : field.type === 'number' || field.valueType === 'number' ? Number(el.value) : el.value;
 
         if (d.test && $(d.test.resultId)) {
             $(d.test.resultId).textContent = '内容已修改，请重新测试';

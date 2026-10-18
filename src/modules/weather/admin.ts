@@ -12,7 +12,7 @@ function candidate(value: unknown, state: WeatherState) {
     }
 
     const config = structuredClone(value) as WeatherConfig;
-    config.apiKey = config.apiKey === null ? "" : config.apiKey === "" ? state.config.apiKey : config.apiKey;
+    config.apiKey = config.apiKey === "" ? state.config.apiKey : config.apiKey;
     return config;
 }
 export const present = (state: WeatherState) => ({ revision: state.revision, config: { ...state.config, apiKey: "" }, hasKey: !!state.config.apiKey });
