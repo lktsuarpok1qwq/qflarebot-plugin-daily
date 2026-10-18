@@ -60,15 +60,21 @@ export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
 
         for (const definition of definitions) {
             const design = config[definition.id]!;
+            const previous = state.module.config.cardDesigns.config[definition.id]!;
+            const enabling = design.enabled && !previous.enabled;
 
-            if (design.background && !definition.presets.some(preset => preset.design.background === design.background)) {
+            if (design.background && (design.background !== previous.background || enabling) && !definition.presets.some(preset => preset.design.background === design.background)) {
                 const object = await ctx.r2.head(ASSET_PREFIX + design.background);
 
                 if (!object || object.metadata?.height !== String(definition.height)) { throw new AdminError("validation", "背景不存在或尺寸不匹配，请重新上传"); }
             }
 
             if (design.enabled) {
-                for (const region of design.regions) { weights.add(region.weight); }
+                const existing = new Set(previous.enabled ? previous.regions.map(region => region.weight) : []);
+
+                for (const region of design.regions) {
+                    if (!existing.has(region.weight)) { weights.add(region.weight); }
+                }
             }
         }
 

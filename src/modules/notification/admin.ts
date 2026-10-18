@@ -3,14 +3,13 @@ import { adminHandler, stateResponse } from "../../shared/admin.js";
 import { settings } from "./definition.js";
 import type { VariableAPI } from "../../shared/variables.js";
 import type { PluginDB, RouteInput } from "@qqbot/sdk";
-import { LIMITS, type Snapshot } from "./types.js";
+import { LIMITS, SCHEMA_VERSION, type Config, type Snapshot } from "./types.js";
 import { COPY } from "./copy.js";
 import { snapshot, saveConfig, bindingId } from "./data/repository.js";
 import { validateConfig } from "./data/validation.js";
 import { maintenance } from "./data/maintenance.js";
 import { message } from "../../shared/message.js";
 import { renderMessage } from "./content/renderer.js";
-import { jsonRows, jx } from "./data/sql.js";
 import { finishMany } from "./data/deliveries.js";
 import { resultStatus } from "./scheduler/result.js";
 import { at } from "../../shared/date.js";
@@ -61,10 +60,18 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
         }
 
         if (action === "cursors") {
-            const s = await snapshot(ctx.db);
-            return Response.json(s.config.bindings.length ? await ctx.db.all(
-                `${jsonRows} SELECT task_id,due_at FROM {bindings} WHERE id IN (SELECT ${jx("id")} FROM idx CROSS JOIN input)`,
-                JSON.stringify(s.config.bindings.map((b) => ({ id: bindingId(b.taskId, b.recipientId) }))),
+            const row = await ctx.db.first<{ schema_version: number; bindings: string }>(
+                "SELECT json_extract(config,'$.schemaVersion') AS schema_version,json_extract(config,'$.bindings') AS bindings FROM {notification_state} WHERE id=1",
+            );
+
+            if (!row) { throw new Error("通知尚未初始化"); }
+
+            if (row.schema_version !== SCHEMA_VERSION) { throw new Error("配置格式不受支持"); }
+
+            const bindings = JSON.parse(row.bindings) as Config["bindings"];
+            const ids = bindings.map((b) => bindingId(b.taskId, b.recipientId));
+            return Response.json(ids.length ? await ctx.db.all(
+                `SELECT task_id,due_at FROM {bindings} WHERE id IN (${ids.map(() => "?").join(",")})`, ...ids,
             ) : []);
         }
 
