@@ -1,6 +1,6 @@
 import { cleanupDatedObjects } from "../../../shared/dated-objects.js";
 import { backgrounds } from "./backgrounds/index.js";
-import type { CardState } from "../../../shared/cards/types.js";
+import { ASSET_PREFIX, type CardState } from "../../../shared/cards/types.js";
 import { CardImageError, renderLayers } from "../../../shared/cards/render.js";
 import { cardLayout } from "../../../shared/cards/layout.js";
 import { fortuneDesignValues } from "./design.js";
@@ -9,7 +9,7 @@ import type { Ctx } from "../../../shared/types.js";
 import { addDays, dateAt, validDate } from "../../../shared/date.js";
 import { layoutFortune } from "./default.js";
 import type { CardRow, CardSnapshot } from "./store.js";
-import { storedImageUrl } from "../../../shared/public-origin.js";
+import { imageUrls } from "../../../shared/public-origin.js";
 import { errorDetails, type Diagnostics } from "../../../shared/diagnostics.js";
 const PREFIX = "fortune/cards/";
 const key = (day: string, file: string) => `${PREFIX}${day}/${file}`;
@@ -31,7 +31,8 @@ export async function cardImage(ctx: Ctx, userId: string, row: CardRow, view: "s
         const path = key(row.day, file);
         diagnostics.imageKey = path;
         diagnostics.customDesign = Boolean(custom);
-        const url = storedImageUrl(ctx, path);
+        const urls = await imageUrls(ctx);
+        const url = urls(path);
         diagnostics.imageHost = new URL(url).hostname;
         stage = "cache_check";
         // A successful claim creates a new token; only an existing snapshot can have a cached image.
@@ -53,7 +54,7 @@ export async function cardImage(ctx: Ctx, userId: string, row: CardRow, view: "s
             if (selected.layout.overflow.length) { throw new Error("文字超出区域，请调整字号或区域大小"); }
 
             stage = "images_request";
-            const stream = await renderLayers(ctx, selected.background, selected.layout, signal, backgrounds);
+            const stream = await renderLayers(urls(ASSET_PREFIX, "cards/assets/"), selected.background, selected.layout, signal, backgrounds);
 
             check();
             stage = "image_save";

@@ -1,5 +1,5 @@
 import { createCopyContract } from "../shared/copy-contract.js";
-import { outputTargets, type CopyDeclaration } from "../shared/declarations.js";
+import { outputTargets, type CopyDeclaration, type SettingsDeclaration } from "../shared/declarations.js";
 import { COPY } from "../copy.js";
 export const commands = [{ name: "每日", description: "每日助手帮助" }];
 export const outputs = outputTargets([
@@ -24,3 +24,8 @@ const declaration: CopyDeclaration = {
 export const copyContract = createCopyContract<{ replies: typeof COPY.replies; commandFeedback: typeof COPY.commandFeedback }>(declaration);
 export const copyEditor = copyContract.editor;
 copyContract.validateOutputs({ commands: commands.map((command) => command.name) });
+
+export const settings: SettingsDeclaration = {
+    id: "image-settings", title: "图片设置",
+    fields: [{ key: "imagePublicUrl", id: "imagePublicUrl", label: "图片公开地址", type: "text", hint: "填写当前 R2 桶的 HTTPS 自定义域名，例如 https://img.example.com，留空使用机器人地址" }],
+};

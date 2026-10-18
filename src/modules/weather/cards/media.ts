@@ -2,13 +2,13 @@ import { cleanupDatedObjects } from "../../../shared/dated-objects.js";
 import { cardLayout } from "../../../shared/cards/layout.js";
 import { errorDetails, type Diagnostics } from "../../../shared/diagnostics.js";
 import { backgrounds } from "./backgrounds/index.js";
-import type { CardState } from "../../../shared/cards/types.js";
+import { ASSET_PREFIX, type CardState } from "../../../shared/cards/types.js";
 import { CardImageError, renderLayers } from "../../../shared/cards/render.js";
 import { layoutWeather } from "./default.js";
 import { weatherDesignValues } from "./design.js";
 import type { Route, RouteInput } from "@qqbot/sdk";
 import type { Ctx } from "../../../shared/types.js";
-import { storedImageUrl } from "../../../shared/public-origin.js";
+import { imageUrls } from "../../../shared/public-origin.js";
 import { dateAt, addDays, validDate } from "../../../shared/date.js";
 import type { WeatherCardCopy, WeatherCardData } from "./copy.js";
 const PREFIX = "weather/cards/";
@@ -24,7 +24,8 @@ export async function weatherImage(ctx: Ctx, userId: string, data: WeatherCardDa
     const prepare = async () => {
         const path = `${PREFIX}${day}/${encodeURIComponent(userId)}-${token}.jpg`;
         diagnostics.imageKey = path;
-        const url = storedImageUrl(ctx, path);
+        const urls = await imageUrls(ctx);
+        const url = urls(path);
         diagnostics.imageHost = new URL(url).hostname;
         stage = "layout";
         const design = state?.config.weather;
@@ -40,7 +41,7 @@ export async function weatherImage(ctx: Ctx, userId: string, data: WeatherCardDa
         if (selected.layout.overflow.length) { throw new Error("文字超出区域，请调整字号或区域大小"); }
 
         stage = "images_request";
-        const stream = await renderLayers(ctx, selected.background, selected.layout, signal, backgrounds, "jpeg");
+        const stream = await renderLayers(urls(ASSET_PREFIX, "cards/assets/"), selected.background, selected.layout, signal, backgrounds, "jpeg");
 
         check();
         stage = "image_save";

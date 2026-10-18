@@ -3,7 +3,7 @@ import type { Ctx } from "../types.js";
 import type { CardDesign, CardAssets, CardFormat } from "./types.js";
 import { ASSET_PREFIX, fontAsset } from "./types.js";
 import { cardLayout, emojiURL, type CardHighlights, type CardLayoutResult } from "./layout.js";
-import { storedImageUrl } from "../public-origin.js";
+import { imageUrls } from "../public-origin.js";
 export class CardImageError extends Error {
     constructor(readonly stage: string, cause: unknown, readonly diagnostics: Diagnostics) {
         super(String(cause), { cause });
@@ -13,12 +13,12 @@ export class CardImageError extends Error {
 export async function renderDesign(ctx: Ctx, design: CardDesign, values: Record<string, string>, signal: AbortSignal, assets: CardAssets, highlights: CardHighlights = {}, format: CardFormat = "png"): Promise<ReadableStream<Uint8Array>> {
     if (!design.background) { throw new Error("请先上传背景"); }
 
-    return renderLayers(ctx, design.background, cardLayout(design, values, highlights), signal, assets, format);
+    const urls = await imageUrls(ctx);
+    return renderLayers(urls(ASSET_PREFIX, "cards/assets/"), design.background, cardLayout(design, values, highlights), signal, assets, format);
 }
-export async function renderLayers(ctx: Ctx, background: string, { layers, overflow }: CardLayoutResult, signal: AbortSignal, assets: CardAssets, format: CardFormat = "png"): Promise<ReadableStream<Uint8Array>> {
+export async function renderLayers(base: string, background: string, { layers, overflow }: CardLayoutResult, signal: AbortSignal, assets: CardAssets, format: CardFormat = "png"): Promise<ReadableStream<Uint8Array>> {
     if (overflow.length) { throw new Error("文字超出区域，请调整字号或区域大小"); }
 
-    const base = storedImageUrl(ctx, ASSET_PREFIX, "cards/assets/");
     const draw = layers.map(layer => ({
         left: layer.left, top: layer.top, ...(layer.emoji
             ? { url: emojiURL(layer.emoji), width: layer.size, height: layer.size, fit: "contain" }

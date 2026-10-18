@@ -7,18 +7,13 @@ import { AdminError, validateInput } from "../admin-errors.js";
 import { body } from "../request.js";
 import { validateDesign, validateDesigns } from "./validation.js";
 import { prepareFont, uploadBackground } from "./assets.js";
-import { storedImageUrl } from "../public-origin.js";
 import { renderDesign } from "./render.js";
 export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
     const definitions = binding.definitions;
     const handler = adminHandler({ GET: ["state"], POST: ["save", "background", "font", "preview"] }, async ({ ctx, request, params }) => {
         if (request.method === "GET") {
             const [state, regular, bold] = await Promise.all([binding.read(ctx), ctx.r2.head(ASSET_PREFIX + fontAsset(400)), ctx.r2.head(ASSET_PREFIX + fontAsset(700))]);
-            let realPreview = false;
-
-            try { storedImageUrl(ctx, ASSET_PREFIX, "cards/assets/"); realPreview = true; } catch { /* Local editing remains available without a public address. */ }
-
-            return Response.json({ ...state, definitions, assets: binding.assets, realPreview, fonts: { regular: !!regular, bold: !!bold } });
+            return Response.json({ ...state, definitions, assets: binding.assets, fonts: { regular: !!regular, bold: !!bold } });
         }
 
         if (params.action === "background") {

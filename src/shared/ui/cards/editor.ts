@@ -247,7 +247,6 @@ function createCardEditor(app, ui) {
                 app.render(); app.status('卡面已保存');
             } catch(error) { if(error.kind !== 'validation') { synchronized = false; error.message += '，当前草稿仍保留，请刷新配置后继续'; } throw error; }
         } else if (a === 'card-real') {
-            if (!state.realPreview) { throw Error('真实预览需要公开 HTTPS 地址和 Images，本地排版无需请求'); }
             checkDraft(definition(), true);
             if (design().regions.some(r => !state.fonts[r.weight === 400 ? 'regular' : 'bold'])) { throw Error('请先准备字体'); }
             await uploadPending(selected);
