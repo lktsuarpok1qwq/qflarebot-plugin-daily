@@ -17,7 +17,7 @@ export type ModuleDefinition = {
     install?: (ctx: Ctx) => Promise<void>;
     cleanup?: (ctx: Ctx, scheduledAt: number) => Promise<void | { ok: boolean; message: string }>;
     maintenance?: Record<string, { utcMinutes: readonly number[]; handler: CronJob["handler"] }>;
-    cleanupImages?: (ctx: Ctx, scheduledAt: number) => Promise<boolean>;
+    cleanupImages?: (ctx: Ctx, scheduledAt: number) => Promise<void>;
     variables?: VariableCapability;
     copy?: CopyContract;
     cards?: CardBinding;
@@ -101,8 +101,8 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
                     }
                 }
 
-                if (images) {
-                    try { await (daily ? images.daily(ctx, scheduledAt) : images.resume(ctx, scheduledAt)); } catch (error) {
+                if (daily && images) {
+                    try { await images(ctx, scheduledAt); } catch (error) {
                         failures.push(error instanceof Error ? error.message : String(error));
                     }
                 }

@@ -16,6 +16,4 @@ export async function cleanupDatedObjects(r2: Pick<Ctx["r2"], "list" | "delete">
     }
 
     if (expired.length) { await r2.delete(expired); }
-
-    return expired.length === 1000;
 }

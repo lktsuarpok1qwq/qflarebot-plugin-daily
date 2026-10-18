@@ -53,7 +53,7 @@
     },
     {
       "name": "一言",
-      "description": "随机一句话",
+      "description": "查看今日一言",
       "scenes": [
         "group",
         "c2c"

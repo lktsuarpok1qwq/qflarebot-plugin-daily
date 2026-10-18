@@ -1,9 +1,7 @@
-import { analyzeTemplate } from "../../shared/templates.js";
 import { copyContract, commands, sayingSample } from "./definition.js";
 import type { ModuleDefinition } from "../../shared/modules.js";
-import { install, snapshot } from "./repository.js";
-import { createResolver, render } from "./service.js";
-import { randomSaying } from "./provider.js";
+import { install } from "./repository.js";
+import { createResolver, dailyText, render } from "./service.js";
 import { sayingVariables, SAYING_COPY } from "./copy.js";
 import { api } from "./admin.js";
 export const saying: ModuleDefinition = {
@@ -18,10 +16,7 @@ export const saying: ModuleDefinition = {
         createResolver
     },
     commands: {
-        definitions: commands, render: async (input) => {
-            const state = await snapshot(input.ctx.db);
-            return { text: analyzeTemplate(state.config.copy.body).keys.has("text") ? render(state.config, "body", await randomSaying()) : state.config.copy.body };
-        }
+        definitions: commands, render: async (input) => ({ text: await dailyText(input.ctx, Date.now(), "body") })
     },
     admin: api,
     ui: { factory: "createCopyEditor" },
