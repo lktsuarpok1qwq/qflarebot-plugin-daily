@@ -1,4 +1,5 @@
 import { commandLink } from "../../../shared/interpolation.js";
+
 export const WEATHER_CARD_COPY = {
     city: "{{city}}", area: "{{area}}", current: "{{temp}}℃", condition: "{{condition}}",
     feels: "体感\n{{feels}}℃", humidity: "湿度\n{{humidity}}%", wind: "风速\n{{wind}} m/s",

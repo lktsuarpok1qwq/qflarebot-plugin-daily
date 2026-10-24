@@ -12,8 +12,9 @@ import { message } from "../../shared/message.js";
 import { renderMessage } from "./content/renderer.js";
 import { finishMany } from "./data/deliveries.js";
 import { resultStatus } from "./scheduler/result.js";
-import { at } from "../../shared/date.js";
+import { at, dateAt, addDays, DAY } from "../../shared/date.js";
 import { body } from "../../shared/request.js";
+
 async function testResult(db: PluginDB, key: string, taskId: string, recipientId: string): Promise<Response | null> {
     const prior = await db.first<{
         task_id: string;
@@ -36,11 +37,14 @@ async function testResult(db: PluginDB, key: string, taskId: string, recipientId
         text: prior.details ? (JSON.parse(prior.details) as { text?: string }).text : undefined,
     });
 }
+
 function present(state: Snapshot, botId: string) {
     const needsCursors = state.config.bindings.length && state.config.tasks.some((t) => t.enabled && t.schedule.kind === "once" && at(t.schedule.date, t.schedule.time) <= Date.now());
+
     return { ...state, currentBotId: botId, cursors: needsCursors ? null : [] };
 }
-// All callers enter through the host's auth: "admin" routes.
+
+// 所有调用均经过宿主的 auth: "admin" 路由
 export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log"], POST: ["config", "maintenance", "test"] }, async ({ ctx, request, params }: RouteInput, variables: VariableAPI): Promise<Response> => {
     const action = params.action ?? "",
         url = new URL(request.url);
@@ -56,6 +60,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
             if (!key || !/^[\w:-]{1,200}$/.test(key)) { throw new AdminError("validation", "记录参数错误"); }
 
             const record = await ctx.db.first("SELECT * FROM {deliveries} WHERE key=?", key);
+
             return Response.json({ record });
         }
 
@@ -70,6 +75,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
 
             const bindings = JSON.parse(row.bindings) as Config["bindings"];
             const ids = bindings.map((b) => bindingId(b.taskId, b.recipientId));
+
             return Response.json(ids.length ? await ctx.db.all(
                 `SELECT task_id,due_at FROM {bindings} WHERE id IN (${ids.map(() => "?").join(",")})`, ...ids,
             ) : []);
@@ -77,6 +83,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
 
         if (action === "state") {
             const s = await snapshot(ctx.db);
+
             return stateResponse(request, { ...present(s, ctx.botId), jobs: null }, () => ({
                 draftDefaults: COPY.drafts,
                 settings,
@@ -93,8 +100,24 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
         }
 
         if (action === "logs") {
-            const filter: string[] = [],
-                args: unknown[] = [];
+            const filter: string[] = [], args: unknown[] = [];
+            const days = url.searchParams.get("days") ?? "7", now = Date.now();
+
+            if (!["0", "1", "7", "30", "90"].includes(days)) { throw new AdminError("validation", "查询时间范围无效"); }
+
+            const hasFrom = url.searchParams.has("from"), hasTo = url.searchParams.has("to");
+            const range = {
+                from: hasFrom ? Number(url.searchParams.get("from")) : days === "0" ? 0 : at(addDays(dateAt(now), 1 - Number(days)), "00:00"),
+                to: hasTo ? Number(url.searchParams.get("to")) : days === "0" ? Number.MAX_SAFE_INTEGER : now + 1,
+            };
+
+            if (hasFrom !== hasTo || !Number.isSafeInteger(range.from) || !Number.isSafeInteger(range.to) || range.from < 0 || range.to <= range.from
+                || days !== "0" && range.to - range.from > Number(days) * DAY) { throw new AdminError("validation", "查询时间范围无效"); }
+
+            if (range.from !== 0 || range.to !== Number.MAX_SAFE_INTEGER) {
+                filter.push("claimed_at>=? AND claimed_at<?");
+                args.push(range.from, range.to);
+            }
 
             for (const [key, col] of [
                 ["task", "task_id"],
@@ -120,16 +143,17 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
                     throw new AdminError("validation", "分页参数错误");
                 }
 
-                filter.push("(updated_at,key)<(?,?)");
+                filter.push("(claimed_at,key)<(?,?)");
                 args.push(...cursor);
             }
 
-            const rows = await ctx.db.all<{ key: string; updated_at: number }>(
-                `SELECT key,task_id,recipient_id,due_at,status,updated_at FROM {deliveries}${filter.length ? " WHERE " + filter.join(" AND ") : ""} ORDER BY updated_at DESC,key DESC LIMIT 51`,
+            const rows = await ctx.db.all<{ key: string; claimed_at: number }>(
+                `SELECT key,task_id,recipient_id,due_at,status,claimed_at,updated_at FROM {deliveries}${filter.length ? " WHERE " + filter.join(" AND ") : ""} ORDER BY claimed_at DESC,key DESC LIMIT 51`,
                 ...args,
             );
             const items = rows.slice(0, 50), last = items.at(-1);
-            return Response.json({ items, next: rows.length > 50 && last ? JSON.stringify([last.updated_at, last.key]) : null });
+
+            return Response.json({ items, next: rows.length > 50 && last ? JSON.stringify([last.claimed_at, last.key]) : null, range });
         }
 
         throw new AdminError("validation", "未知接口");
@@ -210,7 +234,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
             throw new AdminError("validation", "不能向其他机器人的目标发送");
         }
 
-        // One-time request ID prevents a double click from sending twice.
+        // 一次性请求标识防止双击导致重复发送
         if (typeof data.requestId !== "string" || !/^[\w-]{16,80}$/.test(data.requestId)) {
             throw new AdminError("validation", "测试请求标识错误");
         }
@@ -245,7 +269,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
             now,
             now,
             now,
-            JSON.stringify({ manual: true, ...rendered }),
+            JSON.stringify({ manual: true, text: rendered.text }),
             s.revision,
         );
 
@@ -265,7 +289,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
         }
 
         try {
-            const result = await ctx.api.sendMessage({ scene: r.scene, id: r.openid }, message(rendered.text));
+            const result = await ctx.api.sendMessage({ scene: r.scene, id: r.openid }, message(rendered.text, rendered.buttons));
             const outcome = resultStatus(result);
             await finishMany(ctx.db, [
                 {
@@ -284,6 +308,7 @@ export const api = adminHandler({ GET: ["state", "cursors", "jobs", "logs", "log
                     next: null,
                 },
             ]);
+
             return Response.json({
                 ok: result.ok,
                 status: outcome.status,

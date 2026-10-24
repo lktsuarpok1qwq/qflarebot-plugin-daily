@@ -1,6 +1,7 @@
 import type { Ctx } from "./types.js";
 import { validDate } from "./date.js";
-/** Dedicated prefix containing only YYYY-MM-DD/... keys; at most 1000 objects per call; the caller owns retention policy. */
+
+/** 专用前缀下仅包含 YYYY-MM-DD/... 键；每次最多处理 1000 个对象，保留策略由调用方决定 */
 export async function cleanupDatedObjects(r2: Pick<Ctx["r2"], "list" | "delete">, prefix: string, before: string) {
     if (!prefix || !prefix.endsWith("/") || !validDate(before)) { throw new Error("资源清理范围无效"); }
 

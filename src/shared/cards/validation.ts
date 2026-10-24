@@ -1,5 +1,6 @@
 import { analyzeTemplate } from "../templates.js";
 import type { CardDefinition, CardDesign, CardRegion, CardState } from "./types.js";
+
 const object = (value: unknown): Record<string, unknown> => {
     if (!value || typeof value !== "object" || Array.isArray(value)) { throw new Error("卡面配置无效"); }
 
@@ -10,6 +11,7 @@ const integer = (value: unknown, min: number, max: number): number => {
 
     return value;
 };
+
 export function validateRegionContent(region: { field: string; text?: string }, fields: readonly { key: string }[]) {
     if (region.text === undefined) {
         if (!fields.some(field => field.key === region.field)) { throw new Error("请选择当前卡面可用的内容"); }
@@ -25,6 +27,7 @@ export function validateRegionContent(region: { field: string; text?: string }, 
 
     if (/[{}]/.test(region.text.replace(/\{\{[^{}]+\}\}/g, ""))) { throw new Error("变量请写为 {{变量名}}"); }
 }
+
 export function validateDesign(value: unknown, definition: CardDefinition, owner: string): CardDesign {
     const source = object(value);
 
@@ -52,6 +55,7 @@ export function validateDesign(value: unknown, definition: CardDefinition, owner
 
         const x = integer(r.x, 0, definition.width - 1), y = integer(r.y, 0, definition.height - 1);
         const size = integer(r.size, 12, 72);
+
         return { id: r.id, field: r.field, ...(r.text === undefined ? {} : { text: r.text as string }), x, y, width: integer(r.width, 12, definition.width - x), height: integer(r.height, size, definition.height - y), size, weight: r.weight, color: r.color, align: r.align as CardRegion["align"], lineHeight: integer(r.lineHeight, size, 100) };
     });
 
@@ -59,6 +63,7 @@ export function validateDesign(value: unknown, definition: CardDefinition, owner
 
     return { enabled: source.enabled, background: source.background, regions };
 }
+
 export function validateDesigns(value: unknown, definitions: readonly CardDefinition[], owner: string) {
     const input = object(value);
 
@@ -69,5 +74,6 @@ export function validateDesigns(value: unknown, definitions: readonly CardDefini
 
 export function validateCardState(value: unknown, definitions: readonly CardDefinition[], owner: string): CardState {
     const state = object(value);
+
     return { revision: integer(state.revision, 0, Number.MAX_SAFE_INTEGER), config: validateDesigns(state.config, definitions, owner) };
 }

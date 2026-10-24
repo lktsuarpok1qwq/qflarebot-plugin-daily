@@ -5,7 +5,8 @@ import { dateAt, DAY } from "../../shared/date.js";
 import { readData, saveConfig, SOURCE_QUERY, SOURCE_SUMMARY_QUERY } from "./repository.js";
 import { parseResponse, validateYear, refreshDays, mergeYear, summarizeYear, type CalendarYear } from "./year-data.js";
 import { refreshEvents } from "./events.js";
-import { hash, recordCheck, type SyncResult } from "./source.js";
+import { hash, recordCheck, claimJob, type SyncResult } from "./source.js";
+
 export async function syncYear(
     ctx: Ctx,
     year: number,
@@ -34,6 +35,10 @@ export async function syncYear(
             }
         }
 
+        if (!force && !await claimJob(ctx, "sync:" + (year - currentYear), dateAt(now))) {
+            return { year, status: "skipped" };
+        }
+
         const res = await fetcher(`https://uapis.cn/api/v1/misc/holiday-calendar?year=${year}&holiday_type=legal`, {
             signal: AbortSignal.timeout(8_000),
             redirect: "manual",
@@ -55,15 +60,17 @@ export async function syncYear(
 
         if (!prepared.value.holidays.length && !prepared.value.dates?.length) {
             await recordCheck(ctx, year, "not_published", now, true);
+
             return { year, status: "not_published" };
         }
 
         if (previous?.hash === prepared.digest) {
             await recordCheck(ctx, year, prepared.error, now, true);
+
             return prepared.error ? { year, status: "error", error: prepared.error } : { year, status: "cached" };
         }
 
-        // Read editable state only when publishing changed data, then merge against the latest source.
+        // 仅在发布变更数据时读取可编辑状态，并与最新数据源合并
         const current = await readData(ctx.db), latest = current.sources.find((s) => s.year === year);
 
         if (latest && Math.max(latest.checked_at, latest.updated_at) > now) {
@@ -75,6 +82,7 @@ export async function syncYear(
 
             if (latest?.hash === prepared.digest) {
                 await recordCheck(ctx, year, prepared.error, now, true);
+
                 return prepared.error ? { year, status: "error", error: prepared.error } : { year, status: "cached" };
             }
         }
@@ -92,10 +100,12 @@ export async function syncYear(
         const config = structuredClone(current.snapshot.config);
         refreshEvents(config, [...current.sources.filter((s) => s.year !== year), published], now);
         await saveConfig(ctx, current.snapshot, config, now, published);
+
         return error ? { year, status: "error", error } : { year, status: "updated" };
     } catch (e) {
         const error = e instanceof Error ? e.message.slice(0, 200) : "sync_failed";
         await recordCheck(ctx, year, error, now, false);
+
         return { year, status: "error", error };
     }
 }
@@ -107,11 +117,12 @@ async function prepare(response: CalendarYear, previous: Source | null | undefin
         try {
             old = validateYear(JSON.parse(previous.data), response.year);
         } catch {
-            // A valid interface response can replace an unreadable cache.
+            // 有效接口响应可以替换无法读取的缓存
         }
     }
 
     const { value, incomplete } = mergeYear(response, old);
     const data = JSON.stringify(value);
+
     return { value, data, digest: await hash(data), error: incomplete ? "年度安排不完整，保留此前已知记录" : null };
 }

@@ -2,6 +2,7 @@ import type { CardDefinition } from "../../../shared/cards/types.js";
 import { weatherCardValue } from "./values.js";
 import type { WeatherCardCopy, WeatherCardData } from "./copy.js";
 import { weatherPresets } from "./presets.js";
+
 export const weatherDesigns: readonly CardDefinition[] = [{
     id: "weather", presets: weatherPresets, samples: [
         { id: "current", title: "当前天气", values: { city: "北京", area: "北京市", temperature: "24℃", condition: "晴", icon: "☀️", first: "体感\n25℃", humidity: "湿度\n42%", wind: "风速\n2.3 m/s", range: "温度范围  15～26℃", day: "白天\n晴", night: "夜间\n多云", day_icon: "☀️", night_icon: "☁️", date: "10月15日" } },
@@ -14,6 +15,7 @@ export const weatherDesigns: readonly CardDefinition[] = [{
         { key: "day", label: "白天", sample: "白天\n小雨" }, { key: "night", label: "夜间", sample: "夜间\n多云" }, { key: "date", label: "日期", sample: "10月15日" },
     ]
 }];
+
 export function weatherDesignValues(data: WeatherCardData, copy: WeatherCardCopy): Record<string, string> {
     const result: Record<string, string> = {};
 

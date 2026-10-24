@@ -6,7 +6,9 @@ import { defaults } from "../content/templates.js";
 import { SCHEMA_VERSION } from "../types.js";
 import { nextPlan } from "../scheduler/planner.js";
 import { jsonRows, jx, jsonChunks } from "./sql.js";
+
 const originals = new WeakMap<Snapshot, string>();
+
 function scheduleKey(config: Config) {
     return JSON.stringify({
         paused: config.paused,
@@ -15,7 +17,9 @@ function scheduleKey(config: Config) {
         bindings: config.bindings,
     });
 }
+
 export const bindingId = (task: string, recipient: string) => `${task}:${recipient}`;
+
 export async function install(ctx: Ctx) {
     await ctx.db.exec(`
     CREATE TABLE IF NOT EXISTS {notification_state}(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, bot_id TEXT NOT NULL, config TEXT NOT NULL, token TEXT NOT NULL);
@@ -23,12 +27,14 @@ export async function install(ctx: Ctx) {
     CREATE INDEX IF NOT EXISTS {due_idx} ON {bindings}(due_at) WHERE enabled=1 AND due_at IS NOT NULL;
     CREATE TABLE IF NOT EXISTS {deliveries}(key TEXT PRIMARY KEY, task_id TEXT NOT NULL, recipient_id TEXT NOT NULL, due_at INTEGER NOT NULL, revision INTEGER NOT NULL, status TEXT NOT NULL, claimed_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, message_id TEXT, error TEXT, details TEXT) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS {logs_pending} ON {deliveries}(claimed_at) WHERE status='sending';
-    CREATE INDEX IF NOT EXISTS {logs_time} ON {deliveries}(updated_at);
-    CREATE INDEX IF NOT EXISTS {logs_task} ON {deliveries}(task_id,updated_at);
-    CREATE INDEX IF NOT EXISTS {logs_target} ON {deliveries}(recipient_id,updated_at);
+    CREATE INDEX IF NOT EXISTS {logs_time} ON {deliveries}(claimed_at);
+    CREATE INDEX IF NOT EXISTS {logs_task} ON {deliveries}(task_id,claimed_at);
+    CREATE INDEX IF NOT EXISTS {logs_target} ON {deliveries}(recipient_id,claimed_at);
+    CREATE INDEX IF NOT EXISTS {logs_expiry} ON {deliveries}(updated_at) WHERE status<>'sending';
   `);
     await ctx.db.run("INSERT OR IGNORE INTO {notification_state}(id,revision,bot_id,config,token) VALUES (1,1,?,?, 'initial')", ctx.botId, JSON.stringify(defaults()));
 }
+
 export async function snapshot(db: PluginDB): Promise<Snapshot> {
     const row = await db.first<{ revision: number; bot_id: string; config: string }>("SELECT revision,bot_id,config FROM {notification_state} WHERE id=1");
 
@@ -40,8 +46,10 @@ export async function snapshot(db: PluginDB): Promise<Snapshot> {
 
     const state = { revision: row.revision, botId: row.bot_id, config };
     originals.set(state, row.config);
+
     return state;
 }
+
 export async function saveConfig(ctx: Ctx, old: Snapshot, config: Config, now: number) {
     const rev = old.revision + 1, token = crypto.randomUUID(), raw = originals.get(old);
     const original = raw === undefined ? undefined : JSON.parse(raw) as Config;

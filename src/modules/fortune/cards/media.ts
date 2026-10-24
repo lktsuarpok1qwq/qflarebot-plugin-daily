@@ -11,9 +11,11 @@ import { layoutFortune } from "./default.js";
 import type { CardRow, CardSnapshot } from "./store.js";
 import { imageUrls } from "../../../shared/public-origin.js";
 import { errorDetails, type Diagnostics } from "../../../shared/diagnostics.js";
+
 const PREFIX = "fortune/cards/";
 const key = (day: string, file: string) => `${PREFIX}${day}/${file}`;
 type ImageStage = "public_address" | "cache_check" | "snapshot_parse" | "layout" | "images_request" | "image_save";
+
 export async function cardImage(ctx: Ctx, userId: string, row: CardRow, view: "small" | "detail", state?: CardState, fresh?: CardSnapshot) {
     const deadline = Date.now() + 10_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -35,7 +37,7 @@ export async function cardImage(ctx: Ctx, userId: string, row: CardRow, view: "s
         const url = urls(path);
         diagnostics.imageHost = new URL(url).hostname;
         stage = "cache_check";
-        // A successful claim creates a new token; only an existing snapshot can have a cached image.
+        // 认领成功后生成新令牌；只有已有快照才可能命中图片缓存
         const existing = fresh ? null : await ctx.r2.head(path);
         diagnostics.imageCache = existing ? "hit" : "miss";
         diagnostics.imageSaved = Boolean(existing);
@@ -68,7 +70,10 @@ export async function cardImage(ctx: Ctx, userId: string, row: CardRow, view: "s
 
     try {
         return await Promise.race([prepare(), new Promise<never>((_, reject) => {
-            timer = setTimeout(() => { expired = true; reject(new DOMException("运势图片准备超时", "TimeoutError")); }, 10_000);
+            timer = setTimeout(() => {
+                expired = true;
+                reject(new DOMException("运势图片准备超时", "TimeoutError"));
+            }, 10_000);
         })]);
     } catch (error) {
         throw new CardImageError(stage, error, { ...diagnostics, ...errorDetails(error) });
@@ -97,7 +102,9 @@ async function readImage({ ctx, params }: RouteInput) {
 
     return stream ? new Response(stream, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } }) : new Response(null, { status: 404 });
 }
+
 export const cardRoutes: Route[] = [{ method: "GET", path: "/fortune/cards/:day/:file", auth: "public", handler: readImage }];
+
 export async function cleanupCardImages(ctx: Ctx, now: number) {
     return cleanupDatedObjects(ctx.r2, PREFIX, dateAt(now));
 }

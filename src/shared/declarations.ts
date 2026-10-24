@@ -1,6 +1,7 @@
 import type { Command, CommandInput } from "@qqbot/sdk";
 import type { CommandExecutor, Rendered } from "./types.js";
 import type { VariableComposition } from "./variables.js";
+
 export type CommandDefinition = { name: string; description: string };
 export type OutputDefinition = {
     id: string;
@@ -11,6 +12,7 @@ export type OutputDefinition = {
         | { label: string; command?: never; variable?: never }
     );
 export type CopyField = {
+    buttons?: false;
     label: string;
     category: string;
     samples: readonly string[];
@@ -19,6 +21,8 @@ export type CopyField = {
     path: readonly string[];
     default: string;
     allowEmpty?: boolean;
+    optional?: boolean;
+    presentation?: "separator";
     inputId?: string;
     uses?: readonly string[];
     targets?: readonly string[];
@@ -44,26 +48,35 @@ export type CopyDeclaration = {
     outputs: readonly OutputTarget[];
 };
 export type OutputTarget = OutputDefinition & { name: string };
+
 export function outputTargets(outputs: readonly OutputDefinition[]): OutputTarget[] {
     return outputs.map((output) => {
         const name = output.variable ? "{{" + output.variable + "}}" : output.command ? "/" + output.command + (output.suffix ?? "") : output.label!;
+
         return { ...output, name };
     });
 }
+
 export function registerCommands(definitions: readonly CommandDefinition[], execute: CommandExecutor, render: (input: CommandInput, name: string) => Promise<Rendered>): Record<string, Command> {
     return Object.fromEntries(definitions.map(({ name, description }) => [name, {
         description, scenes: ["group", "c2c"], handler: (input: CommandInput) => execute(input, name, () => render(input, name)),
     }]));
 }
+
 export type SettingField = {
     group?: string;
     key: string;
     id: string;
     label: string;
-    type: "text" | "password" | "number" | "checkbox" | "select";
+    type: "text" | "textarea" | "password" | "number" | "checkbox" | "select";
     hint?: string;
     valueType?: "number";
     step?: number;
+    min?: number;
+    max?: number;
+    maxLength?: number;
+    pattern?: string;
+    required?: boolean;
     options?: readonly { id: string; name: string }[];
     secret?: { saved: string };
 };

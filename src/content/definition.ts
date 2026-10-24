@@ -1,6 +1,7 @@
 import { createCopyContract } from "../shared/copy-contract.js";
 import { outputTargets, type CopyDeclaration, type SettingsDeclaration } from "../shared/declarations.js";
 import { COPY } from "../copy.js";
+
 export const commands = [{ name: "每日", description: "每日助手帮助" }];
 export const outputs = outputTargets([
     { id: "command:每日", command: commands[0]!.name },
@@ -11,6 +12,7 @@ const declaration: CopyDeclaration = {
     id: "reply", title: "系统文案", initial: "command:每日", outputs,
     fields: Object.fromEntries(outputs.map((target) => {
         const feedback = !target.command, key = target.id.split(":")[1]!;
+
         return [target.id, {
             label: target.name!, category: feedback ? "通用提示" : "帮助", samples: [target.id], inputId: "reply-body", path: feedback ? ["commandFeedback", key] : ["replies", key, "body"],
             default: feedback ? COPY.commandFeedback[key as keyof typeof COPY.commandFeedback] : COPY.replies.每日.body,

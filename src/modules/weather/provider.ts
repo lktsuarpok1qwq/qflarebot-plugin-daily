@@ -1,6 +1,8 @@
 import { readJson } from "../../shared/json.js";
 import type { City, Current, Forecast, WeatherConfig } from "./types.js";
+
 export class NoWeatherData extends Error { }
+
 function object(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         throw new Error("和风天气数据格式错误");
@@ -8,6 +10,7 @@ function object(value: unknown): Record<string, unknown> {
 
     return value as Record<string, unknown>;
 }
+
 function text(value: unknown): string {
     if (typeof value !== "string" || !value.trim()) {
         throw new Error("和风天气字段缺失");
@@ -15,6 +18,7 @@ function text(value: unknown): string {
 
     return value;
 }
+
 function number(value: unknown): number {
     if (typeof value !== "number" || !Number.isFinite(value)) {
         throw new Error("和风天气数值错误");
@@ -22,6 +26,7 @@ function number(value: unknown): number {
 
     return value;
 }
+
 function percent(value: unknown) {
     const humidity = number(value);
 
@@ -29,6 +34,7 @@ function percent(value: unknown) {
 
     return String(Math.round(humidity * 100));
 }
+
 function measurement(value: unknown, unit: string) {
     const v = object(value);
 
@@ -38,6 +44,7 @@ function measurement(value: unknown, unit: string) {
 
     return String(Math.round(number(v.value) * 10) / 10);
 }
+
 export async function request(config: WeatherConfig, path: string, fetcher: typeof fetch): Promise<unknown> {
     let response: Response;
 
@@ -134,8 +141,10 @@ export async function lookup(config: WeatherConfig, query: string, fetcher: type
         };
     });
 }
+
 export const CURRENT_FIELDS = ["condition", "temp", "feels", "humidity", "wind"] as const;
 export const FORECAST_FIELDS = ["low", "high", "day", "night"] as const;
+
 export function parseCurrent(raw: unknown, fields: readonly (keyof Current)[] = CURRENT_FIELDS): Partial<Current> {
     const data = object(raw);
     const readers = {
@@ -146,8 +155,10 @@ export function parseCurrent(raw: unknown, fields: readonly (keyof Current)[] = 
         humidity: () => percent(data.humidity),
         wind: () => measurement(object(data.wind).speed, "m/s"),
     };
+
     return Object.fromEntries(fields.map((key) => [key, readers[key]()]));
 }
+
 export function parseForecast(raw: unknown, fields: readonly Exclude<keyof Forecast["days"][number], "date">[] = FORECAST_FIELDS): Forecast {
     const data = object(raw);
 
@@ -172,7 +183,9 @@ export function parseForecast(raw: unknown, fields: readonly Exclude<keyof Forec
             sunrise: () => typeof astro().sunrise === "string" ? astro().sunrise : undefined,
             sunset: () => typeof astro().sunset === "string" ? astro().sunset : undefined,
         };
+
         return { date: start.slice(0, 10), ...Object.fromEntries(fields.map(key => [key, readers[key]()])) };
     });
+
     return { days };
 }

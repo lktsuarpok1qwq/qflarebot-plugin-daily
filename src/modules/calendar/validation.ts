@@ -4,13 +4,14 @@ import type { CalendarConfig } from "./types.js";
 import { fields, str, bool, list } from "../../shared/validation.js";
 import { validDate } from "../../shared/date.js";
 import { copyContract } from "./definition.js";
+
 export function validateCalendar(value: unknown): CalendarConfig {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         throw new Error("日历配置必须为对象");
     }
 
     const c = value as CalendarConfig;
-    fields(c, ["schemaVersion", "events", "calendarCopy"]);
+    fields(c, ["schemaVersion", "buttons", "events", "calendarCopy"]);
 
     if (c.schemaVersion !== CALENDAR_VERSION) {
         throw new Error("不支持的日历配置版本");

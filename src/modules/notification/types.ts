@@ -1,4 +1,6 @@
+import type { MessageButtons } from "../../shared/message-buttons.js";
 import { BODY_BYTES } from "../../shared/types.js";
+
 export const SCHEMA_VERSION = 1;
 export const RETENTION_DAYS: readonly number[] = [7, 30, 90];
 type Scene = "group" | "c2c";
@@ -26,7 +28,7 @@ type Binding = {
     taskId: string;
     recipientId: string;
 };
-type MessageTemplate = { id: string; name: string; body: string };
+type MessageTemplate = { id: string; name: string; body: string; buttons?: MessageButtons };
 export type Config = {
     schemaVersion: typeof SCHEMA_VERSION;
     paused: boolean;

@@ -15,7 +15,10 @@ export function holidayWindow(date: string): { holidays: FortuneHoliday[]; chanc
 
             if (gap < 0 || gap > 7 || gap > nearest) { continue; }
 
-            if (gap < nearest) { holidays = []; nearest = gap; }
+            if (gap < nearest) {
+                holidays = [];
+                nearest = gap;
+            }
 
             holidays.push(holiday);
         }
@@ -48,6 +51,7 @@ export function drawCard(user: string, date: string, config: DrawSettings): Fort
     const story = readStory(theme, level, random(seed + ":story")());
     const [min, max] = LEVELS[level];
     const egg = config.eggs ? selectEgg(theme, date, random(seed + ":egg-chance")(), random(seed + ":egg-pick")) : undefined;
+
     return {
         theme, date, level, rarity, score: min + Math.floor(random(seed + ":score")() * (max - min + 1)),
         title: story.title, icon: story.icon, sign: story.sign, explanation: story.explanation,

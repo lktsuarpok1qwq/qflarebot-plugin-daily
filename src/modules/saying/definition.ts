@@ -1,6 +1,7 @@
 import { createCopyContract } from "../../shared/copy-contract.js";
 import { outputTargets, type CopyDeclaration } from "../../shared/declarations.js";
 import { SAYING_COPY, SAYING_FIELDS, sayingVariables } from "./copy.js";
+
 export const sayingSample = { id: "saying", name: "无特殊情景", values: { text: "愿你今天也有值得期待的小事" } };
 export const commands = [{ name: "一言", description: "随机一句话" }];
 const outputs = outputTargets([

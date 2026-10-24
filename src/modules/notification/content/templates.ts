@@ -1,5 +1,6 @@
 import { SCHEMA_VERSION, type Config } from "../types.js";
 import { COPY } from "../copy.js";
+
 export function defaults(): Config {
     return {
         schemaVersion: SCHEMA_VERSION,

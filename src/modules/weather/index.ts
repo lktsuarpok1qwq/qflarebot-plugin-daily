@@ -9,6 +9,7 @@ import { renderWeatherCommand } from "./cards/command.js";
 import { weatherCardRoutes, cleanupWeatherImages } from "./cards/media.js";
 import { api, present } from "./admin.js";
 import { weatherPage } from "./ui/page.js";
+
 export const weather: ModuleDefinition = {
     id: "weather", cards: bindCards(weatherDesigns, { snapshot, save, present }, backgrounds, "jpeg"),
     title: "天气",
@@ -19,7 +20,7 @@ export const weather: ModuleDefinition = {
     copy: copyContract,
     commands: {
         definitions: commands, render: async (input) => {
-            if (!input.args.length) { return { text: await readHelp(input.ctx.db) }; }
+            if (!input.args.length) { return readHelp(input.ctx.db); }
 
             return renderWeatherCommand(input, (await snapshot(input.ctx.db)).config);
         }

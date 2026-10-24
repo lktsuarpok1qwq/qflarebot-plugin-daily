@@ -5,25 +5,36 @@ function createTasksPage(app, ui) {
         testingTask,
         draftBody = "",
         baseBody = "",
+        draftButtons = [],
+        baseButtons = [],
         draftTemplateId,
         originalTask,
         originalTargets;
 
     const preview = createMessageEditor(app, ui, {
-        id: "task", samples: () => messageSamples(app.state.copySamples, draftBody),
+        id: "task", buttons: () => editingTask ? { rows: draftButtons, replace: rows => { draftButtons = rows; } } : null, context: () => editingTask?.id || "task", samples: () => messageSamples(app.state.copySamples, draftBody),
         renderSample: (sample, mark) => [{ text: mark(inlineCommandTools.expand($("taskBody").value, {}, sample.values)) }],
         currentValue: () => $("taskBody").value,
         sampleHint: "虚构数据，使用模块默认文案在本地组合，不查询接口",
     });
+
     function edit(task) {
         editingTask = structuredClone(task);
         originalTask = structuredClone(app.state.config.tasks.find((t) => t.id === task.id));
         originalTargets = new Set(app.config.bindings.filter((b) => b.taskId === task.id).map((b) => b.recipientId));
         baseBody = app.config.templates.find((t) => t.id === task.templateId)?.body || "";
         draftBody = baseBody;
+        baseButtons = structuredClone(app.config.templates.find(t => t.id === task.templateId)?.buttons || []);
+        draftButtons = structuredClone(baseButtons);
         draftTemplateId = null;
     }
+
+    function draftTask(id = uid()) {
+        return { ...structuredClone(app.state.draftDefaults.task), templateId: app.config.templates[0]?.id || '', id, origin: 'manual', enabled: false, schedule: { kind: 'daily', time: '09:00' } };
+    }
+
     const testRequests = new Map();
+
     async function sendTest(taskId, recipientId, previewId, resultId) {
         if (app.dirty) {
             throw Error("请先保存文案，再测试发送");
@@ -40,11 +51,11 @@ function createTasksPage(app, ui) {
         box.textContent = "正在发送…";
 
         try {
-            const result = await app.api("test", {
+            const result = checkNotificationTest(await app.api("test", {
                 taskId,
                 recipientId,
                 requestId: testRequests.get(id),
-            });
+            }));
 
             if (!["sending", "uncertain"].includes(result.status)) {
                 testRequests.delete(id);
@@ -69,12 +80,12 @@ function createTasksPage(app, ui) {
             throw error;
         }
     }
+
     function renderPlans() {
         let html = "";
 
         html +=
-            '<section><h2>发送计划</h2><p class="muted">创建任务、选择模板，保存后配置通知对象</p>' +
-            btn("新建任务", "new-task", "", "primary");
+            '<section>' + ui.sectionHeader('发送计划', btn("新建任务", "new-task", "", "primary")) + '<p class="muted">创建任务、选择模板，保存后配置通知对象</p>';
         html +=
             table(
                 ["任务", "周期 / 时间", "目标 / 状态", "操作"],
@@ -117,7 +128,9 @@ function createTasksPage(app, ui) {
 
         return html;
     }
-    const plans = createLazySection(app, ui, "cursors", "发送计划", { render: renderPlans });
+
+    const plans = createLazySection(app, ui, "cursors", "发送计划", { render: renderPlans, check: checkNotificationCursors });
+
     function render() {
         let html = plans.render();
 
@@ -146,8 +159,8 @@ function createTasksPage(app, ui) {
             const t = editingTask,
                 s = t.schedule;
             html +=
-                '<section><h2>编辑任务</h2><div class="grid">' +
-                field("名称", "taskName", t.name) +
+                '<section>' + ui.sectionHeader('编辑任务', btn('关闭编辑', 'close-task')) + '<div class="grid">' +
+                field("名称", "taskName", t.name, "text", false, { required: true, maxCodePoints: 80 }) +
                 '<label>通知模板<select id="taskTemplate">' +
                 options([{ id: "", name: "不选模板，填写独立文案" }, ...app.config.templates], t.templateId) +
                 "</select><small>直接选用会跟随模板更新；改写后只用于当前任务</small></label>" +
@@ -165,11 +178,11 @@ function createTasksPage(app, ui) {
                     )
                     .join("") +
                 "</select></label>" +
-                field("发送时间", "scheduleTime", s.time, "time") +
+                field("发送时间", "scheduleTime", s.time, "time", false, { required: true }) +
                 '<div id="weeklyFields"' +
                 (s.kind === "weekly" ? "" : " hidden") +
                 ">" +
-                '<fieldset class="weekdays"><legend>每周星期</legend><div class="actions">' +
+                '<fieldset class="weekdays" id="weeklyChoices" tabindex="-1"><legend>每周星期</legend><div class="actions">' +
                 [1, 2, 3, 4, 5, 6, 7]
                     .map((day) =>
                         check("星期" + "一二三四五六日"[day - 1], "weekday-" + day, (s.weekdays || [1]).includes(day)),
@@ -180,7 +193,7 @@ function createTasksPage(app, ui) {
                 '<div id="onceFields"' +
                 (s.kind === "once" ? "" : " hidden") +
                 ">" +
-                field("一次性日期", "onceDate", s.date || "", "date") +
+                field("一次性日期", "onceDate", s.date || "", "date", false, { required: true, min: '2000-01-01', max: '2199-12-31' }) +
                 "</div>" +
                 "</div>" +
                 '<fieldset><legend>功能开关</legend>' + check("启用任务", "taskEnabled", t.enabled) + "</fieldset>" +
@@ -208,29 +221,23 @@ function createTasksPage(app, ui) {
                     (app.config.recipients.length ? "" : "<p>请先添加通知对象</p>") +
                     "</div></fieldset>"
                     : '<p class="muted">保存后可选择通知对象</p>') +
-                '<div class="actions">' +
-                btn("保存任务", "save-task", "", "primary") +
-                btn("取消", "cancel-task") + "</div>" + preview.reference() + "</section>";
+                preview.reference() + preview.buttonSection() + '<div class="actions">' +
+                btn("保存全部修改", "save-task", "", "primary") + btn("恢复当前默认", "reset-task-body") + btn("撤销全部修改", "revert-task") + "</div>" + "</section>";
         }
 
         return html;
     }
+
     async function action(a, id) {
         await plans.action(a, id);
 
         if (await preview.action(a)) { return; }
 
         if (a === "new-task") {
-            edit({
-                ...structuredClone(app.state.draftDefaults.task),
-                templateId: app.config.templates[0]?.id || "",
-                id: uid(),
-                origin: "manual",
-                enabled: false,
-                schedule: { kind: "daily", time: "09:00" },
-            });
+            edit(draftTask());
             app.render();
             app.focus("taskName");
+
             return;
         }
 
@@ -246,6 +253,7 @@ function createTasksPage(app, ui) {
             testingTask = id;
             app.render();
             app.focus("testRecipient");
+
             return;
         }
 
@@ -253,11 +261,13 @@ function createTasksPage(app, ui) {
             testingTask = null;
             $("eventTest")?.remove();
             app.focus(editingTask ? "taskName" : "app");
+
             return;
         }
 
         if (a === "send-task-test") {
             await sendTest(id, $("testRecipient").value, "testMessage", "testResult");
+
             return;
         }
 
@@ -265,29 +275,75 @@ function createTasksPage(app, ui) {
             edit(app.config.tasks.find((t) => t.id === id));
             app.render();
             app.focus("taskName");
+
             return;
         }
 
-        if (a === "cancel-task") {
+        if (a === "close-task") {
             app.config = structuredClone(app.state.config);
             app.dirty = false;
             editingTask = null;
             app.render();
             app.focus("app");
+
+            return;
+        }
+
+        if (a === 'reset-task-body') {
+            if (!await app.confirmAction('恢复当前任务文案和按钮默认草稿？保留任务设置，保存后生效')) { return; }
+
+            draftButtons = structuredClone(app.state.draftDefaults.template.buttons || []);
+            preview.refreshButtons();
+            $("taskBody").value = app.state.draftDefaults.template.body;
+            $("taskBody").dispatchEvent(new Event('input', { bubbles: true }));
+            app.refresh();
+
+            return;
+        }
+
+        if (a === 'revert-task') {
+            if (!await app.confirmAction('撤销当前任务全部未保存的修改？')) { return; }
+
+            edit(originalTask || draftTask(editingTask.id));
+            app.render();
+
             return;
         }
 
         if (a === "save-task") {
-            if (!preview.validate()) { return; }
+            const invalid = ui.validateFields(['taskName', 'scheduleTime', ...($('kind').value === 'once' ? ['onceDate'] : [])]);
+
+            if (invalid) {
+                app.focus(invalid);
+
+                return;
+            }
+
+            if (!preview.validate(true)) { return; }
 
             const s = { kind: $("kind").value, time: $("scheduleTime").value };
 
             if (s.kind === "weekly") {
                 s.weekdays = [1, 2, 3, 4, 5, 6, 7].filter((day) => $("weekday-" + day).checked);
+
+                if (!s.weekdays.length) {
+                    ui.fieldError('weeklyChoices', '请至少选择一个星期');
+                    app.focus('weeklyChoices');
+
+                    return;
+                }
             }
 
             if (s.kind === "once") {
                 s.date = $("onceDate").value;
+
+                if ($('taskEnabled').checked && (!originalTask || !originalTask.enabled || JSON.stringify(originalTask.schedule) !== JSON.stringify(s))
+                    && Date.parse(s.date + 'T' + s.time + ':00+08:00') <= Date.now()) {
+                    ui.fieldError('onceDate', '一次性任务必须设置未来时间');
+                    app.focus('onceDate');
+
+                    return;
+                }
             }
 
             const current = app.config.tasks.find((t) => t.id === editingTask.id);
@@ -300,13 +356,14 @@ function createTasksPage(app, ui) {
                 throw Error("模板已被删除，请重新选择");
             }
 
-            if (!template || (draftBody !== baseBody && draftBody !== template.body)) {
+            if (!template || draftBody !== template.body || JSON.stringify(draftButtons) !== JSON.stringify(template.buttons || [])) {
                 draftTemplateId ||= uid();
                 templateId = draftTemplateId;
                 put(app.config.templates, {
                     id: templateId,
                     name: $("taskName").value + app.state.draftDefaults.taskTemplateSuffix,
                     body: draftBody,
+                    buttons: structuredClone(draftButtons),
                 });
             }
 
@@ -340,6 +397,7 @@ function createTasksPage(app, ui) {
 
             const savedId = editingTask.id;
             await app.save(undefined, () => edit(app.config.tasks.find((t) => t.id === savedId)));
+
             return;
         }
 
@@ -351,6 +409,7 @@ function createTasksPage(app, ui) {
             t.enabled = false;
             app.config.tasks.push(t);
             await app.save();
+
             return;
         }
 
@@ -358,6 +417,7 @@ function createTasksPage(app, ui) {
             const t = app.config.tasks.find((t) => t.id === id);
             t.enabled = !t.enabled;
             await app.save();
+
             return;
         }
 
@@ -373,22 +433,29 @@ function createTasksPage(app, ui) {
 
                 if (testingTask === id) { testingTask = null; }
             });
+
             return;
         }
     }
+
     function reset() {
         editingTask = null;
         testingTask = null;
     }
+
     function change(el) {
+        if (el.id.startsWith('weekday-')) { ui.clearFieldError($('weeklyChoices')); }
+
         if (el.id === "taskTemplate") {
             editingTask.templateId = el.value;
             baseBody = app.config.templates.find((t) => t.id === el.value)?.body || "";
             draftBody = baseBody;
+            baseButtons = structuredClone(app.config.templates.find(t => t.id === el.value)?.buttons || []);
+            draftButtons = structuredClone(baseButtons);
             draftTemplateId = null;
             $("taskBody").value = draftBody;
 
-            preview.refresh();
+            preview.refreshButtons();
         }
 
         if (el.id === "kind") {
@@ -396,11 +463,18 @@ function createTasksPage(app, ui) {
             $("onceFields").hidden = el.value !== "once";
         }
     }
+
     return {
-        discardActions: ["new-task", "edit-task", "copy-task", "toggle-task", "delete-task"],
+        isNew: () => Boolean(editingTask && !originalTask),
+        buttonsDirty: () => Boolean(editingTask && JSON.stringify(draftButtons) !== JSON.stringify(baseButtons)),
+        discardActions: ["new-task", "edit-task", "copy-task", "toggle-task", "delete-task", "close-task"],
         get transientInputs() { return ["testRecipient", ...preview.transientInputs]; },
         render,
-        refresh() { plans.refresh(); preview.refresh(); },
+        remember: preview.remember,
+        refresh() {
+            plans.refresh();
+            preview.refresh();
+        },
         action,
         reset,
         change(el) { if (!preview.change(el)) { change(el); } },

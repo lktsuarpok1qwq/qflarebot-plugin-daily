@@ -1,6 +1,7 @@
 import type { CardDefinition } from "../../../shared/cards/types.js";
 import type { CardSnapshot } from "./store.js";
 import { fortunePresets } from "./presets.js";
+
 const fields = [
     { key: "month", label: "月份", sample: "10" }, { key: "day", label: "日", sample: "15" },
     { key: "title", label: "签名", sample: "鸭总接管" }, { key: "icon", label: "主图标", sample: "🦆" },
@@ -25,8 +26,10 @@ export const fortuneDesigns: readonly CardDefinition[] = [
         ]
     },
 ];
+
 export function fortuneDesignValues(snapshot: CardSnapshot): Record<string, string> {
     const { content: c, labels } = snapshot;
+
     return {
         month: String(Number(c.date.slice(5, 7))), day: String(Number(c.date.slice(8))), effect_name: c.effect.name, effect_text: c.effect.description.text, item_name: c.item.name, item_text: c.item.description.text,
         title: c.title, icon: c.icon, sign: c.sign.text, level: labels.levels[c.level], score: String(c.score), rarity: labels.rarities[c.rarity], date: `${Number(c.date.slice(5, 7))}月${Number(c.date.slice(8))}日`,

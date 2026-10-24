@@ -22,6 +22,7 @@ function createUI() {
                 hour12: false,
             })
             : "无未来计划";
+
     function options(items, selected) {
         return items
             .map(
@@ -36,7 +37,8 @@ function createUI() {
             )
             .join("");
     }
-    function field(label, id, value = "", type = "text", readonly = false) {
+
+    function field(label, id, value = "", type = "text", readonly = false, constraints = {}) {
         return (
             "<label>" +
             label +
@@ -45,10 +47,40 @@ function createUI() {
             (readonly ? '" readonly type="' : '" type="') +
             type +
             '" value="' +
-            esc(value) +
-            '"></label>'
+            esc(value) + '"' + fieldConstraints(constraints) + '></label>'
         );
     }
+
+    function fieldConstraints(constraints) {
+        return ['min', 'max', 'step', 'maxLength', 'pattern'].filter(key => constraints[key] !== undefined)
+            .map(key => ' ' + key.toLowerCase() + '="' + esc(constraints[key]) + '"').join('') + (constraints.required ? ' required' : '')
+            + (constraints.maxCodePoints !== undefined ? ' data-max-code-points="' + esc(constraints.maxCodePoints) + '"' : '');
+    }
+
+    function validateFields(ids) {
+        for (const id of ids) {
+            const input = $(id), validity = input.validity;
+            let message = '';
+
+            if (input.required && !input.value.trim()) { message = '请填写此项'; }
+            else if (validity.badInput) { message = input.type === 'number' ? '请填写有效数字' : '请填写有效值'; }
+            else if (validity.rangeUnderflow || validity.rangeOverflow) { message = '请填写 ' + (input.min || '不限') + '～' + (input.max || '不限') + ' 范围内的值'; }
+            else if (validity.stepMismatch) { message = '数值精度不符合要求'; }
+            else if (validity.patternMismatch || validity.typeMismatch || input.maxLength >= 0 && input.value.length > input.maxLength) { message = '格式或长度不符合要求'; }
+            else if (input.dataset.maxCodePoints && ([...input.value].length > Number(input.dataset.maxCodePoints)
+                || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(input.value))) { message = '格式或长度不符合要求'; }
+
+            if (message) {
+                const label = input.labels?.[0]?.textContent.trim();
+                fieldError(id, (label ? label + '：' : '') + message);
+
+                return id;
+            }
+        }
+
+        return null;
+    }
+
     function check(label, id, value) {
         return (
             '<label class="check"><input id="' +
@@ -60,17 +92,56 @@ function createUI() {
             "</label>"
         );
     }
+
     function btn(text, action, id = "", cls = "") {
-        return (
-            '<button class="' + cls + '" data-action="' + action + '" data-id="' + esc(id) + '">' + text + "</button>"
-        );
+        const draft = /^(?:save-|card-save$)/.test(action) ? 'save' : /^(?:cancel-|revert-|card-cancel$)/.test(action) ? 'discard' : '';
+
+        return '<button class="' + cls + '" data-action="' + action + '" data-id="' + esc(id) + '"' + (draft ? ' data-draft-action="' + draft + '"' : '') + '>' + text + '</button>';
     }
+
+    function clearFieldError(input) {
+        const error = $(input.id + '-error');
+
+        if (!error?.hasAttribute('data-field-feedback')) { return; }
+
+        error.hidden = true;
+        input.removeAttribute('aria-invalid');
+        const ids = (input.getAttribute('aria-describedby') || '').split(' ').filter(id => id && id !== error.id);
+        input.setAttribute('aria-describedby', ids.join(' '));
+    }
+
+    function fieldError(id, message) {
+        const input = typeof id === 'string' ? $(id) : id;
+        let error = $(input.id + '-error');
+
+        if (!error) {
+            error = document.createElement('p');
+            error.id = input.id + '-error';
+            error.className = 'field-error';
+            error.setAttribute('role', 'status');
+            error.setAttribute('data-field-feedback', '');
+            (input.closest('.setting-field') || input.closest('label') || input.parentElement).append(error);
+        }
+
+        error.textContent = message;
+        error.hidden = false;
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', [...new Set((input.getAttribute('aria-describedby') || '').split(' ').filter(Boolean).concat(error.id))].join(' '));
+        input.focus({ preventScroll: true });
+    }
+
+    function sectionHeader(title, actions) {
+        return '<div class="section-header"><h2>' + esc(title) + '</h2><div class="actions">' + actions + '</div></div>';
+    }
+
     function table(head, rows) {
         const content = rows
             .map((row) => {
                 let column = 0;
+
                 return row.replace(/<td>([\s\S]*?)<\/td>/g, (_, value) => {
                     const label = head[column++];
+
                     return (
                         '<td data-label="' +
                         esc(label) +
@@ -83,6 +154,7 @@ function createUI() {
                 });
             })
             .join("");
+
         return (
             '<div class="table"><table><thead><tr>' +
             head.map((h) => '<th scope="col">' + esc(h) + "</th>").join("") +
@@ -91,95 +163,26 @@ function createUI() {
             "</tbody></table></div>"
         );
     }
-    function markdown(text, markers) {
-        const inline = (line) => {
-            if (markers) {
-                line = line.replace(/\[([^\]]*)\]\(([^)\n]*)\)/g, (link, label, url) => {
-                    const start = url.includes(markers.start), end = url.includes(markers.end);
 
-                    if (!start && !end) { return link; }
+    const markdown = (text, markers) => renderQQMarkdown(text, markers);
 
-                    const clean = url.split(markers.start).join('').split(markers.end).join('');
-                    return (start ? markers.start : '') + '[' + label + '](' + clean + ')' + (end ? markers.end : '');
-                });
-            }
+    const messageImages = new Map();
 
-            const literals = [];
-            const hold = (html) => "\u0000" + (literals.push(html) - 1) + "\u0000";
-            const restore = (text) => text.replace(/\u0000(\d+)\u0000/g, (_, index) => literals[Number(index)] || "");
-            return esc(line.replace(/\\([\\\x60*_{}[\]()<>#+.!|~-])/g, (_, c) => hold(esc(c))))
-                .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mqqapi:\/\/aio\/inlinecmd\?[^\s)]+)\)/g, (_, label, url) =>
-                    hold('<a href="' + restore(url) + '" target="_blank" rel="noopener noreferrer">' + restore(label) + "</a>"),
-                )
-                .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
-                .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-                .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-                .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-                .replace(/\u0000(\d+)\u0000/g, (_, index) => literals[Number(index)] || "");
-        };
-        return text
-            .split("\n")
-            .map((line) => {
-                let prefix = '';
-
-                if (markers) {
-                    // Move leading provenance tokens past block syntax without changing the Markdown.
-                    while (line.startsWith(markers.start) || line.startsWith(markers.end)) {
-                        const token = line.startsWith(markers.start) ? markers.start : markers.end;
-                        prefix += token; line = line.slice(token.length);
-                    }
-                }
-
-                const content = (value) => inline(prefix + value);
-
-                if (/^---+$/.test(line)) {
-                    return content("") + "<hr>";
-                }
-
-                const heading = line.match(/^(#{1,2})\s+(.*)/);
-
-                if (heading) {
-                    return "<h" + heading[1].length + ">" + content(heading[2]) + "</h" + heading[1].length + ">";
-                }
-
-                if (/^>\s?/.test(line)) {
-                    return "<blockquote>" + content(line.replace(/^>\s?/, "")) + "</blockquote>";
-                }
-
-                if (/^[-*]\s+/.test(line)) {
-                    return "<ul><li>" + content(line.replace(/^[-*]\s+/, "")) + "</li></ul>";
-                }
-
-                if (/^\d+\.\s+/.test(line)) {
-                    return "<ol><li>" + content(line.replace(/^\d+\.\s+/, "")) + "</li></ol>";
-                }
-
-                return "<div>" + content(line || " ") + "</div>";
-            })
-            .join("");
-    }
     function showMessage(id, result) {
         const el = $(id);
         el.hidden = false;
         el.innerHTML = markdown(result.text);
+
+        if (!messageImages.has(id)) { messageImages.set(id, createPreviewImages(() => $(id))); }
+
+        messageImages.get(id)();
     }
-    const toolbar = (id) =>
-        '<div class="actions" data-markdown-for="' +
-        esc(id) +
-        '" role="group" aria-label="Markdown 格式"><span class="muted">Markdown</span>' +
-        [
-            ["标题", "# ", ""],
-            ["加粗", "**", "**"],
-            ["斜体", "*", "*"],
-            ["删除线", "~~", "~~"],
-            ["链接", "[", "](https://example.com)"],
-            ["列表", "- ", ""],
-            ["引用", "> ", ""],
-        ]
-            .map(([label, before, after]) => btn(label, "markup", JSON.stringify({ id, before, after })))
-            .join("") +
-        "</div>";
-    function variableReference(groups, descriptions, sections, compositions = {}) {
+
+    const toolbar = (id) => '<div class="actions" data-markdown-for="' + esc(id) + '" role="group" aria-label="Markdown 格式">' +
+        [['一级标题', '# ', '', '标题'], ['二级标题', '## ', '', '标题'], ['加粗', '**', '**', '文字'], ['斜体', '*', '*', '文字'], ['粗斜体', '***', '***', '文字'], ['删除线', '~~', '~~', '文字'], ['引用', '> ', '', '引用内容'], ['无序列表', '- ', '', '列表项'], ['有序列表', '1. ', '', '列表项'], ['嵌套列表', '    - ', '', '列表项'], ['链接', '[', '](https://example.com)', '链接文字'], ['图片', '![', '](https://example.com/image.png)', '图片说明'], ['分割线', '\n***\n', '', '']]
+            .map(([label, before, after, fallback]) => btn(label, 'markup', JSON.stringify({ id, before, after, fallback, line: ['一级标题', '二级标题', '引用', '无序列表', '有序列表', '嵌套列表'].includes(label) }))).join('') + '</div>';
+
+    function variableReference(groups, descriptions, sections, compositions = {}, target = "") {
         const names = [...new Set(groups.flatMap((group) => group.variables))];
         const composition = (name) => {
             const info = compositions[name];
@@ -189,32 +192,19 @@ function createUI() {
             return '<details class="variable-composition"><summary>查看组成</summary><p>' + esc(info.description) + '</p><p class="muted">' + esc(info.scope) + '</p><dl>' +
                 Object.entries(info.fields).map(([key, description]) => '<dt><code>' + esc('{{' + key + '}}') + '</code></dt><dd>' + esc(description) + '</dd>').join('') + '</dl></details>';
         };
-        const rows = (variables) =>
-            variables
-                .filter((name) => names.includes(name))
-                .map(
-                    (name) =>
-                        "<tr><td><code>" +
-                        esc("{{" + name + "}}") +
-                        "</code></td><td>" +
-                        esc(descriptions[name]) + composition(name) +
-                        "</td></tr>",
-                );
-        return (
-            '<div class="variable-reference"><h3>当前位置可用变量</h3>' +
-            (names.length
-                ? (sections || [{ label: "", variables: names }])
-                    .map((section) => {
-                        const content = rows(section.variables);
-                        return content.length
-                            ? (section.label ? "<h4>" + esc(section.label) + "</h4>" : "") +
-                            table(["变量", "说明"], content)
-                            : "";
-                    })
-                    .join("")
-                : '<p class="muted">当前文案不支持变量</p>') +
-            "</div>"
-        );
+        const rows = (variables) => variables.filter(name => names.includes(name)).map((name, index) => {
+            const help = target + '-variable-' + names.indexOf(name);
+
+            return '<div class="variable-row">' + (target ? '<button data-action="insert-variable" data-id="' + esc(JSON.stringify({ id: target, value: '{{' + name + '}}' })) + '" aria-describedby="' + esc(help) + '">' + esc('{{' + name + '}}') + '</button>' : '<code>' + esc('{{' + name + '}}') + '</code>') +
+                '<span class="hint" id="' + esc(help) + '">' + esc(descriptions[name]) + '</span>' + composition(name) + '</div>';
+        }).join('');
+
+        return '<div class="variable-reference"><h3>当前位置可用变量</h3>' + (names.length
+            ? (sections || [{ label: '', variables: names }]).map(section => {
+                const content = rows(section.variables);
+
+                return content ? (section.label ? '<h4>' + esc(section.label) + '</h4>' : '') + '<div class="variable-grid">' + content + '</div>' : '';
+            }).join('') : '<p class="muted">此模板没有可用变量</p>') + '</div>';
     }
 
     function mergeDraft(current, original, draft) {
@@ -240,6 +230,7 @@ function createUI() {
 
         return merged;
     }
+
     const put = (list, item) => {
         const i = list.findIndex((x) => x.id === item.id);
 
@@ -249,6 +240,7 @@ function createUI() {
             list[i] = item;
         }
     };
+
     return {
         $,
         esc,
@@ -259,10 +251,15 @@ function createUI() {
         check,
         btn,
         table,
+        sectionHeader,
         markdown,
         showMessage,
         toolbar,
         variableReference,
+        fieldError,
+        fieldConstraints,
+        validateFields,
+        clearFieldError,
         put,
         mergeDraft,
     };

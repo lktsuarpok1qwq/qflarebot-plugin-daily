@@ -4,6 +4,7 @@ import { FORTUNE_COPY, FORTUNE_TEXT_VARIABLES, FORTUNE_DETAIL_VARIABLES, LEVEL_N
 import { LEVELS, RARITIES, THEMES } from "./types.js";
 import { fortuneSamples } from "./samples.js";
 import { corpus } from "./corpus.js";
+
 export const commands = [{ name: "运势", description: "运势帮助" }, { name: "运势 抽", description: "抽取今日个人运势" }, { name: "运势 解", description: "查看今日解签" }];
 const branches: Record<keyof FortuneCopy, { label: string; category: string; samples: string[]; variables: Record<string, string> }> = {
     drawText: { label: "抽签正文", category: "文字回复", samples: ["drawText"], variables: FORTUNE_TEXT_VARIABLES },
@@ -21,7 +22,7 @@ const declaration: CopyDeclaration = {
     id: "fortune", title: "运势文案", initial: "draw", outputs: outputTargets([{ id: "help", command: "运势" }, { id: "draw", command: "运势 抽" }, { id: "detail", command: "运势 解" }]),
     description: "关闭图片或图片准备失败时使用文字回复；吉凶和稀有度名称次日抽签生效；情景预览展示当前文字",
     samples: fortuneSamples,
-    fields: Object.fromEntries(Object.entries(branches).map(([key, field]) => [key, { ...field, path: ["copy", key], default: FORTUNE_COPY[key as keyof FortuneCopy], allowEmpty: ["drawCaption", "detailCaption"].includes(key) }])) satisfies Record<string, CopyField>,
+    fields: Object.fromEntries(Object.entries(branches).map(([key, field]) => [key, { ...field, ...((key.startsWith("level_") || key.startsWith("rarity_")) ? { buttons: false as const } : {}), path: ["copy", key], default: FORTUNE_COPY[key as keyof FortuneCopy], allowEmpty: ["drawCaption", "detailCaption"].includes(key) }])) satisfies Record<string, CopyField>,
     views: [
         { id: "help", keys: ["help"], targets: ["help"] },
         { id: "draw", keys: Object.keys(branches).filter(key => !["help", "needDraw", "detailCaption", "detailText"].includes(key)), targets: ["draw"] },
@@ -35,8 +36,8 @@ export const settings: SettingsDeclaration = {
         { key: "imageEnabled", id: "fortune-image-enabled", label: "启用图片卡片", group: "功能开关", type: "checkbox" },
         { key: "eggs", id: "fortune-eggs", label: "参与彩蛋抽取", group: "功能开关", type: "checkbox" },
         ...THEMES.filter((id) => Object.values(corpus.cards[id]).some(range => range[1] > 0)).map((id) => ({ key: "theme_" + id, id: "fortune-theme-" + id, label: THEME_NAMES[id], group: "语料类型", type: "checkbox" as const })),
-        ...Object.entries(LEVEL_NAMES).map(([id, label]) => ({ key: "level_" + id, id: "fortune-level-" + id, label: label + "权重", group: "吉凶权重", type: "number" as const })),
-        ...Object.entries(RARITY_NAMES).map(([id, label]) => ({ key: "rarity_" + id, id: "fortune-rarity-" + id, label: label + "权重", group: "稀有度权重", type: "number" as const })),
+        ...Object.entries(LEVEL_NAMES).map(([id, label]) => ({ key: "level_" + id, id: "fortune-level-" + id, label: label + "权重", group: "吉凶权重", type: "number" as const, min: 0 })),
+        ...Object.entries(RARITY_NAMES).map(([id, label]) => ({ key: "rarity_" + id, id: "fortune-rarity-" + id, label: label + "权重", group: "稀有度权重", type: "number" as const, min: 0 })),
 
     ],
 };

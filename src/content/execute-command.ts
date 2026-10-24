@@ -1,4 +1,5 @@
 import { deliverReply } from "@qqbot/sdk";
+import type { MessageButtons } from "../shared/message-buttons.js";
 import type { OutgoingMessage, SendResult } from "@qqbot/sdk";
 import type { CommandExecutor, CommandFeedback, Ctx, Rendered } from "../shared/types.js";
 import { readConfig } from "../data/repository.js";
@@ -7,24 +8,32 @@ import { dateAt } from "../shared/date.js";
 import { expand } from "../shared/interpolation.js";
 import { message } from "../shared/message.js";
 import { errorDetails } from "../shared/diagnostics.js";
+
 function feedbackText(copy: CommandFeedback, key: keyof CommandFeedback, now = Date.now()) {
     const day = dateAt(now);
+
     return expand(copy[key], { today: day, year: day.slice(0, 4) });
 }
+
 async function feedback(ctx: Ctx, key: keyof CommandFeedback) {
     let copy = COPY.commandFeedback;
+    let buttons: MessageButtons | undefined;
 
     try {
-        copy = (await readConfig(ctx.db)).commandFeedback;
+        const config = await readConfig(ctx.db);
+        copy = config.commandFeedback;
+        buttons = config.buttons?.["feedback:" + key];
     } catch {
-        // Database failures still need a usable command response.
+        // 数据库异常时仍需返回可用的命令回复
     }
 
-    return message(feedbackText(copy, key));
+    return message(feedbackText(copy, key), buttons);
 }
+
 function imageTransferRejected(sent: SendResult | undefined) {
     return sent && !sent.ok && sent.status === 400 && sent.code === 40034141;
 }
+
 export const executeCommand: CommandExecutor = async (input, name, render) => {
     let result: Rendered;
 
@@ -38,6 +47,7 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
         }
     } catch (error) {
         input.ctx.logger.warn("命令处理失败", { command: name, stage: "command_render", ...errorDetails(error) });
+
         return feedback(input.ctx, "error");
     }
 
@@ -51,6 +61,7 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
 
             try { result.text = result.image.fallback(); } catch (error) {
                 input.ctx.logger.warn("命令处理失败", { command: name, stage: "image_fallback", ...errorDetails(error) });
+
                 return feedback(input.ctx, "error");
             }
 
@@ -74,7 +85,7 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
     };
 
     try {
-        let sent = await send(result.image ? { markdown: { content: result.text, forceVerifyImage: true } } : message(result.text));
+        let sent = await send(message(result.text, result.buttons, Boolean(result.image)));
 
         if (sent?.ok && result.diagnostics?.imagePrepareFailed) {
             input.ctx.logger.warn("图片准备失败，已回复文字", {
@@ -90,7 +101,7 @@ export const executeCommand: CommandExecutor = async (input, name, render) => {
 
             if (!text.trim()) { return feedback(input.ctx, "error"); }
 
-            sent = await send(message(text));
+            sent = await send(message(text, result.buttons));
 
             if (sent?.ok) {
                 input.ctx.logger.warn("图片发送失败，已回复文字", {

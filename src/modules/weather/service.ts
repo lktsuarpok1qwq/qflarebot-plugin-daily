@@ -5,10 +5,12 @@ import type { Forecast, Current } from "./types.js";
 import type { WeatherConfig } from "./types.js";
 import { lookup, request, parseCurrent, parseForecast, CURRENT_FIELDS, FORECAST_FIELDS, NoWeatherData } from "./provider.js";
 import { expand, commandLink, commandUrl } from "../../shared/interpolation.js";
-// GeoAPI supplies the current UTC offset, including daylight saving time.
+
+// GeoAPI 提供包含夏令时的当前 UTC 偏移量
 export function localDay(now: number, utcOffset: number) {
     return new Date(now + utcOffset * 60_000).toISOString().slice(0, 10);
 }
+
 export async function queryWeather(
     config: WeatherConfig,
     args: string[],
@@ -52,6 +54,7 @@ export async function queryWeather(
             text: renderWeather(copy, "candidate", {
                 candidates: cities.map((c) => {
                     const command = "/天气 " + c.id;
+
                     return { city: c.name, area: c.area, command, command_link: commandLink(command, command), command_url: commandUrl(command) };
                 })
             }, expand),
@@ -72,9 +75,11 @@ export async function queryWeather(
     const currentFields: (keyof Current)[] = CURRENT_FIELDS.filter(key => needed.has(key));
 
     if (image) {
-        // A custom background needs no theme data; each dynamic icon declares its own forecast needs.
+        // 自定义背景无需主题数据，各动态图标分别声明所需的预报数据
         if (!custom || selected.has("icon")) {
-            currentFields.push("code"); forecastFields.add("sunrise"); forecastFields.add("sunset");
+            currentFields.push("code");
+            forecastFields.add("sunrise");
+            forecastFields.add("sunset");
         }
 
         if (!custom || selected.has("day_icon")) { forecastFields.add("code"); }

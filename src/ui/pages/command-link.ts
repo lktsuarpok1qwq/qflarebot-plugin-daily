@@ -2,6 +2,7 @@ export const commandLinkPage = String.raw`
 function createCommandLinkPage(app, ui) {
     const { $, esc, btn } = ui;
     let label = "", command = "", mode = "send";
+
     function result() {
         const text = command.trimStart();
 
@@ -10,11 +11,14 @@ function createCommandLinkPage(app, ui) {
         }
 
         const full = text.startsWith("/") ? text : "/" + text;
+
         return "[" + inlineCommandTools.expand("{{label}}", { label: label.trim() || full.trim() }) + "](" +
             inlineCommandTools.url(full, mode === "send") + ")";
     }
+
     function render() {
         const value = result();
+
         return '<section><h2>命令链接</h2><p class="muted">生成后复制到回复或公告文案，中文和空格自动编码</p>' +
             '<div class="grid"><label for="inlineLabel">显示文字<input id="inlineLabel" value="' + esc(label) +
             '" placeholder="留空使用命令"></label><label for="inlineMode">点击行为<select id="inlineMode">' +
@@ -27,6 +31,7 @@ function createCommandLinkPage(app, ui) {
             (value ? "" : " disabled data-locked") + '>复制链接</button>' + btn("清空", "clear-inline-link") +
             '</div><p class="muted">仅在本地生成，不发送消息；点击效果以 QQ 客户端为准</p></section>';
     }
+
     function update(el) {
         if (el.id === "inlineLabel") {
             label = el.value;
@@ -43,12 +48,14 @@ function createCommandLinkPage(app, ui) {
         $("inlineCopy").disabled = !value;
         $("inlineCopy").toggleAttribute("data-locked", !value);
     }
+
     async function action(a) {
         if (a === "clear-inline-link") {
             label = command = "";
             mode = "send";
             app.render();
             app.focus("inlineCommand");
+
             return;
         }
 
@@ -69,13 +76,14 @@ function createCommandLinkPage(app, ui) {
             try {
                 copied = document.execCommand("copy");
             } catch {
-                // The sandbox may deny clipboard access; keep the text selected for manual copying.
+                // 沙箱可能禁止剪贴板访问，保留选中文本以便手动复制
             }
 
             app.focus("inlineResult");
             app.status(copied ? "已复制 Markdown 链接" : "已选中链接，请手动复制");
         }
     }
+
     return {
         render, action, input: update, change: update,
         transientInputs: ["inlineLabel", "inlineCommand", "inlineMode", "inlineResult"],

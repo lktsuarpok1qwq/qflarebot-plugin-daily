@@ -8,11 +8,13 @@ import { body } from "../request.js";
 import { validateDesign, validateDesigns } from "./validation.js";
 import { prepareFont, uploadBackground } from "./assets.js";
 import { renderDesign } from "./render.js";
+
 export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
     const definitions = binding.definitions;
     const handler = adminHandler({ GET: ["state"], POST: ["save", "background", "font", "preview"] }, async ({ ctx, request, params }) => {
         if (request.method === "GET") {
             const [state, regular, bold] = await Promise.all([binding.read(ctx), ctx.r2.head(ASSET_PREFIX + fontAsset(400)), ctx.r2.head(ASSET_PREFIX + fontAsset(700))]);
+
             return Response.json({ ...state, definitions, assets: binding.assets, fonts: { regular: !!regular, bold: !!bold } });
         }
 
@@ -45,6 +47,7 @@ export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
                     return [field.key, value];
                 }));
             });
+
             return new Response(await renderDesign(ctx, design, values, AbortSignal.timeout(10_000), binding.assets, {}, binding.format), { headers: { "content-type": `image/${binding.format}` } });
         }
 
@@ -84,5 +87,6 @@ export function cardAdminRoutes(owner: string, binding: CardBinding): Route[] {
 
         return Response.json(await state.commit(config));
     });
+
     return (["GET", "POST"] as const).map(method => ({ method, path: `/api/cards/${owner}/:action`, auth: "admin", handler }));
 }

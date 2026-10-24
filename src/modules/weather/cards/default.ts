@@ -3,6 +3,7 @@ import { weatherCardValue } from "./values.js";
 import { WEATHER_REGIONS, weatherHeaderColor } from "./layout.js";
 import { weatherTheme } from "./conditions.js";
 import type { WeatherCardData, WeatherCardCopy } from "./copy.js";
+
 export function layoutWeather(data: WeatherCardData, copy: WeatherCardCopy) {
     const theme = weatherTheme(data.code, data.night), header = weatherHeaderColor(theme), layout = textLayout();
 

@@ -1,3 +1,5 @@
+import type { ButtonConfiguration } from "../../shared/message-buttons.js";
+
 export type CalendarEvent = {
     id: string;
     enabled: boolean;
@@ -8,7 +10,8 @@ export type CalendarEvent = {
     repeat: "once" | "yearly";
     source: "uapi" | "manual";
 };
-export type CalendarCopy = typeof import("./copy.js").CALENDAR_COPY.text;
+type CalendarText = typeof import("./copy.js").CALENDAR_COPY.text;
+export type CalendarCopy = Omit<CalendarText, "summarySeparator" | "todaySeparator"> & Partial<Pick<CalendarText, "summarySeparator" | "todaySeparator">>;
 export type SourceSummary = {
     year: number;
     hash: string;
@@ -24,7 +27,7 @@ export type SourceCoverage = Pick<SourceSummary, "year" | "is_complete">;
 export type Source = SourceSummary & { data: string };
 export const CALENDAR_VERSION = 5;
 export const EVENT_LIMIT = 600;
-export type CalendarConfig = {
+export type CalendarConfig = ButtonConfiguration & {
     schemaVersion: typeof CALENDAR_VERSION;
     events: CalendarEvent[];
     calendarCopy: CalendarCopy;

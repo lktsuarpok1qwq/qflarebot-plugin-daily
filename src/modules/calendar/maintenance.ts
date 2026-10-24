@@ -1,9 +1,9 @@
 import type { Ctx } from "../../shared/types.js";
-
 import { dateAt } from "../../shared/date.js";
 import { refreshCalendar } from "./repository.js";
 import { syncYear } from "./sync.js";
-import type { SyncResult } from "./source.js";
+import { claimJob, type SyncResult } from "./source.js";
+
 export async function maintenance(
     ctx: Ctx,
     job: "sync" | "cleanup",
@@ -15,21 +15,13 @@ export async function maintenance(
     const results: SyncResult[] = [];
     const jobKey = job === "sync" && yearOffset !== undefined ? `sync:${yearOffset}` : job;
 
-    if (!manual) {
-        const r = await ctx.db.run(
-            "INSERT INTO {calendar_jobs}(job,day,error) VALUES (?,?,NULL) ON CONFLICT(job) DO UPDATE SET day=excluded.day,error=excluded.error WHERE day<excluded.day",
-            jobKey,
-            day,
-        );
-
-        if (!r.changes) {
-            return { ok: true, message: "今天已执行维护", results };
-        }
+    if (!manual && job === "cleanup" && !await claimJob(ctx, jobKey, day)) {
+        return { ok: true, message: "今天已执行维护", results };
     }
 
     try {
-        // Changed sources rebuild the calendar when published. Only daily cleanup
-        // and a manual refresh need to rebuild an unchanged cache.
+        // 数据源变化时在发布阶段重建日历；数据未变时，只有每日清理
+        // 和手动刷新需要重建缓存
         if (job === "sync") {
             const year = +day.slice(0, 4);
 
@@ -39,7 +31,7 @@ export async function maintenance(
                 }
             }
 
-            // Refresh after fetching so a damaged cache cannot prevent its replacement.
+            // 获取数据后再刷新，避免损坏的缓存阻止替换
             if (manual) {
                 await refreshCalendar(ctx, scheduledAt);
             }
@@ -49,7 +41,7 @@ export async function maintenance(
 
         const labels = {
             updated: "已更新",
-            skipped: "未到更新日期",
+            skipped: "无需更新",
             cached: "已有最新数据",
             not_published: "接口暂未提供安排",
             error: "同步失败",
@@ -79,6 +71,7 @@ export async function maintenance(
             day,
             e instanceof Error ? e.message.slice(0, 200) : "maintenance_failed",
         );
+
         return {
             ok: false,
             message: `维护失败：${e instanceof Error ? e.message : String(e)}`,

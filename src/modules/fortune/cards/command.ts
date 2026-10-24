@@ -12,13 +12,15 @@ import { drawCard } from "./draw.js";
 import { userKey, claimCard, markDrawn } from "./store.js";
 import { cardImage } from "./media.js";
 import { errorDetails } from "../../../shared/diagnostics.js";
+
 export async function renderCardCommand({ ctx, session }: CommandInput, name: string): Promise<Rendered> {
     const day = dateAt(Date.now()), id = await userKey(ctx.botId, session.userId);
     const { config, card } = await readCommandState(ctx.db, id);
+    const buttons = config.buttons?.[name === "运势 抽" ? "draw" : "detail"];
     let row = card;
     let fresh: CardSnapshot | undefined;
 
-    if (name === "运势 解" && (row?.day !== day || !row.drawn)) { return { text: config.copy.needDraw }; }
+    if (name === "运势 解" && (row?.day !== day || !row.drawn)) { return { text: config.copy.needDraw, buttons }; }
 
     if (row?.day !== day) {
         const content = drawCard(id, day, config);
@@ -38,14 +40,16 @@ export async function renderCardCommand({ ctx, session }: CommandInput, name: st
             const image = await cardImage(ctx, session.userId, row, view, config.cardDesigns, fresh);
 
             const reply = imageReply(image.url, "运势", 540, height, view === "small" ? config.copy.drawCaption : config.copy.detailCaption, textFallback);
-            return { ...reply, diagnostics: image.diagnostics, afterSend };
+
+            return { ...reply, buttons, diagnostics: image.diagnostics, afterSend };
         } catch (error) {
             const diagnostics = error instanceof CardImageError ? error.diagnostics : errorDetails(error);
             const stage = error instanceof CardImageError ? error.stage : "public_address";
             ctx.logger.warn("运势图片准备失败，使用文字回复", { ...diagnostics, command: name, stage, view });
-            return { text: textFallback(), diagnostics: { ...diagnostics, imagePrepareFailed: true, imagePrepareStage: stage }, afterSend };
+
+            return { buttons, text: textFallback(), diagnostics: { ...diagnostics, imagePrepareFailed: true, imagePrepareStage: stage }, afterSend };
         }
     }
 
-    return { text: textFallback(), afterSend };
+    return { buttons, text: textFallback(), afterSend };
 }

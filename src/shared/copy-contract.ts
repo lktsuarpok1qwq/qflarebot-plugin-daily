@@ -1,18 +1,22 @@
+import { assertMessageButtons, type ButtonConfiguration } from "./message-buttons.js";
 import type { CopyDeclaration, CopyField } from "./declarations.js";
 import { validateCopyText } from "./templates.js";
 import { fields } from "./validation.js";
 
 type Branch = { children: Map<string, Branch>; field?: CopyField; variables?: readonly string[]; keys: string[] };
 export type CopyContract = ReturnType<typeof createCopyContract>;
+
 function object(value: unknown, label: string): Record<string, unknown> {
     if (!value || typeof value !== "object" || Array.isArray(value)) { throw new Error(label + "格式错误"); }
 
     return value as Record<string, unknown>;
 }
+
 export function createCopyContract<Copy extends object>(editor: CopyDeclaration) {
     let compiled: { tree: Branch; fields: { key: string; field: CopyField; variables: string[] }[] } | undefined;
     const fail = (message: string): never => { throw new Error(editor.id + "文案声明：" + message); };
     let checked = false;
+
     function structure() {
         if (compiled) { return compiled; }
 
@@ -29,7 +33,11 @@ export function createCopyContract<Copy extends object>(editor: CopyDeclaration)
 
                 let child = node.children.get(part);
 
-                if (!child) { child = { children: new Map(), keys: [] }; node.children.set(part, child); node.keys.push(part); }
+                if (!child) {
+                    child = { children: new Map(), keys: [] };
+                    node.children.set(part, child);
+                    node.keys.push(part);
+                }
 
                 node = child;
             }
@@ -41,8 +49,10 @@ export function createCopyContract<Copy extends object>(editor: CopyDeclaration)
         }
 
         compiled = { tree, fields };
+
         return compiled;
     }
+
     function prepare() {
         const compiled = structure();
 
@@ -50,11 +60,13 @@ export function createCopyContract<Copy extends object>(editor: CopyDeclaration)
 
         const { fields } = compiled;
         const outputs = new Set<string>(), views = new Set<string>(), samples = new Set<string>();
+
         function unique(set: Set<string>, id: string) {
             if (!id || set.has(id)) { fail("标识为空或重复：" + id); }
 
             set.add(id);
         }
+
         function references(ids: readonly string[], exists: (id: string) => boolean, label: string) {
             if (new Set(ids).size !== ids.length || ids.some((id) => !exists(id))) { fail(label + "引用无效"); }
         }
@@ -115,8 +127,10 @@ export function createCopyContract<Copy extends object>(editor: CopyDeclaration)
         if (!views.has(editor.initial) || fields.some(({ key }) => !usedFields.has(key)) || [...outputs].some((id) => !usedOutputs.has(id))) { fail("初始入口无效或存在未接入的字段、输出"); }
 
         checked = true;
+
         return compiled;
     }
+
     function check(value: unknown, node: Branch, shapeOnly: boolean, root = false) {
         if (node.field) {
             if (shapeOnly) {
@@ -133,11 +147,16 @@ export function createCopyContract<Copy extends object>(editor: CopyDeclaration)
         if (!root) { fields(data, node.keys); }
 
         for (const [key, child] of node.children) {
-            if (!Object.hasOwn(data, key)) { throw new Error(editor.title + "缺少字段：" + (child.field?.label ?? key)); }
+            if (!Object.hasOwn(data, key)) {
+                if (child.field?.optional) { continue; }
+
+                throw new Error(editor.title + "缺少字段：" + (child.field?.label ?? key));
+            }
 
             check(data[key], child, shapeOnly);
         }
     }
+
     return {
         editor,
         assertDeclaration() { prepare(); },
@@ -158,6 +177,19 @@ export function createCopyContract<Copy extends object>(editor: CopyDeclaration)
             return result as Base & Copy;
         },
         validate(value: unknown, shapeOnly = false) {
+            const buttons = (value as ButtonConfiguration)?.buttons;
+
+            if (buttons !== undefined) {
+                const entries = object(buttons, "消息按钮");
+                const allowed = editor.outputs.filter(output => !output.variable).map(output => output.id);
+
+                for (const [key, rows] of Object.entries(entries)) {
+                    if (!allowed.includes(key)) { throw new Error("按钮只能用于已声明的完整消息"); }
+
+                    assertMessageButtons(rows);
+                }
+            }
+
             check(value, (shapeOnly ? structure() : prepare()).tree, shapeOnly, true);
         },
         validateOutputs(scope: { commands?: readonly string[]; variables?: readonly string[] }) {

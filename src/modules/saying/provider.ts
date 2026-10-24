@@ -1,5 +1,6 @@
 import { readJson } from "../../shared/json.js";
 import { str } from "../../shared/validation.js";
+
 export async function randomSaying(fetcher: typeof fetch = fetch): Promise<string> {
     let response: Response;
 
@@ -22,6 +23,7 @@ export async function randomSaying(fetcher: typeof fetch = fetch): Promise<strin
         }
 
         str(data.text, Infinity, "一言内容");
+
         return data.text.trim();
     } catch {
         throw new Error("一言响应无效或读取超时");

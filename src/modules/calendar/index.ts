@@ -10,6 +10,7 @@ import { maintenance } from "./maintenance.js";
 import { api } from "./admin.js";
 import { calendarPage } from "./ui/page.js";
 import { calendarEntries } from "./ui/entries.js";
+
 export const calendar: ModuleDefinition = {
     id: "calendar",
     title: "日历",
@@ -22,9 +23,11 @@ export const calendar: ModuleDefinition = {
         sampleVariables,
         createResolver(ctx) {
             let data: ReturnType<typeof readQueryData> | undefined;
+
             return async (at) => {
                 data ??= readQueryData(ctx.db);
                 const { snapshot, sources } = await data;
+
                 return calendarValues(snapshot.config, sources, at);
             };
         },

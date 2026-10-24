@@ -2,6 +2,7 @@ import { snapshot, saveConfig } from "./data/repository.js";
 import { copyEditor, outputs, settings } from "./content/definition.js";
 import { configAdmin } from "./shared/admin.js";
 import { commandLinks } from "./commands.js";
+
 export const api = configAdmin({
     label: "系统", snapshot, save: saveConfig,
     present: (state) => state,

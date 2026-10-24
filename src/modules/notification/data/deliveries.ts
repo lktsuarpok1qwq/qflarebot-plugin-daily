@@ -7,8 +7,8 @@ export const deliveryKey = (d: Pick<Due, "task_id" | "recipient_id" | "due_at"> 
     d.key ?? `${d.task_id}:${d.recipient_id}:${d.due_at}`;
 
 export async function due(db: PluginDB, now: number) {
-    // Read all active cursors, so an outage's expired backlog cannot starve live work.
-    // Old interrupted manual requests are bounded; subsequent minutes drain them.
+    // 读取所有活动游标，避免故障积压的过期任务阻塞当前任务
+    // 中断的人工请求按上限处理，剩余部分由后续分钟继续处理
     return db.all<Due>(
         `SELECT b.id,b.task_id,b.recipient_id,b.due_at,b.revision,d.status,d.claimed_at,d.key AS key
     FROM {bindings} b LEFT JOIN {deliveries} d ON d.key=b.task_id||':'||b.recipient_id||':'||b.due_at
@@ -23,6 +23,7 @@ export async function due(db: PluginDB, now: number) {
         LIMITS.bindings * 2,
     );
 }
+
 export type Claim = {
     d: Due;
     status: DeliveryStatus;
@@ -30,7 +31,8 @@ export type Claim = {
     details: unknown;
     error: string | null;
 };
-// Configuration guards the rendered snapshot; binding revisions guard each schedule.
+
+// 配置版本保护渲染快照，绑定版本保护各自的排程
 export async function claimMany(db: PluginDB, claims: Claim[], configRevision: number): Promise<Set<string>> {
     if (!claims.length) {
         return new Set();
@@ -49,7 +51,7 @@ export async function claimMany(db: PluginDB, claims: Claim[], configRevision: n
         })),
         1_900_000,
     );
-    // D1 limits each bound value to 2 MB; all chunks share one atomic claim transaction.
+    // 每个绑定值受 D1 大小限制，各分块共用一次原子认领事务
     const result = await db.batch<{ key: string }>(chunks.map((data) => ({
         sql: `${jsonRows} INSERT OR IGNORE INTO {deliveries}(key,task_id,recipient_id,due_at,revision,status,claimed_at,updated_at,details,error)
       SELECT ${jx("key")},b.task_id,b.recipient_id,b.due_at,b.revision,${jx("status")},${jx("now")},${jx("now")},${jx("details")},${jx("error")}
@@ -57,8 +59,10 @@ export async function claimMany(db: PluginDB, claims: Claim[], configRevision: n
       WHERE b.enabled=1 AND b.due_at=${jx("due")} AND b.revision=${jx("revision")} AND s.revision=? RETURNING key`,
         params: [data, configRevision],
     })));
+
     return new Set(result.flatMap((chunk) => chunk.results.map((r) => r.key)));
 }
+
 export type Outcome = {
     d: Due;
     status: DeliveryStatus;
@@ -67,6 +71,7 @@ export type Outcome = {
     error?: string | null;
     messageId?: string | null;
 };
+
 export async function finishMany(db: PluginDB, outcomes: Outcome[]) {
     if (!outcomes.length) {
         return;
@@ -86,7 +91,7 @@ export async function finishMany(db: PluginDB, outcomes: Outcome[]) {
     const chunks = jsonChunks(rows, 500_000, 25);
     const scheduled = rows.filter((row) => row.id !== null);
     const bindingChunks = scheduled.length === rows.length ? chunks : jsonChunks(scheduled, 500_000, 25);
-    // Materialize parsed outcomes once per statement; correlated lookups reuse the rows.
+    // 每条语句只展开一次已解析结果，关联查询复用这些行
     const records = `${jsonRows}, records AS MATERIALIZED (SELECT ${["key", "id", "due", "revision", "status", "now", "next", "error", "messageId"].map((k) => `${jx(k)} AS ${k}`).join(",")} FROM idx CROSS JOIN input)`;
     const statements: DBStatement[] = [];
 
@@ -97,7 +102,7 @@ export async function finishMany(db: PluginDB, outcomes: Outcome[]) {
         });
     }
 
-    // Manual tests and detached claims have no schedule to advance.
+    // 人工测试和已脱离排程的认领无需推进排程
     for (const data of bindingChunks) {
         statements.push({
             sql: `${records} UPDATE {bindings} AS b SET last_due=MAX(COALESCE(last_due,0),due_at),due_at=(SELECT next FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision) WHERE b.id IN (SELECT id FROM records) AND EXISTS(SELECT 1 FROM records WHERE id=b.id AND due=b.due_at AND revision=b.revision)`,

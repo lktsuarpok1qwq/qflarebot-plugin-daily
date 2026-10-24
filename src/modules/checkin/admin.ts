@@ -1,7 +1,8 @@
 import { configAdmin } from "../../shared/admin.js";
 import { copyContract, settings } from "./definition.js";
 import { snapshot, save } from "./repository.js";
-import { wallet, SOURCE } from "./service.js";
+import { wallet, SOURCE } from "./reward.js";
+
 export const api = configAdmin({
     label: "签到", snapshot, save, present: state => state, declaration: () => ({ settings, copyEditor: copyContract.editor }),
     actions: {

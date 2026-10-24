@@ -1,12 +1,14 @@
 import type { FortuneCopy } from "../copy.js";
 import { LEVELS, RARITIES } from "../types.js";
 import type { FortuneCardLabels } from "./types.js";
+
 export function cardLabels(copy: FortuneCopy): FortuneCardLabels {
     return {
         levels: Object.fromEntries(Object.keys(LEVELS).map(level => [level, copy[`level_${level as keyof typeof LEVELS}`]])) as FortuneCardLabels["levels"],
         rarities: Object.fromEntries(RARITIES.map(rarity => [rarity, copy[`rarity_${rarity}`]])) as FortuneCardLabels["rarities"]
     };
 }
+
 export function validateCardLabels(copy: FortuneCopy) {
     const labels = cardLabels(copy);
 

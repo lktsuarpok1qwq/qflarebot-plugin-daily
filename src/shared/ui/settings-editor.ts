@@ -3,25 +3,31 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
     const { $, esc, btn } = ui;
     let drafts = {};
     const settings = () => declaration();
+
     function renderFields(fields) {
-        return '<div class="grid">' + fields.map((field) => {
+        return '<div class="setting-fields">' + fields.map((field) => {
             const value = field.secret ? drafts[field.key] || '' : drafts[field.key] ?? app.config[field.key];
             let input;
 
             if (field.type === 'checkbox') {
-                input = ui.check(esc(field.label), field.id, value);
+                input = '<input id="' + esc(field.id) + '" type="checkbox"' + (value ? ' checked' : '') + '>';
+            } else if (field.type === 'textarea') {
+                input = '<textarea id="' + esc(field.id) + '" rows="6"' + ui.fieldConstraints(field) + '>' + esc(value) + '</textarea>';
             } else if (field.type === 'select') {
-                input = '<label>' + esc(field.label) + '<select id="' + esc(field.id) + '">' + ui.options(field.options, String(value)) + '</select></label>';
+                input = '<select id="' + esc(field.id) + '">' + ui.options(field.options, String(value)) + '</select>';
             } else {
-                input = '<label>' + esc(field.label) + '<input id="' + esc(field.id) + '" type="' + field.type + '" value="' + esc(value) + '"' +
-                    (field.type === 'number' && field.step !== undefined ? ' step="' + esc(field.step) + '"' : '') +
+                input = '<input id="' + esc(field.id) + '" type="' + field.type + '" value="' + esc(value) + '"' +
+                    ui.fieldConstraints({ ...field, ...(field.type === 'number' ? { required: true, step: field.step ?? 'any' } : {}) }) +
                     (field.type === 'password' ? ' autocomplete="new-password"' : '') +
-                    (field.secret ? ' placeholder="' + esc(app.state[field.secret.saved] ? '已保存，留空保留' : '填写 ' + field.label) + '"' : '') + '></label>';
+                    (field.secret ? ' placeholder="' + esc(app.state[field.secret.saved] ? '已保存，留空保留' : '填写 ' + field.label) + '"' : '') + '>';
             }
 
-            return '<div>' + input + (field.hint ? '<small>' + esc(field.hint) + '</small>' : '') + '</div>';
+            input = input.replace(/<(input|select|textarea) /, '<$1 aria-describedby="' + esc(field.id) + '-hint" ');
+
+            return '<div class="setting-field' + (field.type === 'checkbox' ? ' setting-check' : '') + '"><div class="setting-meta"><label for="' + esc(field.id) + '"' + (field.type === 'checkbox' ? ' class="check"' : '') + '>' + esc(field.label) + '</label><small id="' + esc(field.id) + '-hint">' + esc(field.hint || '') + '</small></div><div class="setting-control">' + input + '</div></div>';
         }).join('') + '</div>';
     }
+
     function render() {
         const d = settings(), groups = new Map();
 
@@ -36,12 +42,14 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
         const content = groups.size > 1
             ? Array.from(groups, ([title, fields]) => '<fieldset><legend>' + esc(title) + '</legend>' + renderFields(fields) + '</fieldset>').join('')
             : renderFields(d.fields);
+
         return '<section><h2>' + esc(d.title) + '</h2>' + (d.description ? '<p>' + esc(d.description) + '</p>' : '') +
             (d.link ? '<p><a href="' + esc(d.link.url) + '" target="_blank" rel="noopener noreferrer">' + esc(d.link.label) + '</a></p>' : '') +
-            content + '<div class="actions">' + btn('保存', 'save-' + d.id, '', 'primary') + btn('取消', 'cancel-' + d.id) +
+            content + '<div class="actions">' + btn('保存', 'save-' + d.id, '', 'primary') + btn('撤销修改', 'cancel-' + d.id) +
             (d.test ? btn('测试连接', d.test.action) : '') + '</div>' +
             (d.test ? '<p id="' + d.test.resultId + '" role="status" class="muted">' + esc(d.test.hint) + '</p>' : '') + '</section>';
     }
+
     function candidate() {
         const config = structuredClone(app.config);
 
@@ -49,15 +57,27 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
             if (field.secret) {
                 config[field.key] = (drafts[field.key] || '').trim();
             } else if (Object.hasOwn(drafts, field.key)) {
-                config[field.key] = typeof drafts[field.key] === 'string' ? drafts[field.key].trim() : drafts[field.key];
+                config[field.key] = typeof drafts[field.key] === 'string' && field.type !== 'textarea' ? drafts[field.key].trim() : drafts[field.key];
             }
         }
 
         return config;
     }
+
     function reset() { drafts = {}; }
+
     async function action(a) {
         const d = settings();
+
+        if (a === 'save-' + d.id || d.test && a === d.test.action) {
+            const invalid = ui.validateFields(d.fields.filter(field => field.type !== 'checkbox').map(field => field.id));
+
+            if (invalid) {
+                app.focus(invalid);
+
+                return;
+            }
+        }
 
         if (d.test && a === d.test.action) {
             const result = $(d.test.resultId);
@@ -76,9 +96,23 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
         } else if (a === 'save-' + d.id) {
             app.config = candidate();
 
-            await app.save(undefined, reset);
+            try {
+                await app.save(undefined, reset);
+            } catch (error) {
+                const field = d.fields.find(field => error.message.includes(field.label));
+
+                if (error.kind === 'validation' && field) {
+                    ui.fieldError(field.id, error.message);
+                    app.focus(field.id);
+
+                    return;
+                }
+
+                throw error;
+            }
         }
     }
+
     function input(el) {
         const d = settings(), field = d.fields.find((field) => field.id === el.id);
 
@@ -91,6 +125,11 @@ function createSettingsEditor(app, ui, declaration = () => app.state.settings) {
             $(d.test.resultId).className = 'muted';
         }
     }
-    return { render, action, input, change: input, reset, get discardActions() { return ['cancel-' + settings().id]; } };
+
+    const isDirty = () => settings().fields.some(field => field.secret
+        ? Boolean((drafts[field.key] || '').trim())
+        : Object.hasOwn(drafts, field.key) && String(drafts[field.key]) !== String(app.state.config[field.key]));
+
+    return { render, action, input, change: input, reset, isDirty, candidate, get discardActions() { return ['cancel-' + settings().id]; } };
 }
 `;

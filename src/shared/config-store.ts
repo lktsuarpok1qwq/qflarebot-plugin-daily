@@ -1,20 +1,25 @@
 import { AdminError, validateInput } from "./admin-errors.js";
 import type { PluginDB } from "@qqbot/sdk";
 import type { Ctx } from "./types.js";
+
 export type ConfigState<T> = { revision: number; config: T };
+
 export function createConfigStore<T>(options: { table: string; label: string; defaults: () => T; parse: (raw: string) => T; validate: (value: unknown) => T }) {
     if (!/^[a-z][a-z0-9_]*$/.test(options.table)) { throw new Error("配置表名无效"); }
 
-    // Keep the persisted value independent of in-place edits; snapshots are not retained globally.
+    // 持久化值与原地编辑隔离，快照不保存在全局状态中
     const originals = new WeakMap<ConfigState<T>, string>();
     const table = "{" + options.table + "}";
+
     function decode(row: { revision: number; config: string } | null | undefined): ConfigState<T> {
         if (!row) { throw new Error(options.label + "尚未初始化"); }
 
         const state = { revision: row.revision, config: options.parse(row.config) };
         originals.set(state, row.config);
+
         return state;
     }
+
     return {
         decode,
         async install(ctx: Ctx) {

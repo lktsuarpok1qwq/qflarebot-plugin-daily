@@ -1,8 +1,8 @@
-// json_each is intentionally not used: the SDK's SQL scope checker rejects it.
+// SDK 的 SQL 作用域检查不接受 json_each，因此不使用它
 export const jsonRows = `WITH RECURSIVE input(data) AS (SELECT ?), idx(i) AS (SELECT 0 FROM input WHERE json_array_length(data)>0 UNION ALL SELECT i+1 FROM idx CROSS JOIN input WHERE i+1<json_array_length(data))`;
 export const jx = (key: string) => `json_extract(data, '$[' || i || '].${key}')`;
 
-/** Bound each D1 value independently; all chunks remain in one batch transaction. */
+/** 分别限制每个 D1 绑定值的大小，所有分块仍在同一批事务中执行 */
 export function jsonChunks(rows: readonly unknown[], maxBytes = 500_000, maxRows = Infinity): string[] {
     const chunks: string[] = [];
     let items: string[] = [],

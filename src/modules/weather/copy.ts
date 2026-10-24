@@ -1,4 +1,5 @@
 import { commandLink } from "../../shared/interpolation.js";
+
 export const WEATHER_COPY = {
     help: "🌤️ **天气查询**\n\n📍 想了解哪里的天气？\n" + commandLink("✏️ 输入城市", "/天气 ", false) + "\n\n💡 试试看：" + commandLink("/天气 北京", "/天气 北京") + " · " + commandLink("/天气 悉尼", "/天气 悉尼") + "\n输入城市名称或地点编号，就能查询\n\n" + commandLink("🏠 每日助手", "/每日"),
     current:

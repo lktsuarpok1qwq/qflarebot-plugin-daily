@@ -9,6 +9,7 @@ import { validateRoutes } from "./routes.js";
 import type { CardBinding } from "./cards/store.js";
 import { cardAdminRoutes } from "./cards/admin.js";
 import { prepareFont, readAsset } from "./cards/assets.js";
+
 export type ModuleServices = { variables: VariableAPI };
 export type ModuleDefinition = {
     id: string;
@@ -25,10 +26,12 @@ export type ModuleDefinition = {
     cron?: Record<string, Omit<CronJob, "name" | "handler"> & { handler: (input: Parameters<CronJob["handler"]>[0], services: ModuleServices) => ReturnType<CronJob["handler"]> }>;
     routes?: readonly Route[];
     admin?: (input: RouteInput, services: ModuleServices) => ReturnType<Route["handler"]>;
-    ui?: { source?: string } & ({ factory: string; sections?: never } | { sections: readonly { id: string; title: string; factory: string }[]; factory?: never });
+    ui?: { source?: string; checkState?: string } & ({ factory: string; sections?: never } | { sections: readonly { id: string; title: string; factory: string }[]; factory?: never });
 };
+
 export function createModules(modules: readonly ModuleDefinition[], reserved: { pages?: readonly string[]; commands?: readonly string[] } = {}) {
     const ids = new Set(reserved.pages), commands = new Set(reserved.commands), jobs = new Set<string>(), keys = new Set(["日期", "星期"]);
+
     function unique(seen: Set<string>, value: string, kind: string) {
         if (seen.has(value)) { throw new Error(kind + "重复：" + value); }
 
@@ -119,7 +122,10 @@ export function createModules(modules: readonly ModuleDefinition[], reserved: { 
         async install(ctx: Ctx) {
             if (cleanup.length || images) { await installMaintenance(ctx.db); }
 
-            for (const module of modules) { module.copy?.assertDeclaration(); await module.install?.(ctx); }
+            for (const module of modules) {
+                module.copy?.assertDeclaration();
+                await module.install?.(ctx);
+            }
 
             if (hasCards) {
                 for (const weight of [400, 700]) { await prepareFont(ctx, weight); }

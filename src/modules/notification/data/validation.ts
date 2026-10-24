@@ -1,8 +1,10 @@
+import { assertMessageButtons } from "../../../shared/message-buttons.js";
 import { fields, list, str, bool } from "../../../shared/validation.js";
 import type { Config } from "../types.js";
 import { LIMITS, SCHEMA_VERSION, RETENTION_DAYS } from "../types.js";
 import { validDate } from "../../../shared/date.js";
 import { validateCopyText } from "../../../shared/templates.js";
+
 const FIELDS = {
     config: [
         "schemaVersion",
@@ -14,10 +16,11 @@ const FIELDS = {
         "bindings",
     ],
     recipients: ["id", "scene", "openid", "name", "enabled", "botId"],
-    templates: ["id", "name", "body"],
+    templates: ["id", "name", "body", "buttons"],
     tasks: ["id", "name", "enabled", "origin", "schedule", "templateId"],
     bindings: ["taskId", "recipientId"],
 } as const;
+
 function ids(items: { id: string }[]) {
     const set = new Set<string>();
 
@@ -33,6 +36,7 @@ function ids(items: { id: string }[]) {
 
     return set;
 }
+
 export function validateConfig(value: unknown, variables: readonly string[]): Config {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         throw new Error("配置必须为对象");
@@ -58,6 +62,9 @@ export function validateConfig(value: unknown, variables: readonly string[]): Co
     for (const template of c.templates) {
         fields(template, FIELDS.templates);
         str(template.name, 80, "模板名称");
+
+        if (template.buttons !== undefined) { assertMessageButtons(template.buttons); }
+
         validateCopyText(template.body, { label: "模板内容", variables, allowEmpty: true });
     }
 

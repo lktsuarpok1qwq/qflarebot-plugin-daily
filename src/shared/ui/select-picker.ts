@@ -1,11 +1,13 @@
 export const selectPicker = String.raw`
 function createSelectPicker() {
     let active, frame;
+
     function release() {
         cancelAnimationFrame(frame);
         active?.parentElement?.classList.remove('picker-open');
         active = undefined;
     }
+
     function checkClosed() {
         if (!active) { return; }
 
@@ -14,10 +16,12 @@ function createSelectPicker() {
             if (active && (!active.isConnected || !active.matches(':open'))) { release(); }
         });
     }
+
     function prepare(el) {
-        if (!el || el.disabled || !el.parentElement.classList.contains('select-picker-slot') || el.matches(':open')) { return; }
+        if (!el || el.disabled || el.multiple || el.hasAttribute('size') || el.matches(':open')) { return; }
 
         release();
+        wrap(el);
         const rect = el.getBoundingClientRect(), slot = el.parentElement;
 
         for (const [key, value] of Object.entries({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })) {
@@ -28,6 +32,16 @@ function createSelectPicker() {
         slot.classList.add('picker-open');
         checkClosed();
     }
+
+    function wrap(el) {
+        if (el.parentElement.classList.contains('select-picker-slot')) { return; }
+
+        const slot = document.createElement('span');
+        slot.className = 'select-picker-slot';
+        el.replaceWith(slot);
+        slot.append(el);
+    }
+
     document.addEventListener('pointerdown', (event) => {
         prepare(event.target.closest('select'));
         checkClosed();
@@ -44,18 +58,12 @@ function createSelectPicker() {
 
     window.addEventListener('blur', release);
     window.addEventListener('resize', release);
+
     return {
         refresh() {
             release();
 
-            for (const el of document.querySelectorAll('#app select:not([multiple]):not([size])')) {
-                if (el.parentElement.classList.contains('select-picker-slot')) { continue; }
-
-                const slot = document.createElement('span');
-                slot.className = 'select-picker-slot';
-                el.replaceWith(slot);
-                slot.append(el);
-            }
+            for (const el of document.querySelectorAll('#app select:not([multiple]):not([size])')) { wrap(el); }
         },
     };
 }

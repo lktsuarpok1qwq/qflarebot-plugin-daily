@@ -3,6 +3,7 @@ import type { Config, Task } from "../types.js";
 import { expand } from "../../../shared/interpolation.js";
 import { validateTemplate } from "../../../shared/templates.js";
 import type { VariableAPI } from "../../../shared/variables.js";
+
 export async function renderMessage(
     task: Pick<Task, "templateId">,
     config: Config,
@@ -20,5 +21,6 @@ export async function renderMessage(
     const keys = [...validateTemplate(body, keysAllowed)];
     const values = await resolve(keys, due);
     const text = expand(body, {}, values);
-    return { text: text.trim() ? text : "" };
+
+    return { text: text.trim() ? text : "", buttons: template.buttons };
 }

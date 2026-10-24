@@ -8,6 +8,8 @@ import { tasksPage } from "./ui/tasks.js";
 import { recipientsPage } from "./ui/recipients.js";
 import { copyTemplates } from "./ui/copy-templates.js";
 import { recordsPage } from "./ui/records.js";
+import { notificationValidation } from "./ui/validation.js";
+
 export const notification: ModuleDefinition = {
     id: "notification",
     permissions: ["db", "proactive"],
@@ -19,7 +21,7 @@ export const notification: ModuleDefinition = {
     },
     admin: (input, { variables }) => api(input, variables),
     ui: {
-        get source() { return [notificationPage, tasksPage, recipientsPage, copyTemplates, recordsPage].join("\n"); },
-        factory: "createNotificationPage",
+        get source() { return [notificationValidation, notificationPage, tasksPage, recipientsPage, copyTemplates, recordsPage].join("\n"); },
+        factory: "createNotificationPage", checkState: "checkNotificationState",
     },
 };

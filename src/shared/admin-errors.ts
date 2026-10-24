@@ -3,7 +3,8 @@ export class AdminError extends Error {
         super(message);
     }
 }
-// Only wrap synchronous input checks performed before persistence.
+
+// 仅包装持久化之前执行的同步输入校验
 export function validateInput<T>(validate: () => T): T {
     try {
         return validate();

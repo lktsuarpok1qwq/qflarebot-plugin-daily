@@ -1,5 +1,6 @@
 import type { SendResult } from "@qqbot/sdk";
 import type { Outcome } from "../data/deliveries.js";
+
 export function resultStatus(result: SendResult): Pick<Outcome, "status" | "error" | "messageId"> {
     return {
         status: result.ok ? "success" : result.status === 0 || result.status >= 500 ? "uncertain" : "failed_api",

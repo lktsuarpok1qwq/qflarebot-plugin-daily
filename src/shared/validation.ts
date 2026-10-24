@@ -3,6 +3,7 @@ export function fields(value: object, allowed: readonly string[]) {
         throw new Error("配置包含不支持的字段");
     }
 }
+
 export function list(value: unknown, max: number, label: string): asserts value is Record<string, unknown>[] {
     if (
         !Array.isArray(value) ||
@@ -12,6 +13,7 @@ export function list(value: unknown, max: number, label: string): asserts value 
         throw new Error(`${label}格式错误或超过 ${max} 条`);
     }
 }
+
 export function str(value: unknown, max: number, label: string, empty = false): asserts value is string {
     if (
         typeof value !== "string" ||
@@ -22,6 +24,7 @@ export function str(value: unknown, max: number, label: string, empty = false): 
         throw new Error(`${label}格式或长度错误`);
     }
 }
+
 export function bool(value: unknown) {
     if (typeof value !== "boolean") {
         throw new Error("启用状态必须为布尔值");

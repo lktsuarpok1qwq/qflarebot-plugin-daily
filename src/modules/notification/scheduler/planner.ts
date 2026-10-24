@@ -1,8 +1,10 @@
 import type { Plan, Schedule } from "../types.js";
 import { dateAt, validDate, at, addDays } from "../../../shared/date.js";
+
 export function nextPlan(s: Schedule, after: number): Plan | null {
     if (s.kind === "once") {
         const due = at(s.date, s.time);
+
         return due > after ? { due } : null;
     }
 

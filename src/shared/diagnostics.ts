@@ -1,6 +1,8 @@
 export type Diagnostics = Record<string, string | number | boolean | null>;
+
 export function errorDetails(error: unknown): Diagnostics {
     const detail = error && typeof error === "object" ? error as Record<string, unknown> : {};
+
     return {
         error: String(error), errorName: error instanceof Error ? error.name : null,
         status: typeof detail.status === "number" ? detail.status : null,

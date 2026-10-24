@@ -7,7 +7,8 @@ function createNotificationPage(app, ui) {
         records: { label: "记录", create: () => createNotificationRecords(app, ui) },
     });
     const render = sections.render;
-    sections.render = () => (app.config.paused ? '<p class="notice">通知已暂停，查询和维护照常运行</p>' : '') + render();
+    sections.render = () => (app.config?.paused ? '<p class="notice">通知已暂停，查询和维护照常运行</p>' : '') + render();
+
     return sections;
 }
 `;

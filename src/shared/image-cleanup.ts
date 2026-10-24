@@ -1,6 +1,8 @@
 import type { Ctx } from "./types.js";
 import { dateAt } from "./date.js";
+
 export type ImageCleanup = { id: string; run: (ctx: Ctx, scheduledAt: number) => Promise<void> };
+
 export function imageCleanupJobs(modules: readonly ImageCleanup[]) {
     return async (ctx: Ctx, scheduledAt: number) => {
         const result = await ctx.db.run(

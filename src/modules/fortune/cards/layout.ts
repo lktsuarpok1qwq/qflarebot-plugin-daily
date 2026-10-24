@@ -1,4 +1,5 @@
 import type { CardRegion } from "../../../shared/cards/types.js";
+
 export type CardLayout = "small" | "detail" | "egg";
 type DefaultRegion = Omit<CardRegion, "color"> & { color: "text" | "muted" | "good" | "rarity" | "accent" };
 const small: Readonly<Record<string, DefaultRegion>> = {

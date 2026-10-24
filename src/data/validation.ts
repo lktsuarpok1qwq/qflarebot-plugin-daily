@@ -1,14 +1,16 @@
 import { fields } from "../shared/validation.js";
 import { imageOrigin } from "../shared/public-origin.js";
-const SCHEMA_VERSION = 1;
 import { BODY_BYTES } from "../shared/types.js";
 import { type Config } from "../types.js";
 import { copyContract } from "../content/definition.js";
+
+const SCHEMA_VERSION = 1;
+
 export function validateConfig(value: unknown): Config {
     if (!value || typeof value !== "object" || Array.isArray(value)) { throw new Error("配置必须为对象"); }
 
     const c = value as Config;
-    fields(c, ["schemaVersion", "replies", "commandFeedback", "imagePublicUrl"]);
+    fields(c, ["schemaVersion", "buttons", "replies", "commandFeedback", "imagePublicUrl"]);
 
     if (c.schemaVersion !== SCHEMA_VERSION) { throw new Error("不支持的 schemaVersion"); }
 

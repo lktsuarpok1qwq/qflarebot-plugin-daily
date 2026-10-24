@@ -1,6 +1,7 @@
 import type { CalendarConfig, CalendarEvent, Source } from "./types.js";
 import { dateAt, DAY, validDate, addDays } from "../../shared/date.js";
 import { FESTIVALS, matchesFestival, validateYear } from "./year-data.js";
+
 function automaticEvents(sources: Source[]): CalendarEvent[] {
     const rows: CalendarEvent[] = [],
         references: CalendarEvent[] = [];
@@ -51,18 +52,21 @@ function automaticEvents(sources: Source[]): CalendarEvent[] {
         }
     }
 
-    // References never participate in grouping legal rows.
+    // 参考日期不参与法定假期条目的分组
     return [...rows, ...references];
 }
-// Match a festival across reference/formal replacement and corrected start dates.
+
+// 在参考日期替换为正式安排或开始日期修正后匹配同一节日
 function sameFestival(a: CalendarEvent, b: CalendarEvent): boolean {
     const identity = (h: CalendarEvent) => {
         const reference = /^uapi-reference-\d{4}-\d{2}-\d{2}-(\d+)$/.exec(h.id);
+
         return reference
             ? [FESTIVALS[Number(reference[1])]].filter(Boolean)
             : FESTIVALS.filter((f) => matchesFestival(h.name, f));
     };
     const year = (h: CalendarEvent) => /^uapi-(?:holiday|reference)-(\d{4})-/.exec(h.id)?.[1] ?? h.start.slice(0, 4);
+
     return (
         a.kind !== "makeup" &&
         b.kind !== "makeup" &&
@@ -70,7 +74,8 @@ function sameFestival(a: CalendarEvent, b: CalendarEvent): boolean {
         (a.name === b.name || identity(a).some((f) => identity(b).includes(f)))
     );
 }
-/** Expand yearly definitions only for the queried years; never persist occurrences. */
+
+/** 仅按查询年份展开每年重复定义，不持久化展开结果 */
 export function activeEvents(config: CalendarConfig, year = +dateAt(Date.now()).slice(0, 4)): CalendarEvent[] {
     const events = config.events.flatMap((h) => {
         if (h.repeat !== "yearly") {
@@ -80,8 +85,8 @@ export function activeEvents(config: CalendarConfig, year = +dateAt(Date.now()).
         const first = Math.max(year, +h.start.slice(0, 4));
         const occurrences: CalendarEvent[] = [];
 
-        // Two occurrences suffice for this year and the next event. Leap-day events
-        // skip invalid years (including century years such as 2100).
+        // 两次展开即可覆盖今年和下次事件；闰日事件
+        // 跳过无效年份，包括 2100 这样的非闰世纪年
         for (let y = first; y <= Math.min(2199, first + 8) && occurrences.length < 2; y++) {
             const date = `${y}-${h.start.slice(5)}`;
 
@@ -94,7 +99,8 @@ export function activeEvents(config: CalendarConfig, year = +dateAt(Date.now()).
     });
     const manual = events.filter((h) => h.source === "manual");
     const formal = events.filter((h) => h.kind === "holiday");
-    // A manual date overrides that date, without removing the rest of a holiday.
+
+    // 人工修改仅覆盖指定日期，不移除同一假期的其他日期
     return events
         .flatMap((h) => {
             if (h.kind === "reference") {
@@ -148,6 +154,7 @@ export function activeEvents(config: CalendarConfig, year = +dateAt(Date.now()).
         })
         .filter((h) => h.enabled);
 }
+
 export function refreshEvents(config: CalendarConfig, sources: Source[], now: number) {
     const year = +dateAt(now).slice(0, 4);
     const manual = config.events.filter((h) => h.source === "manual");
@@ -155,7 +162,7 @@ export function refreshEvents(config: CalendarConfig, sources: Source[], now: nu
     const lower = `${year}-01-01`;
     const automatic = automaticEvents(sources.filter((s) => s.year <= year + 1));
 
-    // Retain the known start of a still-active cross-year break after its old source is removed.
+    // 移除过期数据源后，保留仍在进行的跨年假期的已知开始日期
     for (const old of config.events.filter((h) => h.source === "uapi" && h.start < lower && h.end >= lower)) {
         const current = automatic.find(
             (h) => h.kind === old.kind && h.name === old.name && h.start <= old.end && h.end >= lower,
@@ -180,7 +187,7 @@ export function refreshEvents(config: CalendarConfig, sources: Source[], now: nu
         .sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
 }
 
-/** Drop one manual override and rebuild from the latest cached interface data. */
+/** 移除一条人工覆盖，并根据最新接口缓存重建 */
 export function restoreEvent(config: CalendarConfig, sources: Source[], id: string, now: number) {
     const holiday = config.events.find((h) => h.id === id);
     const year = /^uapi-(?:holiday|makeup|reference)-(\d{4})-/.exec(id)?.[1];
@@ -200,8 +207,8 @@ export function restoreEvent(config: CalendarConfig, sources: Source[], id: stri
         throw new Error("没有可恢复的年度缓存，请先同步数据");
     }
 
-    // New IDs/formal replacements already entered config during synchronization.
-    // Restore this ID (or its surviving cross-year part), leaving other rows alone.
+    // 新增标识及正式替换条目已在同步时写入配置
+    // 恢复当前标识对应的条目或其跨年剩余部分，保留其他条目
     const originals = defaults.filter((h) => h.id === id || sameFestival(h, holiday));
 
     if (!originals.length && crossYear) {

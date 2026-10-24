@@ -1,30 +1,28 @@
 export const markdownPreview = String.raw`
-function createMarkdownPreview(ui) {
+function createMarkdownPreview(ui, afterPaint) {
     const { $, markdown } = ui;
     let timer, activeId;
-    const desktop = matchMedia("(min-width: 900px)");
+    let observed;
+    const observer = new ResizeObserver(([entry]) => {
+        const workspace = entry.target.closest('.markdown-workspace');
+        const height = entry.target.getBoundingClientRect().height;
+
+        if (workspace && height > 0) { workspace.style.setProperty('--editor-height', height + 'px'); }
+    });
+
     function eligible(el) {
-        return (
-            el?.matches("textarea") &&
-            !el.closest("[hidden]") &&
-            document.querySelector('[data-markdown-for="' + CSS.escape(el.id) + '"]')
-        );
+        return el?.matches('textarea') && !el.closest('[hidden]') && document.querySelector('[data-markdown-for="' + CSS.escape(el.id) + '"]');
     }
-    function place(el, panel) {
-        const workspace = el.closest(".markdown-workspace");
 
-        if (desktop.matches) {
-            if (panel.parentElement !== workspace) {
-                workspace.append(panel);
-            }
-        } else if ($(el.id + "-error").nextElementSibling !== panel) {
-            $(el.id + "-error").after(panel);
+    function observe(el) {
+        if (observed === el) { return; }
 
-            if (document.activeElement === el) {
-                el.scrollIntoView({ block: "nearest" });
-            }
-        }
+        observer.disconnect();
+        observed = el;
+        observer.observe(el);
+        el.closest('.markdown-workspace').style.setProperty('--editor-height', el.getBoundingClientRect().height + 'px');
     }
+
     function paint(el) {
         const box = $("markdownPreview");
 
@@ -32,7 +30,7 @@ function createMarkdownPreview(ui) {
             return;
         }
 
-        place(el, box.closest(".local-preview"));
+        observe(el);
         activeId = el.id;
         $("markdownPreviewLabel").textContent =
             [...(el.labels?.[0]?.childNodes || [])]
@@ -44,12 +42,15 @@ function createMarkdownPreview(ui) {
         if (box.closest("[hidden]")) { return; }
 
         box.innerHTML = el.value ? markdown(el.value) : '<span class="muted">暂无内容</span>';
+        afterPaint();
     }
+
     function refresh() {
         clearTimeout(timer);
         const el = $(activeId) || null;
         paint(eligible(el) ? el : [...document.querySelectorAll("#app textarea")].find(eligible));
     }
+
     function input(el) {
         if (!eligible(el)) {
             return;
@@ -66,13 +67,14 @@ function createMarkdownPreview(ui) {
             }
         }, 200);
     }
+
     function focus(el) {
         if (eligible(el) && activeId !== el.id) {
             clearTimeout(timer);
             paint(el);
         }
     }
-    desktop.addEventListener("change", refresh);
+
     return { refresh, input, focus };
 }
 `;

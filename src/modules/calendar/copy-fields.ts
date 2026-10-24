@@ -1,4 +1,5 @@
 import type { VariableComposition } from "../../shared/variables.js";
+
 const rawVariables = {
     name: "当前条目的节日名称", date: "单日条目日期，多日条目为空", start: "放假开始日期", end: "放假结束日期",
     days_until: "距开始天数，正在经历为 0", days_off: "已知放假天数", source: "数据来源",
@@ -9,6 +10,7 @@ export const itemVariables = { ...rawVariables, ...fragmentVariables };
 const queryVariables = { ...rawVariables, date_text: fragmentVariables.date_text, status: fragmentVariables.status, makeup_text: fragmentVariables.makeup_text };
 const todayVariables = { ...rawVariables, today_text: fragmentVariables.today_text };
 export const calendarCopyVariables = {
+    summarySeparator: [], todaySeparator: [],
     summary: Object.keys(queryVariables), today: Object.keys(todayVariables), help: ["year", "today"],
     dateRange: ["name", "start", "end", "days_off"], dateSingle: ["name", "date", "days_off"], dateReference: ["name", "date"], dateEvent: ["name", "date"],
     upcoming: ["name", "days_until"], starts: ["name"], ongoing: ["name"], ends: ["name"], onDay: ["name"],
@@ -23,12 +25,12 @@ export const fragmentCompositions: Record<string, VariableComposition> = {
     today_text: { description: "按条目类型生成当天放假、调休或节日说明", scope: "这些字段可在当前日历条目模板中直接使用", fields: { name: rawVariables.name } },
 };
 export const queryComposition: VariableComposition = {
-    description: "每个节日使用同一份查询条目模板，多个条目按日期排序直接拼接，间隔由条目模板中的换行决定",
+    description: "每个节日使用同一份查询条目模板，多个条目按日期排序，使用查询条目间隔连接",
     scope: "以下字段仅在日历查询条目模板中使用，不能直接放进通知正文",
     fields: queryVariables,
 };
 export const todayComposition: VariableComposition = {
-    description: "当天每个条目使用同一份今日提醒模板，多个条目直接拼接，间隔由条目模板中的换行决定",
+    description: "当天每个条目使用同一份今日提醒模板，多个条目使用今日条目间隔连接",
     scope: "以下字段仅在日历今日提醒模板中使用，不能直接放进通知正文",
     fields: todayVariables,
 };

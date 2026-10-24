@@ -7,8 +7,7 @@ function createRecipientsPage(app, ui) {
         let html = "";
 
         html +=
-            '<section><h2>通知对象</h2><p class="muted">在目标会话发送 <strong>/sid</strong>，将会话 ID 填入 OpenID；不能填写 QQ 号码</p><p class="muted">命令使用范围在 QFlareBot 插件设置中配置</p>' +
-            btn("新增对象", "new-recipient", "", "primary");
+            '<section>' + ui.sectionHeader('通知对象', btn("新增对象", "new-recipient", "", "primary")) + '<p class="muted">在目标会话发送 <strong>/sid</strong>，将会话 ID 填入 OpenID；不能填写 QQ 号码</p><p class="muted">命令使用范围在 QFlareBot 插件设置中配置</p>';
         html +=
             table(
                 ["名称", "场景 / ID", "定时通知", "操作"],
@@ -35,22 +34,23 @@ function createRecipientsPage(app, ui) {
                 existing = app.state.config.recipients.some((x) => x.id === r.id);
             html +=
                 '<section><h2>对象配置</h2><div class="grid">' +
-                field("名称", "recipientName", r.name) +
+                field("名称", "recipientName", r.name, "text", false, { maxCodePoints: 80 }) +
                 '<label>场景<select id="scene" ' +
                 (existing ? "data-locked disabled" : "") +
                 '><option value="group">群聊</option><option value="c2c" ' +
                 (r.scene === "c2c" ? "selected" : "") +
                 ">私聊</option></select></label>" +
-                field("OpenID", "openid", r.openid, "text", existing) +
+                field("OpenID", "openid", r.openid, "text", existing, { required: true, maxLength: 128, pattern: '[A-Za-z0-9_\\-]+' }) +
                 "</div>" +
                 '<fieldset><legend>功能开关</legend>' + check("接收定时通知", "recipientEnabled", r.enabled) + "</fieldset>" +
-                btn("保存对象", "save-recipient", "", "primary") +
-                btn("取消", "cancel-recipient") +
+                '<div class="actions">' + btn("保存对象", "save-recipient", "", "primary") +
+                btn("取消", "cancel-recipient") + '</div>' +
                 "</section>";
         }
 
         return html;
     }
+
     async function action(a, id) {
         if (a === "new-recipient") {
             originalRecipient = undefined;
@@ -64,6 +64,7 @@ function createRecipientsPage(app, ui) {
             };
             app.render();
             app.focus("recipientName");
+
             return;
         }
 
@@ -72,6 +73,7 @@ function createRecipientsPage(app, ui) {
             originalRecipient = structuredClone(editingRecipient);
             app.render();
             app.focus("recipientName");
+
             return;
         }
 
@@ -81,10 +83,19 @@ function createRecipientsPage(app, ui) {
             editingRecipient = null;
             app.render();
             app.focus("app");
+
             return;
         }
 
         if (a === "save-recipient") {
+            const invalid = ui.validateFields(['recipientName', 'openid']);
+
+            if (invalid) {
+                app.focus(invalid);
+
+                return;
+            }
+
             put(app.config.recipients, mergeDraft(app.config.recipients.find((r) => r.id === editingRecipient.id), originalRecipient, {
                 ...editingRecipient,
                 name: $("recipientName").value,
@@ -93,6 +104,7 @@ function createRecipientsPage(app, ui) {
                 enabled: $("recipientEnabled").checked,
             }));
             await app.save(undefined, () => { editingRecipient = null; });
+
             return;
         }
 
@@ -100,6 +112,7 @@ function createRecipientsPage(app, ui) {
             const r = app.config.recipients.find((r) => r.id === id);
             r.enabled = !r.enabled;
             await app.save();
+
             return;
         }
 
@@ -113,14 +126,17 @@ function createRecipientsPage(app, ui) {
             await app.save(undefined, () => {
                 if (editingRecipient?.id === id) { editingRecipient = null; }
             });
+
             return;
         }
     }
+
     function reset() {
         editingRecipient = null;
     }
 
     return {
+        isNew: () => Boolean(editingRecipient && !originalRecipient),
         discardActions: ["new-recipient", "edit-recipient", "toggle-recipient", "delete-recipient"],
         transientInputs: ["testRecipient"], render, action, reset
     };

@@ -12,6 +12,7 @@ import { resultStatus } from "./result.js";
 export async function dispatch(ctx: Ctx, variables: VariableAPI, clock = Date.now): Promise<void> {
     await dispatchPass(ctx, variables, clock, true);
 }
+
 async function dispatchPass(ctx: Ctx, variables: VariableAPI, clock: () => number, catchUp: boolean): Promise<void> {
     const rows = await due(ctx.db, clock());
 
@@ -30,6 +31,7 @@ async function dispatchPass(ctx: Ctx, variables: VariableAPI, clock: () => numbe
         outcomes: Outcome[] = [];
     const next = (d: Due) => {
         const task = tasks.get(d.task_id);
+
         return task
             ? nextPlan(
                 task.schedule,
@@ -95,7 +97,7 @@ async function dispatchPass(ctx: Ctx, variables: VariableAPI, clock: () => numbe
 
                 const result = await value;
                 texts.set(deliveryKey(d), result);
-                details = result;
+                details = { text: result.text };
 
                 if (!result.text) {
                     status = "skipped_empty";
@@ -141,7 +143,7 @@ async function dispatchPass(ctx: Ctx, variables: VariableAPI, clock: () => numbe
                             resultStatus(
                                 await ctx.api.sendMessage(
                                     { scene: r.scene, id: r.openid },
-                                    message(texts.get(deliveryKey(d))!.text),
+                                    message(texts.get(deliveryKey(d))!.text, texts.get(deliveryKey(d))!.buttons),
                                 ),
                             ),
                         );
@@ -161,12 +163,13 @@ async function dispatchPass(ctx: Ctx, variables: VariableAPI, clock: () => numbe
     try {
         await finishMany(ctx.db, outcomes);
     } catch (e) {
-        // Never resend after result persistence failed; a later cron recovers the claim.
+        // 结果持久化失败后不重新发送，由后续定时任务恢复认领状态
         ctx.logger.error("每日结果保存失败，等待中断收敛", { error: String(e) });
+
         return;
     }
 
-    // One catch-up pass can reach today's live window after advancing expired cursors.
+    // 推进过期游标后，再追赶一轮即可进入当天有效发送窗口
     if (
         catchUp &&
         outcomes.some((o) => o.next && o.next.due <= clock() && clock() < o.next.due + 60_000 - LIMITS.reserveMs)

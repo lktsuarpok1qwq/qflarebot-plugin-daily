@@ -1,6 +1,7 @@
 import type { FortuneCorpusIndex } from "./cards/types.js";
 import { validWeights } from "./random.js";
 import { LEVELS, RARITIES, THEMES, type DrawSettings } from "./types.js";
+
 export function validateSettings(config: DrawSettings, corpus?: Pick<FortuneCorpusIndex, "cards">) {
     validWeights(Object.keys(LEVELS).map((level) => config[`level_${level as keyof typeof LEVELS}`]));
     validWeights(RARITIES.map((rarity) => config[`rarity_${rarity}`]));
@@ -11,6 +12,7 @@ export function validateSettings(config: DrawSettings, corpus?: Pick<FortuneCorp
 
     if (corpus) { validateThemeCoverage(config, corpus); }
 }
+
 function validateThemeCoverage(config: DrawSettings, corpus: Pick<FortuneCorpusIndex, "cards">) {
     for (const level of Object.keys(LEVELS) as (keyof typeof LEVELS)[]) {
         if (config[`level_${level}`] > 0 && !THEMES.some(theme => config[`theme_${theme}`] && corpus.cards[theme][level][1] > 0)) { throw new Error("启用主题未覆盖等级：" + level); }

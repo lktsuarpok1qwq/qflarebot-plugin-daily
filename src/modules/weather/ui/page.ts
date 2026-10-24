@@ -6,6 +6,7 @@ function createWeatherCopyEditor(app, ui) {
 
             if (key.startsWith('image_')) {
                 const variables = { ...data.values, city: '示例城市', area: '示例地区', date: '10月3日' };
+
                 return [{ text: mark(inlineCommandTools.expand(config.cardCopy[key.slice(6)], variables, data.fragments)) }];
             }
 

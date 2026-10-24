@@ -8,8 +8,7 @@ function createCalendarEntries(app, ui) {
         let html = "";
 
         html +=
-            '<section><h2>年度数据</h2><p class="muted">同步当年和明年数据，保留人工修改</p><details id="syncHelp"><summary>更新频率与数据说明</summary><p class="muted">未公布放假安排时仅记录节日日期<br>00:00 检查当年，00:01 检查明年<br>当年已有安排或明年七个节日安排齐全时每 7 天同步，其余每天同步<br>失败次日重试，立即同步不受间隔限制<br>00:10 清理往年已结束的条目</p></details>' +
-            btn("立即同步", "sync", "", "primary") +
+            '<section>' + ui.sectionHeader('年度数据', btn("立即同步", "sync", "", "primary")) + '<p class="muted">同步当年和明年数据，保留人工修改</p><details id="syncHelp"><summary>更新频率与数据说明</summary><p class="muted">未公布放假安排时仅记录节日日期<br>00:00 检查当年，00:01 检查明年<br>当年已有安排或明年七个节日安排齐全时每 7 天同步，其余每天同步<br>失败次日重试，立即同步不受间隔限制<br>00:10 清理往年已结束的条目</p></details>' +
             table(
                 ["年份", "数据变更时间", "最近检查成功", "获取频率", "状态", "来源"],
                 app.state.overview.sources.map(
@@ -39,13 +38,14 @@ function createCalendarEntries(app, ui) {
             esc(JSON.stringify(app.state.overview.jobs, null, 2)) +
             "</pre></details>" +
             (app.state.conflicts.length ? '<p class="notice">以下放假与调休记录冲突，已暂停用于查询和通知，请编辑核对</p><ul>' + app.state.conflicts.map((h) => '<li>' + esc(h.name + ' · ' + h.start + (h.end !== h.start ? ' 至 ' + h.end : '') + ' · ' + (h.kind === 'holiday' ? '放假' : '调休')) + '</li>').join('') + '</ul>' : '') + '</section>';
+
         return html;
     }
+
     function render() {
         let html = overview.render();
         html +=
-            '<section><h2>日历条目</h2><p class="muted">停用条目不参与查询和通知，数据保留</p>' +
-            btn("新增事件", "new-event", "", "primary") +
+            '<section>' + ui.sectionHeader('日历条目', btn("新增事件", "new-event", "", "primary")) + '<p class="muted">停用条目不参与查询和通知，数据保留</p>' +
             table(
                 ["名称", "日期", "类别", "来源 / 状态", "操作"],
                 app.config.events.map(
@@ -88,12 +88,12 @@ function createCalendarEntries(app, ui) {
             const h = editingEvent;
             html +=
                 '<section><h2>编辑日历事件</h2><div class="grid">' +
-                field("名称", "eventName", h.name) +
-                field("日期 / 放假开始", "eventStart", h.start, "date") +
+                field("名称", "eventName", h.name, "text", false, { required: true, maxCodePoints: 80 }) +
+                field("日期 / 放假开始", "eventStart", h.start, "date", false, { required: true, min: '2000-01-01', max: '2199-12-31' }) +
                 '<div id="eventEndField"' +
                 (h.kind === "holiday" ? "" : " hidden") +
                 ">" +
-                field("放假结束", "eventEnd", h.end, "date") +
+                field("放假结束", "eventEnd", h.end, "date", false, { min: '2000-01-01', max: '2199-12-31' }) +
                 "</div>" +
                 '<label>类别<select id="eventKind">' +
                 options(
@@ -122,13 +122,14 @@ function createCalendarEntries(app, ui) {
                 '<p id="eventRepeatHelp" class="muted"' +
                 (h.kind === "event" ? "" : " hidden") +
                 ">每年按公历月日重复，非闰年跳过 2 月 29 日；自定义节日不代表放假</p>" +
-                btn("保存事件", "save-event", "", "primary") +
-                btn("取消", "cancel-event") +
+                '<div class="actions">' + btn("保存事件", "save-event", "", "primary") +
+                btn("取消", "cancel-event") + '</div>' +
                 "</section>";
         }
 
         return html;
     }
+
     async function action(a, id) {
         await overview.action(a, id);
 
@@ -137,6 +138,7 @@ function createCalendarEntries(app, ui) {
             reset();
             await app.load();
             app.status(result.message, !result.ok);
+
             return;
         }
 
@@ -144,6 +146,7 @@ function createCalendarEntries(app, ui) {
             const event = app.config.events.find((h) => h.id === id);
             event.enabled = !event.enabled;
             await app.save(event.enabled ? "条目已启用" : "条目已停用，已退出查询与通知", () => { editingEvent = null; });
+
             return;
         }
 
@@ -161,6 +164,7 @@ function createCalendarEntries(app, ui) {
             };
             app.render();
             app.focus("eventName");
+
             return;
         }
 
@@ -169,6 +173,7 @@ function createCalendarEntries(app, ui) {
             originalEvent = structuredClone(editingEvent);
             app.render();
             app.focus("eventName");
+
             return;
         }
 
@@ -178,10 +183,20 @@ function createCalendarEntries(app, ui) {
             editingEvent = null;
             app.render();
             app.focus("app");
+
             return;
         }
 
         if (a === "save-event") {
+            $('eventEnd').min = $('eventStart').value || '2000-01-01';
+            const invalid = ui.validateFields(['eventName', 'eventStart', ...($('eventKind').value === 'holiday' ? ['eventEnd'] : [])]);
+
+            if (invalid) {
+                app.focus(invalid);
+
+                return;
+            }
+
             const value = {
                 ...editingEvent,
                 enabled: $("eventEnabled").checked,
@@ -204,6 +219,7 @@ function createCalendarEntries(app, ui) {
 
             put(app.config.events, mergeDraft(app.config.events.find((h) => h.id === value.id), originalEvent, value));
             await app.save(undefined, () => { editingEvent = null; });
+
             return;
         }
 
@@ -221,8 +237,8 @@ function createCalendarEntries(app, ui) {
             }
 
             try {
-                const saved = await app.api("event-reset", { id, revision: app.state.revision });
-                app.state = { ...app.state, ...saved };
+                const saved = app.checkedState(await app.api("event-reset", { id, revision: app.state.revision }));
+                app.state = saved;
                 app.config = structuredClone(saved.config);
                 editingEvent = null;
                 app.render();
@@ -230,7 +246,7 @@ function createCalendarEntries(app, ui) {
             } catch (error) {
                 if (error.kind === "validation") { throw error; }
 
-                // Reconcile a potentially successful request whose response was lost.
+                // 响应丢失时，核对可能已成功的请求状态
                 app.synchronized = false;
 
                 try {
@@ -256,9 +272,11 @@ function createCalendarEntries(app, ui) {
 
             app.config.events = app.config.events.filter((h) => h.id !== id);
             await app.save(undefined, () => { editingEvent = null; });
+
             return;
         }
     }
+
     function reset() {
         editingEvent = null;
     }
@@ -270,6 +288,7 @@ function createCalendarEntries(app, ui) {
             $("eventRepeatHelp").hidden = el.value !== "event";
         }
     }
+
     return {
         refresh: overview.refresh,
         render,

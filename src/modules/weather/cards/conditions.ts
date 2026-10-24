@@ -10,10 +10,13 @@ const groups: [WeatherTheme, readonly string[]][] = [
     ["sand", ["503", "504", "507", "508"]], ["hot", ["900"]], ["cold", ["901"]], ["unknown", ["999"]],
 ];
 const themes = new Map(groups.flatMap(([theme, codes]) => codes.map((code) => [code, theme] as const)));
+
 export function weatherTheme(code: string, night = false): WeatherTheme {
     const theme = themes.get(code) ?? "unknown";
+
     return night && theme === "sunny" ? "clear-night" : night && theme === "cloudy" ? "cloudy-night" : theme;
 }
+
 export const WEATHER_SYMBOLS: Record<WeatherTheme, string> = {
     sunny: "☀️", cloudy: "⛅", overcast: "☁️", rainy: "🌧️", "heavy-rain": "🌧️", thunderstorm: "⛈️",
     snowy: "🌨️", sleet: "🌨️", fog: "🌫️", haze: "🌫️", sand: "🌪️", hot: "🌡️", cold: "❄️",

@@ -1,3 +1,4 @@
+import type { ButtonConfiguration } from "../../shared/message-buttons.js";
 import type { CardState } from "../../shared/cards/types.js";
 import { validateCardState } from "../../shared/cards/validation.js";
 import { fortuneDesigns } from "./cards/design.js";
@@ -9,11 +10,14 @@ import { validateCardLabels } from "./cards/labels.js";
 import { validateSettings } from "./validation.js";
 import { LEVELS, RARITIES, THEMES, type DrawSettings } from "./types.js";
 import type { FortuneCopy } from "./copy.js";
-export type FortuneConfig = { schemaVersion: 1; cardDesigns?: CardState; imageEnabled: boolean; copy: FortuneCopy } & DrawSettings;
-const configFields = ["schemaVersion", "cardDesigns", "imageEnabled", "copy", "eggs", ...Object.keys(LEVELS).map((key) => "level_" + key), ...RARITIES.map((key) => "rarity_" + key), ...THEMES.map((key) => "theme_" + key)];
+
+export type FortuneConfig = ButtonConfiguration & { schemaVersion: 1; cardDesigns?: CardState; imageEnabled: boolean; copy: FortuneCopy } & DrawSettings;
+const configFields = ["schemaVersion", "buttons", "cardDesigns", "imageEnabled", "copy", "eggs", ...Object.keys(LEVELS).map((key) => "level_" + key), ...RARITIES.map((key) => "rarity_" + key), ...THEMES.map((key) => "theme_" + key)];
+
 export function defaults(): FortuneConfig {
     return copyContract.defaults({ schemaVersion: 1, imageEnabled: true, level_great: 10, level_good: 20, level_small: 30, level_neutral: 20, level_bad: 15, level_worst: 5, rarity_common: 75, rarity_rare: 20, rarity_epic: 4, rarity_legendary: 1, theme_absurd: true, theme_gaming: true, theme_daily: true, theme_student: true, theme_mystic: true, eggs: true });
 }
+
 export function validate(value: unknown, shapeOnly = false): FortuneConfig {
     const config = value as FortuneConfig;
 
@@ -34,6 +38,7 @@ export function validate(value: unknown, shapeOnly = false): FortuneConfig {
 
     return config;
 }
+
 export function parseConfig(raw: string): FortuneConfig {
     return validate(JSON.parse(raw), true);
 }

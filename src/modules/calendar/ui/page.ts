@@ -10,7 +10,8 @@ function createCalendarCopyEditor(app, ui) {
 
             if (target.startsWith('variable-')) { delete document.empty; }
 
-            const text = renderCalendarSample(document, config.calendarCopy, inlineCommandTools.expand, (field, value) => field === key ? mark(value) : value);
+            const text = renderCalendarSample(document, config.calendarCopy, inlineCommandTools.expand, (field, value) => field === key ? mark(value) : value, inlineCommandTools.join);
+
             return [{ text }];
         }
 

@@ -1,18 +1,22 @@
 export const application = String.raw`
 function createApp(bridge, ui, factories) {
     const { $ } = ui;
-    const markdownPreview = createMarkdownPreview(ui);
+    const markdownPreview = createMarkdownPreview(ui, () => page().refresh?.());
     const selectPicker = createSelectPicker();
+    const notify = createFeedback(bridge);
+    const fieldBaselines = new Map(), textEditors = new WeakMap();
+    let disabledBeforeRun = new WeakMap();
     const app = { state: null, config: null, page: Object.keys(factories)[0], dirty: false, synchronized: false };
     let running = false,
-        pendingFocus;
+        pendingFocus, pendingSelection;
     const stores = Object.fromEntries(
-        Object.entries(factories).map(([key, entry]) => [key, entry.module ? createScope(app, key) : app]),
+        Object.entries(factories).map(([key, entry]) => [key, entry.module ? createScope(app, key, entry.checkState) : app]),
     );
     const pages = {};
     const page = () => pages[app.page] ??= factories[app.page].create(stores[app.page], ui);
     const titles = Object.fromEntries(Object.entries(factories).map(([key, entry]) => [key, entry.title]));
     const current = () => stores[app.page];
+
     async function api(action, data) {
         const res = await bridge.fetch(
             "/api/" + action,
@@ -32,16 +36,20 @@ function createApp(bridge, ui, factories) {
 
         return value;
     }
+
     function status(text, error = false) {
-        $("status").textContent = text;
-        $("status").className = error ? "error" : "";
+        notify(text, error);
     }
+
     const confirmAction = createConfirmation(ui);
+
     function focusState() {
         const el = document.activeElement;
+
         return el
             ? {
                 id: el.id,
+                context: el.dataset.editorContext,
                 action: el.dataset.action,
                 target: el.dataset.id,
                 start: el.selectionStart,
@@ -49,6 +57,7 @@ function createApp(bridge, ui, factories) {
             }
             : null;
     }
+
     function restoreFocus(state) {
         if (!state) {
             return;
@@ -60,29 +69,90 @@ function createApp(bridge, ui, factories) {
                 (button) =>
                     state.action && button.dataset.action === state.action && button.dataset.id === state.target,
             );
+
+        if (state.context !== undefined && state.context !== el?.dataset.editorContext) { return; }
+
+        const top = el?.scrollTop;
         el?.focus({ preventScroll: true });
 
         if (el && state.start != null) {
             el.setSelectionRange(state.start, state.end);
         }
+
+        if (el && top !== undefined) { el.scrollTop = top; }
     }
-    function focus(id) {
+
+    function focus(id, start, end = start) {
         pendingFocus = id;
+        pendingSelection = Number.isInteger(start) ? { start, end } : null;
     }
+
+    function fieldValue(el) {
+        return el.type === 'checkbox' ? el.checked : el.multiple ? [...el.selectedOptions].map(option => option.value) : el.value;
+    }
+
+    function draftFields() {
+        return [...document.querySelectorAll('#app input[id],#app textarea[id],#app select[id]')]
+            .filter(el => el.type !== 'file' && !el.readOnly && changesConfig(el));
+    }
+
     function updateDirty() {
-        $("dirty").hidden = !app.dirty;
+        if (!current().state) { return; }
+
+        const component = page();
+        app.dirty = JSON.stringify(current().config) !== JSON.stringify(current().state.config)
+            || Boolean(component.isNew?.())
+            || Boolean(component.buttonsDirty?.())
+            || (component.isDirty ? component.isDirty() : draftFields().some(el => JSON.stringify(fieldValue(el)) !== fieldBaselines.get(el.id)));
+        const dirty = $('dirty');
+
+        if (dirty) { dirty.hidden = running || !app.dirty; }
+
+        const state = $('section-status');
+
+        if (state) {
+            state.hidden = !running && app.dirty;
+            state.textContent = current().loading ? '正在加载…' : running ? '正在处理…' : !current().state ? '尚未加载' : '暂无未保存修改';
+        }
     }
+
     function lockControls() {
-        document.querySelectorAll("button,input,select,textarea").forEach((el) => {
-            if (!el.closest("dialog[open]")) { el.disabled = running || el.hasAttribute("data-locked"); }
+        document.querySelectorAll('button,input,select,textarea').forEach(el => {
+            if (el.closest('dialog[open]')) { return; }
+
+            if (running && !disabledBeforeRun.has(el)) { disabledBeforeRun.set(el, el.disabled && !el.dataset.draftAction && !el.hasAttribute('data-managed-disabled')); }
+
+            el.disabled = running || disabledBeforeRun.get(el) === true || el.hasAttribute('data-locked')
+                || Boolean(el.dataset.draftAction && !app.dirty);
         });
     }
+
     function refresh() {
         selectPicker.refresh();
         markdownPreview.refresh();
+
         page().refresh?.();
+
+        for (const el of document.querySelectorAll('.markdown-editor textarea')) {
+            if (textEditors.has(el)) { continue; }
+
+            const tools = createTextTools(el, () => {
+                page().input?.(el);
+                markdownPreview.input(el);
+                updateDirty();
+                lockControls();
+            });
+            textEditors.set(el, tools);
+            tools.retainSelection(el.closest('.markdown-workspace').querySelector('.markdown-source-tools'));
+            const variables = document.querySelector('.variable-reference');
+
+            if (variables) { tools.retainSelection(variables); }
+        }
+
+        updateDirty();
         lockControls();
     }
+
     async function run(fn) {
         if (running) {
             return;
@@ -92,40 +162,70 @@ function createApp(bridge, ui, factories) {
         running = true;
         $("app").setAttribute("aria-busy", "true");
         document.body.classList.add("busy");
+        updateDirty();
         lockControls();
 
         try {
             await fn();
         } catch (e) {
-            app.status(e.message, true);
+            if (!e.fieldHandled) { app.status(e.message, true); }
         } finally {
             running = false;
             document.body.classList.remove("busy");
             $("app").setAttribute("aria-busy", "false");
-            lockControls();
             updateDirty();
+            lockControls();
+            disabledBeforeRun = new WeakMap();
 
             if (pendingFocus && $(pendingFocus)) {
                 const el = $(pendingFocus);
-                (el.closest("section") || el).scrollIntoView({ block: "nearest" });
+                el.scrollIntoView({ block: "nearest" });
                 el.focus({ preventScroll: true });
+
+                if (pendingSelection && el.setSelectionRange) { el.setSelectionRange(pendingSelection.start, pendingSelection.end); }
             } else {
                 restoreFocus(previousFocus);
             }
 
             pendingFocus = null;
+            pendingSelection = null;
             markdownPreview.refresh();
         }
     }
-    async function load(store = current(), redraw = true) {
-        const fresh = await store.api(store.state ? "state?data=1" : "state");
-        store.state = { ...store.state, ...fresh };
+
+    async function load(store = current(), redraw = true, announce = true) {
+        let fresh;
+        store.loading = true;
+
+        if (redraw) { app.render(); }
+
+        try {
+            const full = !store.state?.copyEditor && !store.state?.settings;
+            fresh = store.checkedState(await store.api(full ? 'state' : 'state?data=1'), full);
+            store.loadError = '';
+        } catch (error) {
+            store.loadError = error.message;
+
+            throw error;
+        } finally {
+            store.loading = false;
+
+            if (store.loadError && redraw) { app.render(); }
+        }
+
+        fieldBaselines.clear();
+        store.state = fresh;
         store.config = structuredClone(store.state.config);
         store.synchronized = true;
         app.dirty = false;
 
-        if (redraw) { app.render(); app.status("配置已加载"); }
+        if (redraw) {
+            app.render();
+
+            if (announce) { app.status("配置已加载"); }
+        }
     }
+
     async function save(message = "已保存", afterSave, store = current()) {
         if (!store.synchronized) {
             throw Error("配置状态未确认，请先刷新配置");
@@ -133,34 +233,46 @@ function createApp(bridge, ui, factories) {
 
         const candidate = structuredClone(store.config),
             wasDirty = app.dirty;
+
+        if (JSON.stringify(candidate) === JSON.stringify(store.state.config)) {
+            afterSave?.();
+            app.dirty = false;
+            fieldBaselines.clear();
+            app.render();
+
+            return;
+        }
+
         const draft = wasDirty
             ? [...document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]")]
                 .filter((el) => el.type !== "file")
                 .map((el) => ({
                     id: el.id,
+                    context: el.dataset.editorContext,
                     value: el.value,
                     checked: el.checked,
                     selected: el.multiple ? [...el.selectedOptions].map((o) => o.value) : null,
                 }))
             : [];
-        // Do not let a rejected edit leak into a later unrelated save.
+        // 被拒绝的编辑不得混入后续无关保存
         store.config = structuredClone(store.state.config);
 
         try {
-            const saved = await store.api("config", { revision: store.state.revision, config: candidate });
-            store.state = { ...store.state, ...saved };
+            const saved = store.checkedState(await store.api("config", { revision: store.state.revision, config: candidate }));
+            store.state = saved;
             store.config = structuredClone(saved.config);
             store.synchronized = true;
             app.dirty = false;
 
             afterSave?.();
+            fieldBaselines.clear();
             app.render();
             app.status(message);
         } catch (error) {
-            // Only explicit pre-write rejection can skip reconciliation.
+            // 只有明确在写入前被拒绝时才可跳过状态核对
             if (error.kind !== "validation") {
                 try {
-                    await load(store);
+                    await load(store, true, false);
                 } catch {
                     store.synchronized = false;
                 }
@@ -190,37 +302,38 @@ function createApp(bridge, ui, factories) {
             throw error;
         }
     }
+
     function resetDrafts(invalidate = true) {
-        for (const page of Object.values(pages)) {
-            page.reset?.(invalidate);
-        }
+        fieldBaselines.clear();
+
+        page().reset?.(invalidate);
     }
+
     function render() {
+        page().remember?.();
         const previousFocus = focusState(),
             scroll = { x: window.scrollX, y: window.scrollY };
         const editor = document.querySelector(".markdown-editor"),
             editorId = editor?.querySelector("textarea")?.id,
             editorScroll = editor?.scrollTop;
         const expanded = [...document.querySelectorAll("#app details[id][open]")].map((el) => el.id);
-        $("nav").innerHTML = Object.entries(titles)
-            .map(
-                ([id, name]) =>
-                    '<button data-action="page" data-id="' +
-                    id +
-                    '"' +
-                    (id === app.page ? ' class="active" aria-current="page"' : "") +
-                    ">" +
-                    name +
-                    "</button>",
-            )
-            .join("");
+        $('nav').innerHTML = Object.entries(titles).map(([id, name]) =>
+            '<button id="page-' + id + '" role="tab" aria-controls="app" aria-selected="' + (id === app.page) + '" tabindex="' + (id === app.page ? 0 : -1) + '" data-action="page" data-id="' + id + '"' + (id === app.page ? ' class="active"' : '') + '>' + name + '</button>'
+        ).join('');
+        $('app').setAttribute('aria-labelledby', 'page-' + app.page);
         let html = "";
 
-        if (!current().synchronized) {
+        if (current().state && !current().synchronized) {
             html += '<div class="notice">配置未确认，请刷新</div>';
         }
 
-        $("app").innerHTML = html + (current().state ? page().render() : "");
+        $('app').innerHTML = html + page().render();
+
+        if (!app.dirty) { fieldBaselines.clear(); }
+
+        for (const el of draftFields()) {
+            if (!fieldBaselines.has(el.id)) { fieldBaselines.set(el.id, JSON.stringify(fieldValue(el))); }
+        }
 
         for (const id of expanded) {
             if ($(id)) {
@@ -239,6 +352,7 @@ function createApp(bridge, ui, factories) {
 
         window.scrollTo(scroll.x, scroll.y);
     }
+
     async function action(a, id) {
         if (a === "page" && id === app.page) { return; }
 
@@ -262,77 +376,107 @@ function createApp(bridge, ui, factories) {
 
         if (a === "reload") {
             resetDrafts();
-            await load();
+            await page().load();
+
             return;
         }
 
         if (a === "page") {
-            current().config = structuredClone(current().state.config);
+            if (current().state) { current().config = structuredClone(current().state.config); }
+
             app.dirty = false;
             resetDrafts(false);
-            const previousPage = app.page;
             app.page = id;
-
-            try {
-                await load();
-            } catch (error) {
-                app.page = previousPage;
-                render();
-                throw error;
-            }
+            render();
 
             return;
         }
 
-        if (a === "markup") {
-            const { id: target, before, after } = JSON.parse(id),
-                el = $(target);
-            const selected = el.value.slice(el.selectionStart, el.selectionEnd) || "文字";
-            el.setRangeText(before + selected + after, el.selectionStart, el.selectionEnd, "end");
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-            focus(target);
+        if (a === 'markup' || a === 'insert-variable') {
+            const data = JSON.parse(id), el = $(data.id);
+
+            if (!el || running) { return; }
+
+            const tools = textEditors.get(el);
+
+            if (!tools) { return; }
+
+            tools.insert(a === 'insert-variable' ? data.value : data.before, data.after || '', data.fallback ?? '', a === 'insert-variable', data.line);
+            updateDirty();
+            lockControls();
+
             return;
         }
 
         await page().action(a, id);
+        updateDirty();
     }
+
     const changesConfig = (el) =>
         el.closest("#app") &&
+        !el.dataset.buttonControl &&
         !(page().transientInputs || []).includes(el.id);
+
     function start() {
         document.addEventListener("click", (e) => {
+            if (e.target.closest('.message-preview a')) {
+                e.preventDefault();
+                app.status('预览链接不执行，请在 QQ 中查看实际效果');
+
+                return;
+            }
+
             const b = e.target.closest("button[data-action]");
 
             if (b) {
-                run(() => action(b.dataset.action, b.dataset.id));
+                if (['markup', 'insert-variable'].includes(b.dataset.action)) {
+                    void action(b.dataset.action, b.dataset.id).catch(e => status(e.message, true));
+                } else { run(() => action(b.dataset.action, b.dataset.id)); }
             }
         });
         document.addEventListener("focusin", (e) => {
             page().focus?.(e.target);
             markdownPreview.focus(e.target);
         });
-        document.addEventListener("input", (e) => {
-            if (changesConfig(e.target)) {
-                app.dirty = true;
-            }
+        document.addEventListener('input', e => {
+            if (!e.target.closest('#app')) { return; }
 
-            updateDirty();
+            ui.clearFieldError(e.target);
             page().input?.(e.target);
             markdownPreview.input(e.target);
-        });
-        document.addEventListener("change", (e) => {
-            if (changesConfig(e.target)) {
-                app.dirty = true;
-            }
-
             updateDirty();
+            lockControls();
+        });
+        document.addEventListener('change', e => {
+            if (!e.target.closest('#app')) { return; }
+
+            ui.clearFieldError(e.target);
             page().change?.(e.target);
             markdownPreview.refresh();
+            updateDirty();
+            lockControls();
+        });
+        document.addEventListener('keydown', e => {
+            const tab = e.target.closest('[role="tab"]');
+
+            if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { return; }
+
+            const tabs = [...tab.parentElement.querySelectorAll('[role="tab"]')];
+            const index = tabs.indexOf(tab);
+            const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (index + (e.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
+            e.preventDefault();
+            tabs[next].focus();
+            tabs[next].click();
         });
         bridge.resize();
-        return run(load);
+
+        render();
+
+        return Promise.resolve();
     }
-    Object.assign(app, { resource: (path, init) => bridge.fetch(path, init), api, status, confirmAction, run, load, save, render, refresh, focus, resetDrafts, start });
+
+    Object.assign(app, { checkedState: (value, full = false) => checkedConfigState(value, app.state, full), resource: (path, init) => bridge.fetch(path, init), api, status, updateDirty, confirmAction, run, load, save, render, refresh, focus, resetDrafts, start });
+
     return app;
 }
 `;

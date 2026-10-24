@@ -1,4 +1,4 @@
-/** Inspect one template only; offsets are UTF-16 indices, matching textarea selection. */
+/** 仅检查当前模板；偏移量使用 UTF-16 索引，与文本框选区一致 */
 export function analyzeTemplate(body: string, allowed?: readonly string[]) {
     const keys = new Set<string>();
     let error: { message: string; start: number; end: number } | undefined;
@@ -22,8 +22,10 @@ export function analyzeTemplate(body: string, allowed?: readonly string[]) {
     }
 
     gap(end, body.length);
+
     return { keys, error };
 }
+
 export function validateTemplate(body: string, keys: readonly string[]) {
     const result = analyzeTemplate(body, keys);
 
@@ -31,9 +33,16 @@ export function validateTemplate(body: string, keys: readonly string[]) {
 
     return result.keys;
 }
-export function validateCopyText(value: unknown, field: { label: string; variables: readonly string[]; allowEmpty?: boolean }): asserts value is string {
+
+export function validateCopyText(value: unknown, field: { label: string; variables: readonly string[]; allowEmpty?: boolean; literal?: boolean }): asserts value is string {
     if (typeof value !== "string" || (!field.allowEmpty && !value.trim())) {
         throw new Error(field.label + "格式或长度错误");
+    }
+
+    if (field.literal) {
+        if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)) { throw new Error("文字包含不支持的控制字符"); }
+
+        return;
     }
 
     validateTemplate(value, field.variables);

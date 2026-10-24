@@ -2,6 +2,7 @@ import { textLayout } from "../../../shared/cards/layout.js";
 import { CARD_PALETTES, FORTUNE_REGIONS } from "./layout.js";
 import { LEVELS } from "../types.js";
 import type { CardSnapshot } from "./store.js";
+
 export function layoutFortune(snapshot: CardSnapshot, view: "small" | "detail") {
     const { content: c, labels } = snapshot;
     const kind = view === "small" ? "small" : c.egg ? "egg" : "detail";

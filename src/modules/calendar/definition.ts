@@ -4,6 +4,7 @@ import { outputTargets, type CopyDeclaration } from "../../shared/declarations.j
 import { CALENDAR_COPY } from "./copy.js";
 import { itemVariables, fragmentCompositions, calendarCopyVariables } from "./copy-fields.js";
 import type { CalendarCopy } from "./types.js";
+
 export const commands = [
     { name: "假期", description: "假期查询帮助" },
     { name: "假期 下个", description: "下个尚未开始的节日" },
@@ -21,6 +22,8 @@ const outputs = outputTargets([
 
 const branches: Record<keyof CalendarCopy, { category: string; label: string; samples: string[]; sampleNames?: Record<string, string>; targets?: string[] }> = {
     help: { category: "帮助", label: "帮助正文", samples: ["help"] },
+    summarySeparator: { category: "查询条目间隔", label: "查询条目间隔", samples: ["multiple"], targets: ["remaining", "variable-remaining"] },
+    todaySeparator: { category: "今日条目间隔", label: "今日条目间隔", samples: ["multiple"], targets: ["today", "eventToday"] },
     summary: { category: "整体文案", label: "节日条目", samples: ["future", "single", "first", "during", "last", "reference", "diy", "multiple", "partial"] },
     today: { category: "整体文案", label: "今日条目", samples: ["diy", "multiple", "makeup", "referenceToday"] },
     dateRange: { category: "日期信息", label: "放假区间", samples: ["future"], sampleNames: { future: "放假区间" } },
@@ -45,17 +48,18 @@ const branches: Record<keyof CalendarCopy, { category: string; label: string; sa
 };
 const declaration: CopyDeclaration = {
     id: "calendar", title: "日历文案", initial: "next", outputs,
-    description: "换行写在整体文案中，条目间隔由模板末尾决定；修改对关联命令和变量生效，留空不输出", variablesId: "calendarCopyVariables",
-    categoryParents: { 日期信息: "整体文案", 日期状态: "整体文案", 调休信息: "整体文案", 今日内容: "整体文案" },
+    description: "换行写在整体文案中，条目间隔只添加在多条结果之间；修改对关联命令和变量生效，留空不输出", variablesId: "calendarCopyVariables",
+    categoryParents: { 日期信息: "整体文案", 日期状态: "整体文案", 调休信息: "整体文案", 今日内容: "整体文案", 查询条目间隔: "整体文案", 今日条目间隔: "整体文案" },
     variableCompositions: fragmentCompositions, samples: calendarSamples(),
     fields: Object.fromEntries(Object.entries(branches).map(([key, branch]) => [key, {
-        ...branch, allowEmpty: true, path: ["calendarCopy", key], default: CALENDAR_COPY.text[key as keyof CalendarCopy],
+        ...branch, allowEmpty: true, ...(["summarySeparator", "todaySeparator"].includes(key) ? { optional: true, presentation: "separator" as const, buttons: false as const } : {}), path: ["calendarCopy", key], default: CALENDAR_COPY.text[key as keyof CalendarCopy],
         variables: Object.fromEntries(calendarCopyVariables[key as keyof CalendarCopy].map((name) => [name, itemVariables[name as keyof typeof itemVariables]])),
     }])),
     views: outputs.map((target) => {
         const keys: (keyof CalendarCopy)[] = target.id === "help" ? ["help"] : ["today", "eventToday"].includes(target.id)
-            ? ["today", "todayHolidayText", "todayMakeupText", "todayReferenceText", "todayEventText"]
-            : ["summary", "dateRange", "dateSingle", "dateReference", "dateEvent", "upcoming", "starts", "ongoing", "ends", "onDay", "makeupDates", "makeupEmpty", "makeupUnknown", "unknown", "none", "noneRemaining"];
+            ? ["today", "todaySeparator", "todayHolidayText", "todayMakeupText", "todayReferenceText", "todayEventText"]
+            : ["summary", "summarySeparator", "dateRange", "dateSingle", "dateReference", "dateEvent", "upcoming", "starts", "ongoing", "ends", "onDay", "makeupDates", "makeupEmpty", "makeupUnknown", "unknown", "none", "noneRemaining"];
+
         return { id: target.id, samples: target.id === "eventToday" ? ["diy", "multiple", "referenceToday"] : ["next", "variable-next"].includes(target.id) ? ["future", "single", "reference", "diy", "partial", "unknown", "ordinary"] : undefined, keys: keys.filter((key) => !branches[key].targets || branches[key].targets!.includes(target.id)), targets: [target.id] };
     }),
 };

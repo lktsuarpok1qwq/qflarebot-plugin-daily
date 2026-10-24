@@ -1,6 +1,7 @@
 import type { Route } from "@qqbot/sdk";
 
 type ParsedRoute = { route: Route; parts: string[]; wildcard: boolean };
+
 function overlaps(a: ParsedRoute, b: ParsedRoute): boolean {
     if ((!a.wildcard && !b.wildcard && a.parts.length !== b.parts.length) || (a.wildcard && !b.wildcard && b.parts.length < a.parts.length) || (b.wildcard && !a.wildcard && a.parts.length < b.parts.length)) { return false; }
 

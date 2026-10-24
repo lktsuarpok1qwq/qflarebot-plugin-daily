@@ -1,18 +1,25 @@
 import { expand } from "../interpolation.js";
 import metrics from "./metrics.json";
 import type { CardDesign, CardRegion } from "./types.js";
+
 export type CardHighlights = Record<string, { words: readonly string[]; color: string }>;
 type CardLayer = { text?: string; emoji?: string; left: number; top: number; size: number; color: string; weight: number };
 export type CardLayoutResult = { layers: CardLayer[]; overflow: string[] };
 type TextRegion = Omit<CardRegion, "field" | "text" | "color">;
-// Shared glyph layout keeps browser previews and Images positions identical.
+
+// 共用字形排版，保证浏览器预览与 Images 的位置一致
 export function createTextLayout(widths: Record<string, Record<string, number>>) {
     const layers: CardLayer[] = [], overflow: string[] = [];
     let segmenter: Intl.Segmenter | undefined;
+
     function add(region: TextRegion, text: string, color: string, emphasis?: CardHighlights[string]) {
         if (!text) { return; }
 
-        if (text.length > 1000) { overflow.push(region.id); return; }
+        if (text.length > 1000) {
+            overflow.push(region.id);
+
+            return;
+        }
 
         const simple = /^[\x20-\x7e\n\u3000-\u3029\u3400-\u4dbf\u4e00-\u9fff\uff01-\uff60·°℃℉‘’“”…—]*$/.test(text);
         const advances = widths[region.weight];
@@ -25,6 +32,7 @@ export function createTextLayout(widths: Record<string, Record<string, number>>)
             if (width <= region.width) {
                 const x = region.x + (region.align === "center" ? (region.width - width) / 2 : region.align === "right" ? region.width - width : 0);
                 layers.push({ text, left: Math.round(x), top: region.y, size: region.size, color, weight: region.weight });
+
                 return;
             }
         }
@@ -36,7 +44,10 @@ export function createTextLayout(widths: Record<string, Record<string, number>>)
 
             let offset = 0;
 
-            while ((offset = text.indexOf(word, offset)) !== -1) { ranges.push({ start: offset, end: offset + word.length }); offset += word.length; }
+            while ((offset = text.indexOf(word, offset)) !== -1) {
+                ranges.push({ start: offset, end: offset + word.length });
+                offset += word.length;
+            }
         }
 
         let offset = 0;
@@ -72,11 +83,15 @@ export function createTextLayout(widths: Record<string, Record<string, number>>)
             const width = advance * region.size;
             let line = lines[lines.length - 1]!;
 
-            if (line.tokens.length && line.width + width > region.width) { line = { tokens: [], width: 0 }; lines.push(line); }
+            if (line.tokens.length && line.width + width > region.width) {
+                line = { tokens: [], width: 0 };
+                lines.push(line);
+            }
 
             if (lines.length > maxLines) { break; }
 
-            line.tokens.push({ text: segment, emoji, width, color: tokenColor }); line.width += width;
+            line.tokens.push({ text: segment, emoji, width, color: tokenColor });
+            line.width += width;
         }
 
         if ((lines.length - 1) * region.lineHeight + region.size > region.height || lines.some(line => line.width > region.width)) { overflow.push(region.id); }
@@ -92,7 +107,10 @@ export function createTextLayout(widths: Record<string, Record<string, number>>)
                     group = undefined;
                     layers.push({ emoji: token.emoji, left: Math.round(x), top: region.y + index * region.lineHeight, size: region.size, color: color, weight: region.weight });
                 } else {
-                    if (!group || group.color !== token.color) { group = { text: "", left: Math.round(x), top: region.y + index * region.lineHeight, size: region.size, color: token.color, weight: region.weight }; layers.push(group); }
+                    if (!group || group.color !== token.color) {
+                        group = { text: "", left: Math.round(x), top: region.y + index * region.lineHeight, size: region.size, color: token.color, weight: region.weight };
+                        layers.push(group);
+                    }
 
                     group.text += token.text;
                 }
@@ -101,14 +119,18 @@ export function createTextLayout(widths: Record<string, Record<string, number>>)
             }
         }
     }
+
     function finish(): CardLayoutResult {
         if (layers.length > 100) { throw new Error("内容过于复杂，请减少区域或文字"); }
 
         return { layers, overflow };
     }
+
     return { add, finish };
 }
+
 export const textLayout = () => createTextLayout(metrics);
+
 export function layoutCard(design: CardDesign, values: Record<string, string>, widths: Record<string, Record<string, number>>, interpolate: typeof expand, highlights: CardHighlights = {}): CardLayoutResult {
     const layout = createTextLayout(widths);
 
@@ -119,5 +141,6 @@ export function layoutCard(design: CardDesign, values: Record<string, string>, w
 
     return layout.finish();
 }
+
 export const cardLayout = (design: CardDesign, values: Record<string, string>, highlights: CardHighlights = {}) => layoutCard(design, values, metrics, expand, highlights);
 export const emojiURL = (id: string) => `https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/72x72/${id}.png`;

@@ -1,115 +1,63 @@
-import type { PointsService, OperationLookup } from "qflarebot-plugin-points";
+import { qqAt } from "@qqbot/sdk";
 import type { Ctx } from "../../shared/types.js";
-import { dateAt } from "../../shared/date.js";
-import { expand } from "../../shared/interpolation.js";
+import { addDays, dateAt } from "../../shared/date.js";
+import { expand, joinItems } from "../../shared/interpolation.js";
 import type { CheckinCopyKey } from "./copy.js";
-import { claim, current, find, finish, snapshot, type Claim } from "./repository.js";
-export const SOURCE = "daily";
-export function wallet(ctx: Ctx) {
-    let service: PointsService;
+import { attend, current, ranking, snapshot, type Totals } from "./repository.js";
+import { reward } from "./reward.js";
 
-    try { service = ctx.service<PointsService>("points.wallet"); } catch { return undefined; }
+type Context = { scene: string; targetId: string; name: string };
 
-    if (![service.checkAccounts, service.getSourcePolicy, service.registerSource, service.credit, service.getOperation].every(method => typeof method === "function")) {
-        throw new Error("积分服务契约不完整，请更新 Points 插件");
+export async function checkin(ctx: Ctx, userId: string, args: readonly string[], clock = Date.now, context?: Context) {
+    const day = dateAt(clock()), yesterday = addDays(day, -1);
+    const group = context?.scene === "group" ? context.targetId : "";
+    const action = !args.length ? "checkin" : args.length === 1 && (args[0] === "榜" || args[0] === "我的") ? args[0] : "help";
+    const valid = Boolean(userId?.trim() && ctx.botId?.trim());
+    const state = valid && ["checkin", "我的"].includes(action!)
+        ? await current(ctx.db, ctx.botId, userId, action === "checkin" ? { day, group } : undefined)
+        : { ...await snapshot(ctx.db), record: null, totals: null, groupSeen: false };
+    const { config } = state;
+    let totals = state.totals;
+    const streak = (value: Totals | null) => value && value.last_day >= yesterday ? value.streak : 0;
+    const render = (key: CheckinCopyKey, amount = config.rewardPoints, message = "", items = "") => ({
+        buttons: config.buttons?.[action === "榜" ? "ranking" : action === "我的" ? "mine" : "command"],
+        text: expand(config.copy[key] ?? "", {
+            date: day, amount: String(amount), message, total: String(totals?.total ?? 0), streak: String(streak(totals)),
+            last_day: totals?.last_day ?? "—", threshold: String(config.streakDays), multiplier: String(config.rewardMultiplier)
+        }, { items, today_status: totals?.last_day === day ? config.copy.todaySigned : config.copy.todayUnsigned }),
+    });
+
+    if (!valid) { return render("identity"); }
+
+    if (action === "榜") {
+        if (!group) { return render("groupOnly"); }
+
+        const rows = await ranking(ctx.db, ctx.botId, group, config.rankingSize);
+        let rank = 0;
+        const items = joinItems(rows.map((row, index) => {
+            if (index === 0 || rows[index - 1]!.total !== row.total) { rank = index + 1; }
+
+            return expand(config.copy.rankingItem, { rank: String(rank), name: row.name || row.user_id, total: String(row.total), streak: String(streak(row)) }, row.name ? {} : { name: qqAt(row.user_id) });
+        }), config.copy.rankingSeparator);
+
+        return render(rows.length ? "ranking" : "emptyRanking", 0, "", items);
     }
 
-    return service;
-}
-export async function checkin(ctx: Ctx, userId: string, args: readonly string[], clock = Date.now) {
-    const day = dateAt(clock());
-    const { config, record } = args.length || !userId?.trim() || !ctx.botId?.trim()
-        ? { ...await snapshot(ctx.db), record: null }
-        : await current(ctx.db, ctx.botId, userId, day);
-    const render = (key: CheckinCopyKey, message = "", amount = config.rewardPoints) => ({ text: expand(config.copy[key], { date: day, amount: String(amount), message }) });
-    const completed = (saved: Claim, repeated = false) => render(repeated ? "already" : "success", "", saved.amount / 100);
+    if (action === "我的") { return render("mine"); }
 
-    if (args.length) { return render("usage"); }
+    if (action !== "checkin") { return render("usage"); }
 
-    if (!userId?.trim() || !ctx.botId?.trim()) { return render("identity"); }
+    if (dateAt(clock()) !== day) { return render("dayChanged"); }
 
-    let row = record;
+    const personal = !totals || totals.last_day < day;
+    const dueGroup = group && !state.groupSeen ? group : "";
 
-    if (row?.status === "committed") { return completed(row, true); }
+    if (personal || dueGroup) { totals = await attend(ctx.db, ctx.botId, userId, day, context?.name ?? "", { personal, group: dueGroup }, totals); }
 
-    let points: PointsService | undefined;
+    if ((!totals || totals.last_day !== day) && state.record?.status !== "committed") { return render("dayChanged"); }
 
-    try { points = wallet(ctx); } catch (error) {
-        ctx.logger.warn("签到积分服务不可用", { error: String(error) });
-        return render("unavailable");
-    }
+    const amount = Math.round(config.rewardPoints * 100) * ((totals?.streak ?? 0) > config.streakDays ? config.rewardMultiplier : 1);
+    const result = await reward(ctx, userId, day, amount, state.record, clock);
 
-    if (!points) {
-        if (row?.status === "pending") { return render("pending"); }
-
-        if (dateAt(clock()) !== day) { return render("dayChanged"); }
-
-        const acquired = await claim(ctx.db, ctx.botId, userId, day, 0, row, "committed");
-
-        if (acquired) { return completed(acquired); }
-
-        const latest = await find(ctx.db, ctx.botId, userId, day);
-        return latest?.status === "committed" ? completed(latest, true) : render("pending");
-    }
-
-    const pointsService = points;
-    const complete = async (saved: Claim, result: OperationLookup) => {
-        if (result.status === "COMMITTED") {
-            if (!result.receipt.transactionId) {
-                ctx.logger.warn("签到入账回执缺少交易编号", { operationId: saved.operation_id });
-                return render("pending");
-            }
-
-            await finish(ctx.db, saved, "committed");
-            return render("success", "", saved.amount / 100);
-        }
-
-        if (result.status === "REJECTED") {
-            await finish(ctx.db, saved, "rejected");
-            return render("failed", result.error.message);
-        }
-
-        return render("pending");
-    };
-
-    try {
-        if (row?.status === "pending") {
-            const lookup = await pointsService.getOperation({ source: SOURCE, operationId: row.operation_id });
-
-            if (!lookup.ok) { return render("pending"); }
-
-            if (lookup.data.status !== "NOT_FOUND") { return await complete(row, lookup.data); }
-
-            // A new user request may resume only this saved operation, with identical input.
-        } else {
-            const checked = await pointsService.checkAccounts({ source: SOURCE, userIds: [userId] });
-
-            if (!checked.ok) { return render("failed", checked.message); }
-
-            if (!checked.data.accounts.some(account => account.userId === userId && account.exists)) { return render("opening"); }
-
-            if (dateAt(clock()) !== day) { return render("dayChanged"); }
-
-            const acquired = await claim(ctx.db, ctx.botId, userId, day, Math.round(config.rewardPoints * 100), row);
-
-            if (!acquired) {
-                row = await find(ctx.db, ctx.botId, userId, day);
-                return row?.status === "committed" ? completed(row, true) : render("pending");
-            }
-
-            row = acquired;
-        }
-
-        const result = await pointsService.credit({ source: SOURCE, operationId: row.operation_id, referenceId: "checkin:" + row.day, userId: row.user_id, amountMinor: row.amount, reason: "每日签到奖励" });
-
-        if (result.ok) { return await complete(row, { status: "COMMITTED", receipt: result.data }); }
-
-        ctx.logger.warn("签到入账未完成", { operationId: row.operation_id, code: result.code, retryable: result.retryable });
-        // Only a persisted rejection proves this operation cannot later commit.
-        const lookup = await pointsService.getOperation({ source: SOURCE, operationId: row.operation_id });
-        return lookup.ok ? await complete(row, lookup.data) : render("pending");
-    } catch (error) {
-        ctx.logger.warn("签到处理失败", { operationId: row?.operation_id, error: String(error) });
-        return render(row?.status === "pending" ? "pending" : "failed", "积分服务暂时不可用");
-    }
+    return render(result.key, result.amount, result.message);
 }

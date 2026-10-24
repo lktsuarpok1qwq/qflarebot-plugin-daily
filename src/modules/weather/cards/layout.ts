@@ -1,5 +1,6 @@
 import type { WeatherCardField } from "./values.js";
 import type { CardRegion } from "../../../shared/cards/types.js";
+
 type DefaultRegion = Omit<CardRegion, "color" | "field"> & { field: WeatherCardField; color: "header" | "panel" };
 export const WEATHER_REGIONS: readonly DefaultRegion[] = [
     { x: 32, y: 42, width: 476, height: 78, id: "city", field: "city", size: 28, color: "header", weight: 400, align: "left", lineHeight: 34 },

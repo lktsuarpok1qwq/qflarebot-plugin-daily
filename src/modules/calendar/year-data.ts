@@ -1,5 +1,6 @@
 import type { SourceSummary } from "./types.js";
 import { validDate } from "../../shared/date.js";
+
 export const FESTIVALS = ["元旦", "春节", "清明节", "劳动节", "端午节", "中秋节", "国庆节"] as const;
 const aliases: Record<string, string> = {
     清明: "清明节",
@@ -17,6 +18,7 @@ export type CalendarYear = {
         type: "legal_rest" | "legal_workday_adjust";
     }[];
 };
+
 export function validateYear(value: unknown, year: number): CalendarYear {
     const x = value as CalendarYear;
 
@@ -42,6 +44,7 @@ export function validateYear(value: unknown, year: number): CalendarYear {
             }
 
             days.add(h.date);
+
             return { name: h.name, date: h.date, type: h.type };
         })
         .sort((a, b) => a.date.localeCompare(b.date));
@@ -71,8 +74,10 @@ export function validateYear(value: unknown, year: number): CalendarYear {
         .filter((d) => !holidays.some((h) => h.type === "legal_rest" && (matchesFestival(h.name, d.name) || h.date === d.date)))
         .map(({ name, date }) => ({ name, date }))
         .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+
     return { year, holidays, ...(pending.length ? { dates: pending } : {}) };
 }
+
 export function parseResponse(value: unknown, year: number): CalendarYear {
     const x = value as {
         query?: { year?: string; holiday_type?: string };
@@ -117,21 +122,26 @@ export function parseResponse(value: unknown, year: number): CalendarYear {
 
     return validateYear({ year, holidays: x.holidays, dates: [...dates.values()] }, year);
 }
+
 export function summarizeYear(value: CalendarYear) {
     const rows = value.holidays.filter((h) => h.type === "legal_rest");
+
     return {
         has_schedule: rows.length ? 1 : 0,
         is_complete: FESTIVALS.every((name) => rows.some((h) => matchesFestival(h.name, name))) ? 1 : 0,
     };
 }
-/** Only a complete next year can reduce its refresh frequency. */
+
+/** 下一年数据完整时才可降低刷新频率 */
 export function refreshDays(source: Pick<SourceSummary, "has_schedule" | "is_complete"> | undefined, nextYear: boolean): number {
     return (nextYear ? source?.is_complete : source?.has_schedule) === 1 ? 7 : 1;
 }
-/** Replace returned festivals as a unit; absent festivals retain known data. */
+
+/** 接口返回的节日整体替换，未返回的节日保留已知数据 */
 export function mergeYear(incoming: CalendarYear, previous: CalendarYear | undefined) {
     const identities = (name: string): string[] => {
         const festivals = FESTIVALS.filter((f) => matchesFestival(name, f));
+
         return festivals.length ? festivals : [name];
     };
     const returned = new Set(

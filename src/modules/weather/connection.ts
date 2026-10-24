@@ -1,5 +1,6 @@
 import type { WeatherConfig } from "./types.js";
 import { lookup, request, parseCurrent, parseForecast, NoWeatherData } from "./provider.js";
+
 export async function testConnection(config: WeatherConfig, fetcher: typeof fetch = fetch) {
     if (!config.host || !config.apiKey) {
         throw new Error("请先填写 API Host 和 API Key");
@@ -39,5 +40,6 @@ export async function testConnection(config: WeatherConfig, fetcher: typeof fetc
             return result;
         }),
     ]);
+
     return { message: "连接正常：城市搜索、实时天气和每日预报均可用" };
 }

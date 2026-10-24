@@ -1,4 +1,5 @@
 import type { Ctx } from "./types.js";
+
 export function publicOrigin(ctx: Ctx): string {
     if (!ctx.publicUrl) { throw new Error("请在 QFlareBot 设置公开 HTTPS 地址"); }
 
@@ -10,6 +11,7 @@ export function publicOrigin(ctx: Ctx): string {
 
     return url.origin;
 }
+
 export function imageOrigin(value: unknown): string {
     if (value === undefined || value === "") { return ""; }
 
@@ -25,6 +27,7 @@ export function imageOrigin(value: unknown): string {
 
     return url.origin;
 }
+
 export async function imageUrls(ctx: Ctx) {
     const row = await ctx.db.first<{ imagePublicUrl: string | null }>("SELECT json_extract(config,'$.imagePublicUrl') AS imagePublicUrl FROM {state} WHERE id=1");
 
@@ -32,5 +35,6 @@ export async function imageUrls(ctx: Ctx) {
 
     const configured = imageOrigin(row.imagePublicUrl ?? "");
     const base = (configured || publicOrigin(ctx)) + `/p/${encodeURIComponent(ctx.plugin.name)}/`;
+
     return (key: string, route = key) => base + (configured ? key : route).split("/").map(encodeURIComponent).join("/");
 }

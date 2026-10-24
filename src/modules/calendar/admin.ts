@@ -12,12 +12,15 @@ import { refreshDays } from "./year-data.js";
 import { restoreEvent } from "./events.js";
 import { CALENDAR_COPY, calendarVariables } from "./copy.js";
 import { maintenance } from "./maintenance.js";
+
 type SourceOverview = Omit<SourceSummary, "hash"> & { references: number; has_data: number };
+
 function calendarAdminState(raw: SourceOverview[], now: number) {
     return {
         sources: [0, 1].map((offset) => {
             const year = +dateAt(now).slice(0, 4) + offset;
             const source = raw.find((s) => s.year === year);
+
             return {
                 year,
                 updated_at: source?.updated_at ?? 0,
@@ -45,6 +48,7 @@ export const api = adminHandler({ GET: ["state", "overview"], POST: ["config", "
             ctx.db.all<SourceOverview>("SELECT year,has_schedule,is_complete,error,updated_at,checked_at,CASE WHEN data<>'' THEN COALESCE(json_array_length(data,'$.dates'),0) ELSE 0 END AS \"references\",data<>'' AS has_data FROM {calendar_sources}"),
             ctx.db.all("SELECT * FROM {calendar_jobs}"),
         ]);
+
         return Response.json({ ...calendarAdminState(sources, Date.now()), jobs });
     }
 

@@ -1,11 +1,13 @@
 import { declareVariables } from "../../shared/variables.js";
 import { commandLink } from "../../shared/interpolation.js";
 import { queryComposition, todayComposition } from "./copy-fields.js";
+
 // 日历模块所有可配置默认文案；已有用户配置优先
 export const CALENDAR_COPY = {
     text: {
-        summary: "🎉 **{{name}}**\n{{date_text}}\n{{status}} {{makeup_text}}\n",
-        today: "{{today_text}}\n",
+        summary: "🎉 **{{name}}**\n{{date_text}}\n{{status}} {{makeup_text}}",
+        summarySeparator: "\n\n", todaySeparator: "\n",
+        today: "{{today_text}}",
         help: "📅 **假期日历**\n\n🏖️ 把期待放进日历，安排好下一次休息\n\n" + commandLink("🏖️ 下个假期", "/假期 下个") + " · 看看下一次期待\n" + commandLink("📋 今年剩余", "/假期 剩余") + " · 一览今年的节日\n\n" + commandLink("🏠 每日助手", "/每日"),
         dateRange: "📅 {{start}} ～ {{end}} · 休息 {{days_off}} 天",
         dateSingle: "📅 {{date}} · 休息 {{days_off}} 天",
@@ -22,7 +24,6 @@ export const CALENDAR_COPY = {
     },
     draft: { name: "" },
 };
-
 
 export const calendarVariables = declareVariables({
     "日历.下一个": { description: "下个尚未开始的节日文案，含跨年", group: "完整文案", composition: queryComposition },
