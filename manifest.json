@@ -1,0 +1,262 @@
+{
+  "name": "daily",
+  "version": "2.0.0",
+  "apiVersion": 4,
+  "permissions": [
+    "db",
+    "admin",
+    "proactive",
+    "net"
+  ],
+  "depends": {
+    "points.wallet": "optional"
+  },
+  "conflicts": [],
+  "commands": [
+    {
+      "name": "每日",
+      "description": "每日助手帮助",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "假期",
+      "description": "假期查询帮助",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "假期 下个",
+      "description": "下个尚未开始的节日",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "假期 剩余",
+      "description": "今天起今年所有剩余节日",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "天气",
+      "description": "查询城市天气",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "一言",
+      "description": "随机一句话",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "运势",
+      "description": "运势帮助",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "运势 抽",
+      "description": "抽取今日个人运势",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "运势 解",
+      "description": "查看今日解签",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "签到",
+      "description": "每日签到",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "签到 榜",
+      "description": "本群个人签到榜",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    },
+    {
+      "name": "签到 我的",
+      "description": "个人签到记录",
+      "scenes": [
+        "group",
+        "c2c"
+      ]
+    }
+  ],
+  "regex": [],
+  "events": [],
+  "buttons": [],
+  "cron": [
+    {
+      "name": "send",
+      "cron": "* * * * *"
+    },
+    {
+      "name": "maintenance",
+      "cron": "* * * * *"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/cards/assets/:asset",
+      "auth": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notification/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notification/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/calendar/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/weather/cards/:day/:file",
+      "auth": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cards/weather/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/weather/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/weather/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/weather/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/saying/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/saying/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/fortune/cards/:day/:file",
+      "auth": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cards/fortune/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/fortune/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fortune/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fortune/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/checkin/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/checkin/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/murmur/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/murmur/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/ui/*",
+      "auth": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/:action",
+      "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/:action",
+      "auth": "admin"
+    }
+  ],
+  "hasMiddleware": false,
+  "services": [],
+  "durableObjects": [],
+  "displayName": "每日助手",
+  "description": "定时通知、日历、天气、一言、运势、签到与絮语",
+  "configSchema": {
+    "type": "object",
+    "properties": {}
+  },
+  "ui": {
+    "path": "/ui/",
+    "title": "每日助手",
+    "icon": "CalendarDays"
+  }
+}

@@ -1,0 +1,35 @@
+// 由 dev/scripts/cards/index-corpus.mjs 生成；请编辑 dev/assets/fortune/corpus/ 中的 JSON
+// 偏移量以 UTF-16 代码单元计数
+export const offsets: readonly number[] = [0,62,146,208,292,352,411];
+// 静态字符串片段由宿主构建时合并，运行时不拼接
+export const text =
+    '{'
+    +     '"id":"christmas-eve-01",'
+    +     '"text":"平安夜气氛先送来一个逗号\\n可以让忙乱在这里轻轻停一下"'
+    + '}'
+    + '{'
+    +     '"id":"christmas-eve-02",'
+    +     '"text":"苹果没有神秘参数\\n但被人认真递到手里会显得格外暖",'
+    +     '"emphasis":['
+    +         '"苹果没有神秘参数"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"christmas-eve-03",'
+    +     '"text":"礼物包装纸认真沙沙作响\\n像替心意练习一句不太响的问候"'
+    + '}'
+    + '{'
+    +     '"id":"christmas-eve-04",'
+    +     '"text":"夜色留了一盏小灯\\n不用完成所有待办才有资格坐下来",'
+    +     '"emphasis":['
+    +         '"夜色留了一盏小灯"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"christmas-eve-05",'
+    +     '"text":"节日来客把门敲得很轻\\n它只想留下一句今晚好好休息"'
+    + '}'
+    + '{'
+    +     '"id":"christmas-eve-06",'
+    +     '"text":"一颗小铃铛正在候场\\n不准备把普通的安静全部吵醒"'
+    + '}';

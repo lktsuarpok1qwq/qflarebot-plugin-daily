@@ -1,0 +1,29 @@
+// 由 dev/scripts/cards/index-corpus.mjs 生成；请编辑 dev/assets/fortune/corpus/ 中的 JSON
+// 偏移量以 UTF-16 代码单元计数
+export const offsets: readonly number[] = [0,54,113,169,226,284,344];
+// 静态字符串片段由宿主构建时合并，运行时不拼接
+export const text =
+    '{'
+    +     '"id":"friendship-01",'
+    +     '"text":"有些友谊的开场很普通\\n比如你要不要也来一口"'
+    + '}'
+    + '{'
+    +     '"id":"friendship-02",'
+    +     '"text":"朋友不一定擅长说大道理\\n但可能很会把你爱吃的那块留下"'
+    + '}'
+    + '{'
+    +     '"id":"friendship-03",'
+    +     '"text":"聊天框可以先发一句最近如何\\n不必附带完美开场白"'
+    + '}'
+    + '{'
+    +     '"id":"friendship-04",'
+    +     '"text":"友谊气氛组送来两张椅子\\n允许并排坐着各自发一会呆"'
+    + '}'
+    + '{'
+    +     '"id":"friendship-05",'
+    +     '"text":"那个能听懂你半句话的人\\n也值得被问一句这阵子累不累"'
+    + '}'
+    + '{'
+    +     '"id":"friendship-06",'
+    +     '"text":"长久没聊不等于情分过期\\n一个正常问候就能让窗口重新亮起"'
+    + '}';

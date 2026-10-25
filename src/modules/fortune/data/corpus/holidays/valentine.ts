@@ -1,0 +1,38 @@
+// 由 dev/scripts/cards/index-corpus.mjs 生成；请编辑 dev/assets/fortune/corpus/ 中的 JSON
+// 偏移量以 UTF-16 代码单元计数
+export const offsets: readonly number[] = [0,57,132,209,264,320,393];
+// 静态字符串片段由宿主构建时合并，运行时不拼接
+export const text =
+    '{'
+    +     '"id":"valentine-01",'
+    +     '"text":"情人节气氛开始营业\\n你可以先和自己喜欢的点心约个会"'
+    + '}'
+    + '{'
+    +     '"id":"valentine-02",'
+    +     '"text":"玫瑰负责好看\\n谁来解释花瓶又放哪的现实问题",'
+    +     '"emphasis":['
+    +         '"玫瑰负责好看"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"valentine-03",'
+    +     '"text":"巧克力路过签卡\\n声明自己也接受一个人完整享用",'
+    +     '"emphasis":['
+    +         '"巧克力路过签卡"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"valentine-04",'
+    +     '"text":"浪漫部门递来一张邀请\\n同行人数允许填写本人一名"'
+    + '}'
+    + '{'
+    +     '"id":"valentine-05",'
+    +     '"text":"心形包装包住一颗糖\\n糖本人没打算审查你的感情状态"'
+    + '}'
+    + '{'
+    +     '"id":"valentine-06",'
+    +     '"text":"情话还在酝酿\\n肚子已经提出要不要先吃饭",'
+    +     '"emphasis":['
+    +         '"情话还在酝酿"'
+    +     ']'
+    + '}';

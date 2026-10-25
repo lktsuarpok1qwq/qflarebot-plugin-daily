@@ -1,0 +1,35 @@
+// 由 dev/scripts/cards/index-corpus.mjs 生成；请编辑 dev/assets/fortune/corpus/ 中的 JSON
+// 偏移量以 UTF-16 代码单元计数
+export const offsets: readonly number[] = [0,53,135,214,269,324,378];
+// 静态字符串片段由宿主构建时合并，运行时不拼接
+export const text =
+    '{'
+    +     '"id":"halloween-01",'
+    +     '"text":"南瓜灯已经练好表情\\n因为太认真显得有点可爱"'
+    + '}'
+    + '{'
+    +     '"id":"halloween-02",'
+    +     '"text":"糖果部门准备营业\\n恶作剧部门被要求先确认对方愿意参与",'
+    +     '"emphasis":['
+    +         '"糖果部门准备营业"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"halloween-03",'
+    +     '"text":"床单申请临时演鬼\\n前提是使用后仍能正常回到床上",'
+    +     '"emphasis":['
+    +         '"床单申请临时演鬼"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"halloween-04",'
+    +     '"text":"你遇见一只很礼貌的小幽灵\\n它只是来确认哪边发糖"'
+    + '}'
+    + '{'
+    +     '"id":"halloween-05",'
+    +     '"text":"万圣节气氛不要求真的吓到谁\\n笑出来也算成功登场"'
+    + '}'
+    + '{'
+    +     '"id":"halloween-06",'
+    +     '"text":"南瓜对雕刻方案提出意见\\n希望牙齿能少挖两个洞"'
+    + '}';

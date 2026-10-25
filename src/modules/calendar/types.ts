@@ -1,0 +1,35 @@
+import type { ButtonConfiguration } from "../../shared/message-buttons.js";
+
+export type CalendarEvent = {
+    id: string;
+    enabled: boolean;
+    name: string;
+    start: string;
+    end: string;
+    kind: "holiday" | "makeup" | "reference" | "event";
+    repeat: "once" | "yearly";
+    source: "uapi" | "manual";
+};
+type CalendarText = typeof import("./copy.js").CALENDAR_COPY.text;
+export type CalendarCopy = Omit<CalendarText, "summarySeparator" | "todaySeparator"> & Partial<Pick<CalendarText, "summarySeparator" | "todaySeparator">>;
+export type SourceSummary = {
+    year: number;
+    hash: string;
+    has_schedule: number;
+    is_complete: number;
+    error: string | null;
+    updated_at: number;
+    checked_at: number;
+};
+
+export type CalendarCommand = "假期" | "假期 下个" | "假期 剩余";
+export type SourceCoverage = Pick<SourceSummary, "year" | "is_complete">;
+export type Source = SourceSummary & { data: string };
+export const CALENDAR_VERSION = 5;
+export const EVENT_LIMIT = 600;
+export type CalendarConfig = ButtonConfiguration & {
+    schemaVersion: typeof CALENDAR_VERSION;
+    events: CalendarEvent[];
+    calendarCopy: CalendarCopy;
+};
+export type CalendarSnapshot = { revision: number; config: CalendarConfig };

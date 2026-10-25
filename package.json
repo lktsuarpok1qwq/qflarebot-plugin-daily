@@ -1,0 +1,10 @@
+{
+    "name": "qflarebot-plugin-daily",
+    "version": "2.0.0",
+    "description": "每日助手：占位符公告、定时提醒与放假调休",
+    "license": "MIT",
+    "type": "module",
+    "keywords": [
+        "qflarebot-plugin"
+    ]
+}

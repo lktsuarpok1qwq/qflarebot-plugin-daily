@@ -1,0 +1,35 @@
+// 由 dev/scripts/cards/index-corpus.mjs 生成；请编辑 dev/assets/fortune/corpus/ 中的 JSON
+// 偏移量以 UTF-16 代码单元计数
+export const offsets: readonly number[] = [0,78,135,219,277,337,395];
+// 静态字符串片段由宿主构建时合并，运行时不拼接
+export const text =
+    '{'
+    +     '"id":"april-fools-01",'
+    +     '"text":"玩笑部门准备营业\\n先确认对方也能笑着收工",'
+    +     '"emphasis":['
+    +         '"玩笑部门准备营业"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"april-fools-02",'
+    +     '"text":"你收到一封神秘任命\\n职务是认真检查这是不是玩笑"'
+    + '}'
+    + '{'
+    +     '"id":"april-fools-03",'
+    +     '"text":"愚人节彩排进行中\\n最成功的骗局是你相信自己只再看一条",'
+    +     '"emphasis":['
+    +         '"愚人节彩排进行中"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"april-fools-04",'
+    +     '"text":"一本正经的表情临时加班\\n但不承包让别人难受的剧情"'
+    + '}'
+    + '{'
+    +     '"id":"april-fools-05",'
+    +     '"text":"空气里有一点恶作剧\\n请把它控制在双方都觉得好笑的尺寸"'
+    + '}'
+    + '{'
+    +     '"id":"april-fools-06",'
+    +     '"text":"有人宣布自己从此不拖延\\n日历在旁边保持礼貌的沉默"'
+    + '}';

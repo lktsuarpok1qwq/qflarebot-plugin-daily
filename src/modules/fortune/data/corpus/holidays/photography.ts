@@ -1,0 +1,35 @@
+// 由 dev/scripts/cards/index-corpus.mjs 生成；请编辑 dev/assets/fortune/corpus/ 中的 JSON
+// 偏移量以 UTF-16 代码单元计数
+export const offsets: readonly number[] = [0,84,139,221,281,335,394];
+// 静态字符串片段由宿主构建时合并，运行时不拼接
+export const text =
+    '{'
+    +     '"id":"photography-01",'
+    +     '"text":"摄影日气氛刚摆好\\n你先发现镜头上有一枚非常清楚的指纹",'
+    +     '"emphasis":['
+    +         '"摄影日气氛刚摆好"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"photography-02",'
+    +     '"text":"好看的光路过一小会\\n不用拍下来也算亲眼见过"'
+    + '}'
+    + '{'
+    +     '"id":"photography-03",'
+    +     '"text":"相册空位发出提醒\\n值得留下的也可以是一张普通饭桌",'
+    +     '"emphasis":['
+    +         '"相册空位发出提醒"'
+    +     ']'
+    + '}'
+    + '{'
+    +     '"id":"photography-04",'
+    +     '"text":"照片不必证明生活一直精彩\\n一张安静窗台也有自己的位置"'
+    + '}'
+    + '{'
+    +     '"id":"photography-05",'
+    +     '"text":"快门捕捉到半个笑容\\n剩下那半个留在了现场"'
+    + '}'
+    + '{'
+    +     '"id":"photography-06",'
+    +     '"text":"拍照的人也可以入镜\\n记得给自己留一个正常存在的位置"'
+    + '}';
