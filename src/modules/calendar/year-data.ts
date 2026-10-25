@@ -90,9 +90,23 @@ export function parseResponse(value: unknown, year: number): CalendarYear {
         }[];
     };
 
-    if (x?.query?.year !== String(year) || x.query.holiday_type !== "legal") {
+    if (x?.query?.year !== String(year) || x.query.holiday_type !== "all") {
         throw new Error("UAPI 返回的年度或类别不匹配");
     }
+
+    if (!Array.isArray(x.holidays) || x.holidays.length > 400) {
+        throw new Error("UAPI 年度数据格式错误");
+    }
+
+    const holidays = (x.holidays as unknown[]).filter((entry) => {
+        const h = entry as { type?: unknown } | null;
+
+        if (!h || typeof h.type !== "string" || !["legal_rest", "legal_workday_adjust", "solar_festival", "lunar_festival", "solar_term"].includes(h.type)) {
+            throw new Error("UAPI 节日类别非法");
+        }
+
+        return h.type === "legal_rest" || h.type === "legal_workday_adjust";
+    });
 
     if (x.days !== undefined && (!Array.isArray(x.days) || x.days.length > 366)) {
         throw new Error("UAPI 日历格式错误");
@@ -120,7 +134,7 @@ export function parseResponse(value: unknown, year: number): CalendarYear {
         }
     }
 
-    return validateYear({ year, holidays: x.holidays, dates: [...dates.values()] }, year);
+    return validateYear({ year, holidays, dates: [...dates.values()] }, year);
 }
 
 export function summarizeYear(value: CalendarYear) {

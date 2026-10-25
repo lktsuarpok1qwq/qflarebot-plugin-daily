@@ -39,7 +39,7 @@ export async function syncYear(
             return { year, status: "skipped" };
         }
 
-        const res = await fetcher(`https://uapis.cn/api/v1/misc/holiday-calendar?year=${year}&holiday_type=legal`, {
+        const res = await fetcher(`https://uapis.cn/api/v1/misc/holiday-calendar?year=${year}&holiday_type=all`, {
             signal: AbortSignal.timeout(8_000),
             redirect: "manual",
         });
